@@ -25,9 +25,10 @@ pub(crate) use types::{DestroyedUnit, PieceView, StatBonus};
 
 use board::piece_can_attack;
 use serialization::MatchSnapshot;
-#[cfg(test)]
-pub(crate) use solo_ai_policy::SoloAiRuleId;
-pub(crate) use solo_ai_policy::{AiPolicyConfig, SoloAiPolicy, default_policy_config_path};
+pub use solo_ai_policy::{
+    AiPolicyConfig, AiPolicyConfigError, AiPolicyDefinition, SoloAiPolicy, SoloAiRuleId,
+    default_policy_config_path,
+};
 use solo_ai_policy::{SoloAiActionIntent, SoloAiCarriedItem, SoloAiDecision, SoloAiView};
 
 const BOARD_RADIUS: i32 = 3;
@@ -264,7 +265,7 @@ impl MatchState {
         dead_code,
         reason = "kept as the deterministic rules-engine test constructor"
     )]
-    fn new_with_seed(seed: u64) -> Self {
+    pub fn new_with_seed(seed: u64) -> Self {
         Self::new_with_seed_and_player_hero_type(seed, HeroType::default())
     }
 
@@ -426,7 +427,7 @@ impl MatchState {
         game
     }
 
-    pub(crate) fn new_ai_lab_with_seed_and_decks(
+    pub fn new_ai_lab_with_seed_and_decks(
         seed: u64,
         player_hero_type: HeroType,
         opponent_hero_type: HeroType,
@@ -2291,7 +2292,7 @@ impl MatchState {
         self.advance_ai_for_side_with_policy(Side::Opponent, &policy, frames, action_index)
     }
 
-    pub(crate) fn advance_ai_for_side_with_policy(
+    pub fn advance_ai_for_side_with_policy(
         &mut self,
         side: Side,
         policy: &SoloAiPolicy,
@@ -2302,7 +2303,7 @@ impl MatchState {
             .map(|_| ())
     }
 
-    pub(crate) fn advance_ai_for_side_with_policy_strict(
+    pub fn advance_ai_for_side_with_policy_strict(
         &mut self,
         side: Side,
         policy: &SoloAiPolicy,
@@ -2646,11 +2647,14 @@ impl MatchState {
         None
     }
 
-    pub(crate) fn player_mut_for_ai_lab(&mut self, side: Side) -> &mut PlayerState {
+    /// Compatibility hook used by deterministic AI-lab presets while a typed
+    /// experiment-configuration API is extracted into the core.
+    pub fn player_mut_for_ai_lab(&mut self, side: Side) -> &mut PlayerState {
         self.player_mut(side)
     }
 
-    pub(crate) fn participant_for_public(&self, side: Side) -> Option<&PlayerState> {
+    /// Read-only participant access for application projections.
+    pub fn participant_for_public(&self, side: Side) -> Option<&PlayerState> {
         match side {
             Side::Player => Some(&self.player),
             Side::Opponent => Some(&self.opponent),
@@ -3591,7 +3595,7 @@ impl Side {
         }
     }
 
-    pub(crate) fn opponent(self) -> Self {
+    pub fn opponent(self) -> Self {
         match self {
             Self::Player => Self::Opponent,
             Self::Opponent => Self::Player,
@@ -3600,14 +3604,14 @@ impl Side {
         }
     }
 
-    pub(crate) fn team(self) -> Team {
+    pub fn team(self) -> Team {
         match self {
             Self::Player | Self::PlayerTwo => Team::Player,
             Self::Opponent | Self::OpponentTwo => Team::Opponent,
         }
     }
 
-    pub(crate) fn opposing_team(self) -> Team {
+    pub fn opposing_team(self) -> Team {
         match self.team() {
             Team::Player => Team::Opponent,
             Team::Opponent => Team::Player,
@@ -3616,7 +3620,7 @@ impl Side {
 }
 
 impl Side {
-    pub(crate) fn card_prefix(self) -> &'static str {
+    pub fn card_prefix(self) -> &'static str {
         match self {
             Self::Player => "p",
             Self::Opponent => "o",
@@ -3625,7 +3629,7 @@ impl Side {
         }
     }
 
-    pub(crate) fn label_for_response(self) -> &'static str {
+    pub fn label_for_response(self) -> &'static str {
         match self {
             Self::Player => "Player 1",
             Self::Opponent => "Opponent 1",
