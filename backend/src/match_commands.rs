@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt;
 
-use rune_lanes_core::cqrs::{CommandContext, GameCommand};
+use rune_lanes_core::cqrs::{CommandContext, CommandConversionError, GameCommand};
 
 use crate::match_access::{Actor, MatchAccess};
 use crate::match_session::{MatchActionRequest, MatchError, MatchState, RecordedReplayFrame, Side};
@@ -75,11 +75,9 @@ fn execute_game_request(
         Ok(command) => command
             .execute_compatibility(game, CommandContext { side, action_index })
             .map(|outcome| outcome.replay_frames),
-        Err(_) => game.apply_action_recording_for_side(
-            side,
-            MatchActionRequest::AdvanceAi,
-            action_index,
-        ),
+        Err(CommandConversionError::AdvanceAiIsApplicationOrchestration) => {
+            game.apply_action_recording_for_side(side, MatchActionRequest::AdvanceAi, action_index)
+        }
     }
 }
 
