@@ -2,10 +2,13 @@ use std::error::Error;
 use std::fmt;
 
 use crate::match_access::{Actor, MatchAccess};
-use crate::match_session::{MatchActionRequest, MatchError, RecordedReplayFrame};
+use crate::match_session::{
+    MatchActionRequest, MatchError, MatchState, RecordedReplayFrame, Side,
+};
 use crate::match_store::{
     MatchStoreError, SharedMatchStatus, SqliteMatchStore, StoredMatch, StoredSharedMatch,
 };
+use crate::rules_kernel::{self, GameCommand, NonGameCommand};
 
 pub struct MatchCommands<'a> {
     store: &'a mut SqliteMatchStore,
@@ -63,6 +66,31 @@ impl From<MatchError> for MatchCommandError {
     }
 }
 
+fn apply_action_through_rules_kernel(
+    state: &mut MatchState,
+    side: Side,
+    request: MatchActionRequest,
+    action_index: u32,
+) -> Result<Vec<RecordedReplayFrame>, MatchError> {
+    match request {
+        MatchActionRequest::AdvanceAi => state.apply_action_recording_for_side(
+            side,
+            MatchActionRequest::AdvanceAi,
+            action_index,
+        ),
+        player_request => {
+            let command = match GameCommand::try_from(player_request) {
+                Ok(command) => command,
+                Err(NonGameCommand::AdvanceAi) => {
+                    unreachable!("AdvanceAi is handled before game-command conversion")
+                }
+            };
+            rules_kernel::actions::apply_recording(state, side, command, action_index)
+                .map_err(|violation| violation.into_match_error())
+        }
+    }
+}
+
 impl<'a> MatchCommands<'a> {
     pub fn new(store: &'a mut SqliteMatchStore) -> Self {
         Self { store }
@@ -84,9 +112,12 @@ impl<'a> MatchCommands<'a> {
         }
 
         let action_index = self.store.next_action_index(match_id)?;
-        let replay_frames = stored_match
-            .state
-            .apply_action_recording(request.clone(), action_index)?;
+        let replay_frames = apply_action_through_rules_kernel(
+            &mut stored_match.state,
+            Side::Player,
+            request.clone(),
+            action_index,
+        )?;
         self.store.save_action_and_replay_frames(
             &stored_match.id,
             action_index,
@@ -119,7 +150,8 @@ impl<'a> MatchCommands<'a> {
             .state
             .ok_or(MatchCommandError::SharedMatchNotStarted)?;
         let action_index = self.store.next_action_index(match_id)?;
-        let frames = match_state.apply_action_recording_for_side(
+        let frames = apply_action_through_rules_kernel(
+            &mut match_state,
             shared.viewer_seat.side,
             request.clone(),
             action_index,

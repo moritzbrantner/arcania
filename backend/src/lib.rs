@@ -16,6 +16,7 @@ pub(crate) mod match_commands;
 pub(crate) mod match_session;
 pub(crate) mod preferences;
 pub(crate) mod progression;
+pub(crate) mod rules_kernel;
 
 pub(crate) use http_types::*;
 
