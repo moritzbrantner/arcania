@@ -464,8 +464,8 @@ impl RulePreset {
             for side in [Side::Player, Side::Opponent] {
                 let player = game.player_mut_for_ai_lab(side);
                 apply_card_overrides(&mut player.hand, &overrides);
-                apply_card_overrides(&mut player.deck, &overrides);
-                apply_card_overrides(&mut player.discard, &overrides);
+                apply_card_overrides(player.deck_mut_for_ai_lab(), &overrides);
+                apply_card_overrides(player.discard_mut_for_ai_lab(), &overrides);
             }
         }
         Ok(())
@@ -568,12 +568,10 @@ fn apply_side_setup(
             player.hand = cards_from_template_ids(side, zone)?;
         }
         if let Some(zone) = &setup.deck {
-            player.deck = cards_from_template_ids(side, zone)?;
-            player.deck_count = player.deck.len();
+            player.replace_deck_for_ai_lab(cards_from_template_ids(side, zone)?);
         }
         if let Some(zone) = &setup.discard {
-            player.discard = cards_from_template_ids(side, zone)?;
-            player.discard_count = player.discard.len();
+            player.replace_discard_for_ai_lab(cards_from_template_ids(side, zone)?);
         }
     }
     Ok(())
