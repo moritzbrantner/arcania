@@ -1,5 +1,5 @@
 import type { ProjectedBoardPosition } from "../boardRenderer";
-import type { BoardSurfaceTileInteraction } from "../boardSurface";
+import type { BoardSurfaceTile } from "../boardSurface";
 import type { MatchVisualCatalog } from "../matchVisualIdentity";
 import type { TargetingIndicator } from "../targetingIndicators";
 import type { HexCoord, HexTile, HeroAppearanceAssignment, HeroType, Side, Unit, Hero } from "../types";
@@ -44,7 +44,7 @@ export type Board3DUnit = {
 
 export type Board3DPiece = Board3DHero | Board3DUnit;
 
-export type Board3DTileInteraction = BoardSurfaceTileInteraction;
+export type Board3DTileInteraction = BoardSurfaceTile;
 
 export type BoardProjectedPosition = ProjectedBoardPosition;
 
