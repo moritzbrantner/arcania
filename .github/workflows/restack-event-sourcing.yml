@@ -38,20 +38,21 @@ jobs:
 
           helper_start = script.index('def replace_once(')
           helper_end = script.index('\n\n# Core event model:', helper_start)
-          helper = r'''def replace_once(text: str, old: str, new: str, label: str) -> str:
-    if old in text:
-        return text.replace(old, new, 1)
-    tokens = [line.strip() for line in old.strip().splitlines() if line.strip()]
-    pattern = r'\s*'.join(re.escape(token) for token in tokens)
-    match = re.search(pattern, text, flags=re.DOTALL)
-    if match is None:
-        raise SystemExit(f'{label} marker not found')
-    return text[:match.start()] + new.strip('\n') + text[match.end():]
-'''
+          helper = '\n'.join([
+              'def replace_once(text: str, old: str, new: str, label: str) -> str:',
+              '    if old in text:',
+              '        return text.replace(old, new, 1)',
+              '    tokens = [line.strip() for line in old.strip().splitlines() if line.strip()]',
+              "    pattern = r'\\s*'.join(re.escape(token) for token in tokens)",
+              '    match = re.search(pattern, text, flags=re.DOTALL)',
+              '    if match is None:',
+              "        raise SystemExit(f'{label} marker not found')",
+              "    return text[:match.start()] + new.strip('\\n') + text[match.end():]",
+              '',
+          ])
           script = script[:helper_start] + helper + script[helper_end:]
           exec(compile(script, 'event-store-migration.py', 'exec'))
 
-          # Small correctness repairs in the generated adapter before compilation.
           path = Path('backend/src/match_store/event_store.rs')
           text = path.read_text()
           text = text.replace(
