@@ -1,15 +1,14 @@
-@media (min-width: 721px) and (max-width: 1320px) {
+@media (max-width: 520px) {
   .battlefield-hud-hand {
-    width: 172px;
+    left: 12px;
+    width: calc((100vw - 48px) / 2);
   }
 
   .battlefield-hud-hand .opponent-hand-display {
     width: 100%;
     min-width: 0;
   }
-}
 
-@media (max-width: 520px) {
   .battlefield-hud-opponent,
   .battlefield-hud-phase {
     box-sizing: border-box;
