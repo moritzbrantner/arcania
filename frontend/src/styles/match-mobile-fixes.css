@@ -1,5 +1,6 @@
 @media (min-width: 721px) and (max-width: 1320px) {
   .opponent-hand-display {
+    width: 172px;
     min-width: 172px;
   }
 }
