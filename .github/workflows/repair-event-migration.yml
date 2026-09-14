@@ -66,7 +66,7 @@ jobs:
       - name: Publish migration
         run: |
           git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git config user.email '41898282+moritzbrantner@users.noreply.github.com'
           rm .github/workflows/restack-event-sourcing.yml
           rm .github/workflows/repair-event-migration.yml
           git add -A
