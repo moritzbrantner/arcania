@@ -766,7 +766,11 @@ impl MatchState {
             return;
         }
         self.phase = phase.clone();
-        self.record_replay_frame(frames, action_index, ReplayEvent::PhaseChanged { side, phase });
+        self.record_replay_frame(
+            frames,
+            action_index,
+            ReplayEvent::PhaseChanged { side, phase },
+        );
     }
 
     fn auto_start_card_play_if_attacks_exhausted(

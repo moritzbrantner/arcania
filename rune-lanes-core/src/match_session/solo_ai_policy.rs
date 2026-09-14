@@ -8,6 +8,9 @@ use super::{
 };
 use serde::{Deserialize, Serialize};
 
+use super::{MatchError, MatchMode, MatchState, Phase, RecordedReplayFrame};
+use crate::cqrs::GameCommand;
+
 #[derive(Clone, Debug)]
 pub struct SoloAiPolicy {
     rules: Vec<SoloAiRuleId>,
@@ -414,6 +417,116 @@ pub(super) enum SoloAiActionIntent {
         item_id: String,
         target: Option<ActionTarget>,
     },
+}
+
+impl MatchState {
+    /// Resolve exactly one deterministic solo-AI step into a concrete domain
+    /// command. `None` means the policy has no further card-play action and
+    /// the caller should record `AiTurnFinished` instead.
+    pub fn next_solo_ai_game_command(&self, side: Side) -> Result<Option<GameCommand>, MatchError> {
+        let policy = SoloAiPolicy::default();
+        self.next_solo_ai_game_command_with_policy(side, &policy)
+    }
+
+    pub fn next_solo_ai_game_command_with_policy(
+        &self,
+        side: Side,
+        policy: &SoloAiPolicy,
+    ) -> Result<Option<GameCommand>, MatchError> {
+        if self.mode != MatchMode::Solo {
+            return Err(MatchError::AiUnavailable);
+        }
+        if !self.action_stack.is_empty() {
+            if self.priority_side != Some(side) {
+                return Err(MatchError::NotPrioritySide);
+            }
+            return Ok(Some(GameCommand::PassPriority));
+        }
+        if self.active_side != side {
+            return Err(MatchError::AiUnavailable);
+        }
+
+        let decision = || policy.decide(&self.solo_ai_view_for_side(side));
+        match self.phase {
+            Phase::Movement => {
+                if self.side_has_legal_attack(side) {
+                    return Ok(Some(GameCommand::StartAttackPhase));
+                }
+                Ok(Some(match decision() {
+                    SoloAiDecision::TakeAction(intent @ SoloAiActionIntent::MovePiece { .. })
+                    | SoloAiDecision::TakeAction(
+                        intent @ SoloAiActionIntent::ActivateItem { .. },
+                    ) => ai_intent_game_command(intent),
+                    SoloAiDecision::TakeAction(SoloAiActionIntent::Attack { .. }) => {
+                        GameCommand::StartAttackPhase
+                    }
+                    _ => GameCommand::StartCardPlay,
+                }))
+            }
+            Phase::Attack => Ok(Some(match decision() {
+                SoloAiDecision::TakeAction(intent @ SoloAiActionIntent::Attack { .. })
+                | SoloAiDecision::TakeAction(intent @ SoloAiActionIntent::ActivateItem { .. }) => {
+                    ai_intent_game_command(intent)
+                }
+                _ => GameCommand::StartCardPlay,
+            })),
+            Phase::CardPlay => match decision() {
+                SoloAiDecision::TakeAction(intent @ SoloAiActionIntent::PlayCard { .. })
+                | SoloAiDecision::TakeAction(intent @ SoloAiActionIntent::ActivateItem { .. }) => {
+                    Ok(Some(ai_intent_game_command(intent)))
+                }
+                _ => Ok(None),
+            },
+            Phase::MatchOver => Err(MatchError::MatchOver),
+        }
+    }
+
+    pub fn finish_solo_ai_turn_recording(
+        &mut self,
+        side: Side,
+        action_index: u32,
+    ) -> Result<Vec<RecordedReplayFrame>, MatchError> {
+        if self.mode != MatchMode::Solo {
+            return Err(MatchError::AiUnavailable);
+        }
+        if self.active_side != side {
+            return Err(MatchError::AiUnavailable);
+        }
+        self.require_phase(Phase::CardPlay)?;
+        if !self.action_stack.is_empty() {
+            return Err(MatchError::StackPending);
+        }
+
+        let mut frames = Vec::new();
+        self.finish_ai_turn(side, &mut frames, Some(action_index));
+        self.truncate_log();
+        Ok(frames)
+    }
+}
+
+fn ai_intent_game_command(intent: SoloAiActionIntent) -> GameCommand {
+    match intent {
+        SoloAiActionIntent::Attack {
+            attacker_id,
+            target_id,
+        } => GameCommand::Attack {
+            attacker_id,
+            target_id,
+        },
+        SoloAiActionIntent::PlayCard { card_id, target } => {
+            GameCommand::PlayCard { card_id, target }
+        }
+        SoloAiActionIntent::MovePiece { piece_id, to } => GameCommand::MovePiece { piece_id, to },
+        SoloAiActionIntent::ActivateItem {
+            carrier_id,
+            item_id,
+            target,
+        } => GameCommand::ActivateItem {
+            carrier_id,
+            item_id,
+            target,
+        },
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]

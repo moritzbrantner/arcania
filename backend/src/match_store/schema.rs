@@ -34,6 +34,29 @@ pub(super) fn prepare_connection(connection: &Connection) -> Result<(), MatchSto
             created_at INTEGER NOT NULL,
             PRIMARY KEY (match_id, frame_index)
         );
+        CREATE TABLE IF NOT EXISTS match_events (
+    match_id TEXT NOT NULL,
+    aggregate_version INTEGER NOT NULL,
+    event_schema_version INTEGER NOT NULL,
+    ruleset_version TEXT NOT NULL,
+    command_id TEXT,
+    action_index INTEGER,
+    event_json TEXT NOT NULL,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    PRIMARY KEY (match_id, aggregate_version)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS match_events_command_id
+    ON match_events(match_id, command_id)
+    WHERE command_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS match_event_snapshots (
+    match_id TEXT PRIMARY KEY NOT NULL,
+    aggregate_version INTEGER NOT NULL,
+    snapshot_schema_version INTEGER NOT NULL,
+    event_schema_version INTEGER NOT NULL,
+    ruleset_version TEXT NOT NULL,
+    snapshot_json TEXT NOT NULL,
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
         CREATE TABLE IF NOT EXISTS shared_matches (
             match_id TEXT PRIMARY KEY NOT NULL,
             status TEXT NOT NULL,
@@ -166,9 +189,11 @@ fn discard_legacy_hero_matches(
     if had_legacy_seat_hero || has_legacy_snapshots {
         connection.execute_batch(
             "
-            DELETE FROM match_replay_frames;
-            DELETE FROM match_actions;
-            DELETE FROM match_seats;
+                        DELETE FROM match_event_snapshots;
+    DELETE FROM match_events;
+    DELETE FROM match_replay_frames;
+    DELETE FROM match_actions;
+    DELETE FROM match_seats;
             DELETE FROM shared_matches;
             DELETE FROM matches;
             ",

@@ -584,7 +584,8 @@ impl MatchSummary {
         viewer_team: match_session::Team,
         viewer_deck_name: Option<String>,
     ) -> Self {
-        let (viewer_hero_types, opposing_hero_types) = hero_types_for_teams(&summary.state, viewer_team);
+        let (viewer_hero_types, opposing_hero_types) =
+            hero_types_for_teams(&summary.state, viewer_team);
         let viewer_result = summary.state.winner.map(|winner| {
             if winner.team() == viewer_team {
                 ViewerResult::Victory

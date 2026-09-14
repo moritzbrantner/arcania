@@ -76,7 +76,11 @@ pub struct CommandMetadata {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum MatchEvent {
     /// Event-sourcing migration genesis. The snapshot is the complete private
     /// authoritative state, not the public match projection. Later schemas may
@@ -84,6 +88,10 @@ pub enum MatchEvent {
     /// immutability contract of schema v1 streams.
     Created {
         initial_snapshot_json: String,
+        /// Next compatibility projection action index at the migration boundary.
+        /// This preserves legacy projection numbering without making action rows
+        /// part of authoritative aggregate recovery.
+        next_action_index: u32,
     },
     /// Fact that a tabletop command was accepted by the pinned ruleset.
     /// Rehydration evolves this event by deterministically replaying the command;
@@ -93,6 +101,21 @@ pub enum MatchEvent {
         side: Side,
         action_index: u32,
         command: GameCommand,
+    },
+    /// The application established that a disconnected opponent may be forfeited;
+    /// the state transition itself remains a core-owned domain fact.
+    ForfeitAccepted {
+        command_id: CommandId,
+        winner: Side,
+        action_index: u32,
+    },
+    /// The solo AI policy selected no further concrete action in card-play.
+    /// Scheduling AI remains application orchestration; finishing the turn is a
+    /// deterministic core transition recorded as its own fact.
+    AiTurnFinished {
+        command_id: CommandId,
+        side: Side,
+        action_index: u32,
     },
 }
 
@@ -108,9 +131,7 @@ pub struct EventEnvelope {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CommandDecision {
     Append(EventEnvelope),
-    AlreadyApplied {
-        aggregate_version: AggregateVersion,
-    },
+    AlreadyApplied { aggregate_version: AggregateVersion },
 }
 
 #[derive(Clone, Debug)]
@@ -145,8 +166,13 @@ pub struct EventSourcedMatch {
 }
 
 impl EventSourcedMatch {
-    pub fn create(
+    pub fn create(initial_state: MatchState) -> Result<(Self, EventEnvelope), EventSourcingError> {
+        Self::create_migration_genesis(initial_state, 0)
+    }
+
+    pub fn create_migration_genesis(
         initial_state: MatchState,
+        next_action_index: u32,
     ) -> Result<(Self, EventEnvelope), EventSourcingError> {
         let ruleset_version = RulesetVersion::current();
         let event = EventEnvelope {
@@ -155,6 +181,7 @@ impl EventSourcedMatch {
             ruleset_version: ruleset_version.clone(),
             event: MatchEvent::Created {
                 initial_snapshot_json: initial_state.to_snapshot_json()?,
+                next_action_index,
             },
         };
         let aggregate = Self::rehydrate(std::slice::from_ref(&event))?;
@@ -179,16 +206,9 @@ impl EventSourcedMatch {
         metadata: CommandMetadata,
         command: GameCommand,
     ) -> Result<CommandDecision, EventSourcingError> {
-        if metadata.expected_version != self.version {
-            return Err(EventSourcingError::VersionConflict {
-                expected: metadata.expected_version,
-                actual: self.version,
-            });
-        }
-
-        if let Some(version) = self.applied_commands.get(&metadata.command_id) {
+        if let Some(version) = self.validate_command_metadata(&metadata)? {
             return Ok(CommandDecision::AlreadyApplied {
-                aggregate_version: *version,
+                aggregate_version: version,
             });
         }
 
@@ -217,6 +237,57 @@ impl EventSourcedMatch {
         }))
     }
 
+    pub fn decide_forfeit(
+        &self,
+        metadata: CommandMetadata,
+        winner: Side,
+    ) -> Result<CommandDecision, EventSourcingError> {
+        if let Some(version) = self.validate_command_metadata(&metadata)? {
+            return Ok(CommandDecision::AlreadyApplied {
+                aggregate_version: version,
+            });
+        }
+        if self.state.winner.is_some() {
+            return Err(EventSourcingError::Rule(MatchError::MatchOver));
+        }
+
+        Ok(CommandDecision::Append(EventEnvelope {
+            aggregate_version: self.version.next(),
+            event_schema_version: CURRENT_EVENT_SCHEMA_VERSION,
+            ruleset_version: self.ruleset_version.clone(),
+            event: MatchEvent::ForfeitAccepted {
+                command_id: metadata.command_id,
+                winner,
+                action_index: metadata.action_index,
+            },
+        }))
+    }
+
+    pub fn decide_ai_turn_finished(
+        &self,
+        metadata: CommandMetadata,
+    ) -> Result<CommandDecision, EventSourcingError> {
+        if let Some(version) = self.validate_command_metadata(&metadata)? {
+            return Ok(CommandDecision::AlreadyApplied {
+                aggregate_version: version,
+            });
+        }
+
+        let mut candidate = self.state.clone();
+        candidate.finish_solo_ai_turn_recording(metadata.side, metadata.action_index)?;
+
+        Ok(CommandDecision::Append(EventEnvelope {
+            aggregate_version: self.version.next(),
+            event_schema_version: CURRENT_EVENT_SCHEMA_VERSION,
+            ruleset_version: self.ruleset_version.clone(),
+            event: MatchEvent::AiTurnFinished {
+                command_id: metadata.command_id,
+                side: metadata.side,
+                action_index: metadata.action_index,
+            },
+        }))
+    }
+
     /// Evolve authoritative state from an already accepted/persisted event.
     pub fn evolve(
         &mut self,
@@ -231,16 +302,15 @@ impl EventSourcedMatch {
             });
         }
 
-        let MatchEvent::CommandAccepted {
-            command_id,
-            side,
-            action_index,
-            command,
-        } = &envelope.event
-        else {
-            return Err(EventSourcingError::UnexpectedGenesisEvent {
-                aggregate_version: envelope.aggregate_version,
-            });
+        let command_id = match &envelope.event {
+            MatchEvent::Created { .. } => {
+                return Err(EventSourcingError::UnexpectedGenesisEvent {
+                    aggregate_version: envelope.aggregate_version,
+                });
+            }
+            MatchEvent::CommandAccepted { command_id, .. }
+            | MatchEvent::ForfeitAccepted { command_id, .. }
+            | MatchEvent::AiTurnFinished { command_id, .. } => command_id,
         };
 
         if let Some(existing_version) = self.applied_commands.get(command_id) {
@@ -251,24 +321,48 @@ impl EventSourcedMatch {
             });
         }
 
-        let outcome = command.clone().execute_compatibility(
-            &mut self.state,
-            CommandContext {
-                side: *side,
-                action_index: *action_index,
-            },
-        )?;
+        let replay_frames = match &envelope.event {
+            MatchEvent::Created { .. } => unreachable!("genesis rejected above"),
+            MatchEvent::CommandAccepted {
+                side,
+                action_index,
+                command,
+                ..
+            } => {
+                command
+                    .clone()
+                    .execute_compatibility(
+                        &mut self.state,
+                        CommandContext {
+                            side: *side,
+                            action_index: *action_index,
+                        },
+                    )?
+                    .replay_frames
+            }
+            MatchEvent::ForfeitAccepted {
+                winner,
+                action_index,
+                ..
+            } => self.state.forfeit_recording(*winner, *action_index),
+            MatchEvent::AiTurnFinished {
+                side, action_index, ..
+            } => self
+                .state
+                .finish_solo_ai_turn_recording(*side, *action_index)?,
+        };
+
         self.version = envelope.aggregate_version;
         self.applied_commands
             .insert(command_id.clone(), envelope.aggregate_version);
 
-        Ok(EvolutionOutcome {
-            replay_frames: outcome.replay_frames,
-        })
+        Ok(EvolutionOutcome { replay_frames })
     }
 
     pub fn rehydrate(events: &[EventEnvelope]) -> Result<Self, EventSourcingError> {
-        let first = events.first().ok_or(EventSourcingError::MissingGenesisEvent)?;
+        let first = events
+            .first()
+            .ok_or(EventSourcingError::MissingGenesisEvent)?;
         if first.aggregate_version != AggregateVersion(1) {
             return Err(EventSourcingError::EventVersionGap {
                 expected: AggregateVersion(1),
@@ -278,6 +372,7 @@ impl EventSourcedMatch {
         validate_schema_and_rules(first)?;
         let MatchEvent::Created {
             initial_snapshot_json,
+            ..
         } = &first.event
         else {
             return Err(EventSourcingError::MissingGenesisEvent);
@@ -370,6 +465,22 @@ impl EventSourcedMatch {
         Ok(aggregate)
     }
 
+    fn validate_command_metadata(
+        &self,
+        metadata: &CommandMetadata,
+    ) -> Result<Option<AggregateVersion>, EventSourcingError> {
+        if let Some(version) = self.applied_commands.get(&metadata.command_id) {
+            return Ok(Some(*version));
+        }
+        if metadata.expected_version != self.version {
+            return Err(EventSourcingError::VersionConflict {
+                expected: metadata.expected_version,
+                actual: self.version,
+            });
+        }
+        Ok(None)
+    }
+
     fn validate_envelope(&self, envelope: &EventEnvelope) -> Result<(), EventSourcingError> {
         validate_schema_and_rules(envelope)?;
         if envelope.ruleset_version != self.ruleset_version {
@@ -446,7 +557,9 @@ impl fmt::Display for EventSourcingError {
         match self {
             Self::EmptyCommandId => write!(f, "command id must not be empty"),
             Self::EmptyRulesetVersion => write!(f, "ruleset version must not be empty"),
-            Self::MissingGenesisEvent => write!(f, "event stream has no MatchCreated genesis event"),
+            Self::MissingGenesisEvent => {
+                write!(f, "event stream has no MatchCreated genesis event")
+            }
             Self::UnexpectedGenesisEvent { aggregate_version } => write!(
                 f,
                 "genesis event cannot appear at aggregate version {}",
@@ -519,8 +632,8 @@ impl From<serde_json::Error> for EventSourcingError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cqrs::GameCommand;
     use crate::HexCoord;
+    use crate::cqrs::GameCommand;
 
     fn metadata(
         id: &str,
@@ -602,7 +715,9 @@ mod tests {
                 )
                 .expect("attack phase should be accepted"),
         );
-        aggregate.evolve(&attack_phase).expect("event should evolve");
+        aggregate
+            .evolve(&attack_phase)
+            .expect("event should evolve");
         let card_play = append(
             aggregate
                 .decide(
@@ -613,12 +728,8 @@ mod tests {
         );
         aggregate.evolve(&card_play).expect("event should evolve");
 
-        let rehydrated = EventSourcedMatch::rehydrate(&[
-            genesis,
-            attack_phase,
-            card_play,
-        ])
-        .expect("stream should rehydrate");
+        let rehydrated = EventSourcedMatch::rehydrate(&[genesis, attack_phase, card_play])
+            .expect("stream should rehydrate");
 
         assert_eq!(
             rehydrated.state().to_snapshot_json().unwrap(),
@@ -693,7 +804,9 @@ mod tests {
                 )
                 .expect("attack phase should be accepted"),
         );
-        aggregate.evolve(&attack_phase).expect("event should evolve");
+        aggregate
+            .evolve(&attack_phase)
+            .expect("event should evolve");
         let snapshot = aggregate.snapshot().expect("snapshot should serialize");
 
         let card_play = append(
@@ -706,12 +819,8 @@ mod tests {
         );
         aggregate.evolve(&card_play).expect("event should evolve");
 
-        let full = EventSourcedMatch::rehydrate(&[
-            genesis,
-            attack_phase,
-            card_play.clone(),
-        ])
-        .expect("full stream should rehydrate");
+        let full = EventSourcedMatch::rehydrate(&[genesis, attack_phase, card_play.clone()])
+            .expect("full stream should rehydrate");
         let from_snapshot = EventSourcedMatch::rehydrate_from_snapshot(&snapshot, &[card_play])
             .expect("snapshot plus tail should rehydrate");
 
@@ -755,6 +864,9 @@ mod tests {
         let error = aggregate
             .evolve(&event)
             .expect_err("mixed rulesets must fail closed");
-        assert!(matches!(error, EventSourcingError::UnsupportedRuleset { .. }));
+        assert!(matches!(
+            error,
+            EventSourcingError::UnsupportedRuleset { .. }
+        ));
     }
 }

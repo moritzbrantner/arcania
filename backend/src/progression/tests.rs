@@ -163,7 +163,9 @@ fn hero_appearance_selection_respects_mastery_unlocks() {
 
     {
         let mut progression = ProgressionModule::new(&mut connection);
-        let response = progression.load_for_user(1).expect("progression should load");
+        let response = progression
+            .load_for_user(1)
+            .expect("progression should load");
         let pyromancer = response
             .hero_appearances
             .iter()
@@ -236,7 +238,10 @@ fn hero_appearance_selection_respects_mastery_unlocks() {
         .iter()
         .find(|hero| hero.hero_type == HeroType::Pyromancer)
         .expect("pyromancer appearances should load");
-    assert_eq!(pyromancer.selected_appearance_id, "pyromancer-inferno-crown");
+    assert_eq!(
+        pyromancer.selected_appearance_id,
+        "pyromancer-inferno-crown"
+    );
 }
 
 #[test]
