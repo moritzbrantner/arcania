@@ -11,14 +11,3 @@
 @import "./styles/tutorial.css";
 @import "./styles/wiki.css";
 @import "./styles/match-mobile-fixes.css";
-
-@media (min-width: 721px) and (max-width: 1320px) {
-  .battlefield-hud-hand {
-    width: 172px;
-  }
-
-  .battlefield-hud-hand .opponent-hand-display {
-    width: 100%;
-    min-width: 0;
-  }
-}
