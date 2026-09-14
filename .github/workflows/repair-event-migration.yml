@@ -1,0 +1,74 @@
+name: Repair event-store migration
+
+on:
+  push:
+    branches:
+      - event-sourced-rune-lanes-match
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: event-sourced-rune-lanes-match
+          fetch-depth: 0
+
+      - name: Apply migration with whitespace-tolerant markers
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          workflow = Path('.github/workflows/restack-event-sourcing.yml').read_text()
+          marker = "          python3 - <<'PY'\n"
+          start = workflow.index(marker) + len(marker)
+          end = workflow.index("\n          PY", start)
+          lines = workflow[start:end].splitlines()
+          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines)
+
+          helper_start = script.index('def replace_once(')
+          helper_end = script.index('\n\n# Core event model:', helper_start)
+          helper = r'''def replace_once(text: str, old: str, new: str, label: str) -> str:
+    if old in text:
+        return text.replace(old, new, 1)
+    tokens = [line.strip() for line in old.strip().splitlines() if line.strip()]
+    pattern = r'\s*'.join(re.escape(token) for token in tokens)
+    match = re.search(pattern, text, flags=re.DOTALL)
+    if match is None:
+        raise SystemExit(f'{label} marker not found')
+    replacement = new.strip('\n')
+    return text[:match.start()] + replacement + text[match.end():]
+'''
+          script = script[:helper_start] + helper + script[helper_end:]
+          exec(compile(script, 'event-store-migration.py', 'exec'))
+          PY
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.85
+        with:
+          components: rustfmt, clippy
+
+      - name: Validate migration
+        run: |
+          cargo fmt --all
+          cargo test -p rune-lanes-core event_sourcing
+          cargo test -p backend match_commands
+          cargo test -p backend event_store
+          cargo test -p backend
+          cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Publish migration
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          rm .github/workflows/restack-event-sourcing.yml
+          rm .github/workflows/repair-event-migration.yml
+          git add -A
+          git commit -m 'feat: persist Rune Lanes matches as SQLite event streams'
+          git push origin HEAD:event-sourced-rune-lanes-match
