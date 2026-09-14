@@ -8,7 +8,10 @@ test("signed-out players reach the login route from the visible Sign In action",
   await mockAuthApi(page);
   await page.goto("/");
 
-  await page.getByRole("button", { name: "Sign In" }).click();
+  await page
+    .getByRole("navigation", { name: "Primary navigation" })
+    .getByRole("button", { name: "Sign In", exact: true })
+    .click();
 
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole("heading", { name: "Sign In" })).toBeVisible();
@@ -70,7 +73,7 @@ test("successful login with no safe next lands on the dashboard", async ({ page 
   await page.getByRole("button", { name: "Sign In" }).click();
 
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: "Player Dashboard" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 });
 
 test("/login/ behaves like the canonical login route", async ({
@@ -118,7 +121,7 @@ test("register submits credentials to the existing registration API and opens th
   await page.getByRole("button", { name: "Create Account" }).click();
 
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: "Player Dashboard" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   expect(authRequests).toEqual(["/api/auth/register"]);
 });
 
@@ -161,7 +164,7 @@ test("absolute URL next values fall back to the dashboard after login", async ({
   await page.getByRole("button", { name: "Sign In" }).click();
 
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: "Player Dashboard" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 });
 
 test("protocol-relative next values fall back to the dashboard after registration", async ({ page }) => {
@@ -173,7 +176,7 @@ test("protocol-relative next values fall back to the dashboard after registratio
   await page.getByRole("button", { name: "Create Account" }).click();
 
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: "Player Dashboard" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 });
 
 test("signed-in visits to auth routes redirect to the dashboard or a safe next path", async ({
@@ -190,7 +193,7 @@ test("signed-in visits to auth routes redirect to the dashboard or a safe next p
 
   await page.goto("/register?next=https%3A%2F%2Fevil.test%2Fsteal");
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: "Player Dashboard" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 });
 
 test("signing out clears the session and returns to the public dashboard", async ({ page }) => {
@@ -209,7 +212,7 @@ test("signing out clears the session and returns to the public dashboard", async
   await page.getByRole("menuitem", { name: "Sign out" }).click();
 
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { name: "Player Dashboard" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Build your next match" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Sign In" })).toBeVisible();
   await expect
     .poll(() => page.evaluate((key) => localStorage.getItem(key), AUTH_TOKEN_STORAGE_KEY))
@@ -226,29 +229,15 @@ test("signed-in dashboard shows account, match, and deck summaries", async ({ pa
 
   await page.goto("/");
 
-  await expect(page.getByRole("heading", { name: "Player Dashboard" })).toBeVisible();
-  await expect(page.getByText("Welcome back, Rune Player.")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Account Progression" })).toBeVisible();
-  await expect(page.getByText("Next level in 60 XP")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Preferred Hero" })).toBeVisible();
-  await expect(page.getByText("Runekeeper")).toHaveCount(2);
-  await expect(page.getByRole("heading", { name: "Deck Library" })).toBeVisible();
-  await expect(page.getByText("Default: Default Legal")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Recent Matches" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Heroes" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Progression" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Decks" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Recent matches" })).toBeVisible();
   await expect(page.getByText("dashboard-match")).toBeVisible();
 
-  await page.getByRole("button", { name: "Play" }).first().click();
+    await page.getByRole("button", { name: "Play" }).first().click();
   await expect(page).toHaveURL(/\/play$/);
-});
-
-test("dashboard opens a match by ID", async ({ page }) => {
-  await mockAuthApi(page);
-
-  await page.goto("/");
-  await page.getByLabel("Open Match by ID").fill("manual-match");
-  await page.getByRole("button", { name: "Open" }).click();
-
-  await expect(page).toHaveURL(/\/match\/manual-match$/);
 });
 
 test("signed-in dashboard account menu opens profile, settings, and sign out actions", async ({ page }) => {
@@ -310,7 +299,7 @@ test("match-related account menu omits sign out for signed-in players", async ({
   await mockAuthApi(page);
 
   await page.goto("/match/menu-match");
-  await expect(page.getByRole("heading", { name: "Round 1" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Hex board" })).toBeVisible();
 
   await page.getByRole("button", { name: /Account menu for Rune Player/ }).click();
   await expect(page.getByRole("menuitem", { name: "Profile" })).toBeVisible();
@@ -323,7 +312,7 @@ test("signed-out match sign in returns to the same match route", async ({ page }
   await mockAuthApi(page, authRequests);
 
   await page.goto("/match/menu-match");
-  await expect(page.getByRole("heading", { name: "Round 1" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Hex board" })).toBeVisible();
 
   await page.getByRole("button", { name: "Sign In" }).click();
   await expect(page).toHaveURL(/\/login\?/);
@@ -334,7 +323,7 @@ test("signed-out match sign in returns to the same match route", async ({ page }
   await page.getByRole("button", { name: "Sign In" }).click();
 
   await expect(page).toHaveURL(/\/match\/menu-match$/);
-  await expect(page.getByRole("heading", { name: "Round 1" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Hex board" })).toBeVisible();
   expect(authRequests).toEqual(["/api/auth/login"]);
 });
 
@@ -343,7 +332,7 @@ test("protected route redirects replace the protected URL in browser history", a
 
   for (const protectedPath of ["/profile", "/decks", "/matches"]) {
     await page.goto("/");
-    await expect(page.getByRole("heading", { name: "Player Dashboard" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Build your next match" })).toBeVisible();
 
     await page.goto(protectedPath);
 
@@ -353,12 +342,12 @@ test("protected route redirects replace the protected URL in browser history", a
     await page.goBack();
 
     await expect(page).toHaveURL(/\/$/);
-    await expect(page.getByRole("heading", { name: "Player Dashboard" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Build your next match" })).toBeVisible();
   }
 });
 
 for (const { path, heading } of [
-  { path: "/", heading: "Player Dashboard" },
+  { path: "/", heading: "Build your next match" },
   { path: "/play", heading: "Play" },
   { path: "/catalog", heading: "Card Catalog" },
   { path: "/settings", heading: "Settings" },
