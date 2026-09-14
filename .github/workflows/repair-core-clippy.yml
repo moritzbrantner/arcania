@@ -1,0 +1,127 @@
+name: Repair core lint branch
+
+on:
+  push:
+    branches:
+      - extract-rune-lanes-core-cqrs
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: extract-rune-lanes-core-cqrs
+
+      - name: Repair extraction-owned lints
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          catalog_path = Path('rune-lanes-core/src/card_catalog.rs')
+          catalog = catalog_path.read_text()
+          catalog_start = catalog.index('pub fn starter_card_templates()')
+          catalog = '''use crate::match_session::{
+              BuffTargetPolicy, BuildingEffect, Card, CardKind, ItemActiveEffect, ItemPassiveEffect, Rarity,
+              SpellEffect,
+          };
+
+          ''' + catalog[catalog_start:]
+          needle = '\nfn item_card_for_targets(\n'
+          replacement = '''
+          #[allow(
+              clippy::too_many_arguments,
+              reason = "card templates read clearly at call sites"
+          )]
+          fn item_card_for_targets(
+          '''
+          if needle not in catalog:
+              raise SystemExit('item_card_for_targets insertion point not found')
+          catalog = catalog.replace(needle, replacement, 1)
+          catalog_path.write_text(catalog)
+
+          deck_path = Path('rune-lanes-core/src/deck_library.rs')
+          deck = deck_path.read_text()
+          count_fn = '''pub(crate) fn starter_recipe_count(template_id: &str) -> u16 {
+              BALANCED_STARTER_COUNTS
+                  .iter()
+                  .find(|(candidate, _)| *candidate == template_id)
+                  .map(|(_, count)| *count)
+                  .unwrap_or(0)
+          }
+
+          '''
+          if count_fn not in deck:
+              raise SystemExit('starter_recipe_count block not found')
+          deck = deck.replace(count_fn, '', 1)
+          error_enum = '''#[derive(Debug)]
+          pub(crate) enum DeckLibraryError {
+              UnknownTemplate(String),
+          }
+          '''
+          error_impl = error_enum + '''
+          impl std::fmt::Display for DeckLibraryError {
+              fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                  match self {
+                      Self::UnknownTemplate(template_id) => {
+                          write!(f, "unknown card template {template_id}")
+                      }
+                  }
+              }
+          }
+
+          impl std::error::Error for DeckLibraryError {}
+          '''
+          if error_enum not in deck:
+              raise SystemExit('DeckLibraryError insertion point not found')
+          deck = deck.replace(error_enum, error_impl, 1)
+          deck_path.write_text(deck)
+
+          match_path = Path('rune-lanes-core/src/match_session.rs')
+          match_text = match_path.read_text()
+          impl_marker = 'impl MatchState {\n'
+          default_impl = '''impl Default for MatchState {
+              fn default() -> Self {
+                  Self::new()
+              }
+          }
+
+          impl MatchState {
+          '''
+          if impl_marker not in match_text:
+              raise SystemExit('MatchState impl marker not found')
+          match_text = match_text.replace(impl_marker, default_impl, 1)
+          constructor = '    pub fn new_shared_two_v_two_with_progression_loadouts(\n'
+          constructor_with_allow = '''    #[allow(
+              clippy::too_many_arguments,
+              reason = "2v2 setup passes mirrored per-seat setup explicitly"
+          )]
+              pub fn new_shared_two_v_two_with_progression_loadouts(
+          '''
+          if constructor not in match_text:
+              raise SystemExit('2v2 constructor marker not found')
+          match_text = match_text.replace(constructor, constructor_with_allow, 1)
+          match_path.write_text(match_text)
+          PY
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.85
+        with:
+          components: rustfmt
+
+      - name: Format Rust workspace
+        run: cargo fmt --all
+
+      - name: Commit repair
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add rune-lanes-core/src/card_catalog.rs rune-lanes-core/src/deck_library.rs rune-lanes-core/src/match_session.rs
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix(core): satisfy standalone crate lint boundary'
+          git push origin HEAD:extract-rune-lanes-core-cqrs
