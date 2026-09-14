@@ -33,19 +33,19 @@ jobs:
           auth.write_text(text.replace(old, new, 1))
 
           css = Path('frontend/src/styles/match-mobile-fixes.css')
-          css.write_text('''@media (min-width: 721px) and (max-width: 1320px) {
-  .opponent-hand-display {
-    min-width: 172px;
-  }
-}
-
-@media (max-width: 520px) {
-  .battlefield-hud-opponent,
-  .battlefield-hud-phase {
-    box-sizing: border-box;
-  }
-}
-''')
+          css.write_text(
+              '@media (min-width: 721px) and (max-width: 1320px) {\n'
+              '  .opponent-hand-display {\n'
+              '    min-width: 172px;\n'
+              '  }\n'
+              '}\n\n'
+              '@media (max-width: 520px) {\n'
+              '  .battlefield-hud-opponent,\n'
+              '  .battlefield-hud-phase {\n'
+              '    box-sizing: border-box;\n'
+              '  }\n'
+              '}\n'
+          )
           PY
 
       - name: Install Bun
