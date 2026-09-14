@@ -1,0 +1,6 @@
+@media (max-width: 520px) {
+  .battlefield-hud-opponent,
+  .battlefield-hud-phase {
+    box-sizing: border-box;
+  }
+}
