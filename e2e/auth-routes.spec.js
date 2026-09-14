@@ -213,7 +213,7 @@ test("signing out clears the session and returns to the public dashboard", async
 
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "Build your next match" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Sign In" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign In", exact: true })).toBeVisible();
   await expect
     .poll(() => page.evaluate((key) => localStorage.getItem(key), AUTH_TOKEN_STORAGE_KEY))
     .toBeNull();

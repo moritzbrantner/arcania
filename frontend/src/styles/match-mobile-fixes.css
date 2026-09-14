@@ -1,3 +1,9 @@
+@media (min-width: 721px) and (max-width: 1320px) {
+  .opponent-hand-display {
+    min-width: 172px;
+  }
+}
+
 @media (max-width: 520px) {
   .battlefield-hud-opponent,
   .battlefield-hud-phase {
