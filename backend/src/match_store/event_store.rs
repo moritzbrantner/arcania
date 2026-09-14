@@ -362,7 +362,7 @@ fn next_action_index_from_events(events: &[EventEnvelope]) -> Result<u32, MatchS
             "event stream is missing genesis".to_string(),
         ));
     };
-    let mut next = *next_action_index;
+    let mut next = next_action_index;
     for event in &events[1..] {
         let Some(action_index) = event_action_index(event) else {
             return Err(MatchStoreError::EventStore(
@@ -457,7 +457,10 @@ mod tests {
             .expect("legacy stream should bootstrap")
             .expect("match should exist");
         assert_eq!(aggregate.version(), AggregateVersion(1));
-        assert_eq!(aggregate.state(), &created.state);
+        assert_eq!(
+            aggregate.state().to_snapshot_json().unwrap(),
+            created.state.to_snapshot_json().unwrap()
+        );
         assert_eq!(next_action_index, 8);
     }
 }
