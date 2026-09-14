@@ -44,7 +44,25 @@ export type Board3DUnit = {
 
 export type Board3DPiece = Board3DHero | Board3DUnit;
 
-export type Board3DTileInteraction = BoardSurfaceTile;
+export type Board3DTileInteraction = Pick<
+  BoardSurfaceTile,
+  "coord" | "title" | "disabled" | "isLegal" | "isSelected" | "hasPiece"
+> &
+  Partial<
+    Pick<
+      BoardSurfaceTile,
+      | "isFocused"
+      | "tutorialHighlightTone"
+      | "hasManaSource"
+      | "hasBuilding"
+      | "buildingDecor"
+      | "pieceSide"
+      | "pieceType"
+      | "pieceLabel"
+      | "pieceStatLabel"
+      | "droppedItemCount"
+    >
+  >;
 
 export type BoardProjectedPosition = ProjectedBoardPosition;
 
