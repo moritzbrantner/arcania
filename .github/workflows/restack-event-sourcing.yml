@@ -1,0 +1,110 @@
+name: Restack event sourcing branch
+
+on:
+  push:
+    branches:
+      - event-sourced-rune-lanes-match
+
+permissions:
+  contents: write
+
+jobs:
+  restack:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: event-sourced-rune-lanes-match
+          fetch-depth: 0
+
+      - name: Restack and repair idempotent retry semantics
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch origin extract-rune-lanes-core-cqrs
+          git rebase origin/extract-rune-lanes-core-cqrs
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('rune-lanes-core/src/event_sourcing.rs')
+          text = path.read_text()
+
+          old_order = '''        if metadata.expected_version != self.version {
+              return Err(EventSourcingError::VersionConflict {
+                  expected: metadata.expected_version,
+                  actual: self.version,
+              });
+          }
+
+          if let Some(version) = self.applied_commands.get(&metadata.command_id) {
+              return Ok(CommandDecision::AlreadyApplied {
+                  aggregate_version: *version,
+              });
+          }
+          '''
+          new_order = '''        if let Some(version) = self.applied_commands.get(&metadata.command_id) {
+              return Ok(CommandDecision::AlreadyApplied {
+                  aggregate_version: *version,
+              });
+          }
+
+          if metadata.expected_version != self.version {
+              return Err(EventSourcingError::VersionConflict {
+                  expected: metadata.expected_version,
+                  actual: self.version,
+              });
+          }
+          '''
+          if old_order not in text:
+              raise SystemExit('decide ordering block not found')
+          text = text.replace(old_order, new_order, 1)
+
+          old_name = 'fn duplicate_command_id_is_idempotent_after_successful_evolution() {'
+          new_name = 'fn duplicate_command_id_is_idempotent_with_original_expected_version_after_evolution() {'
+          if old_name not in text:
+              raise SystemExit('idempotency test not found')
+          text = text.replace(old_name, new_name, 1)
+
+          start = text.index(new_name)
+          end = text.index('\n    #[test]\n    fn stale_expected_version_fails_closed()', start)
+          test = text[start:end]
+          marker = '        let command_id = CommandId::new("same-command").unwrap();\n'
+          if marker not in test:
+              raise SystemExit('command id marker not found')
+          test = test.replace(
+              marker,
+              marker + '        let original_expected_version = aggregate.version();\n',
+              1,
+          )
+          if test.count('expected_version: aggregate.version(),') != 2:
+              raise SystemExit('unexpected idempotency expected-version shape')
+          test = test.replace(
+              'expected_version: aggregate.version(),',
+              'expected_version: original_expected_version,',
+          )
+          text = text[:start] + test + text[end:]
+          path.write_text(text)
+          PY
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.85
+        with:
+          components: rustfmt, clippy
+
+      - name: Validate event-sourcing slice
+        run: |
+          cargo fmt --all
+          cargo test -p rune-lanes-core event_sourcing
+          cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: Squash onto repaired base and publish
+        run: |
+          rm .github/workflows/restack-event-sourcing.yml
+          git add -A
+          git commit -m 'fix(core): make event-sourced retries idempotent'
+          git reset --soft origin/extract-rune-lanes-core-cqrs
+          git commit -m 'feat: add event-sourced Rune Lanes match aggregate'
+          git push --force-with-lease origin HEAD:event-sourced-rune-lanes-match
