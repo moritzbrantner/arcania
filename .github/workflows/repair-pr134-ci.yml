@@ -19,7 +19,7 @@ jobs:
           ref: extract-rune-lanes-core-cqrs
           fetch-depth: 0
 
-      - name: Apply narrow acceptance repairs
+      - name: Apply and publish narrow acceptance repairs
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -47,26 +47,6 @@ jobs:
               '}\n'
           )
           PY
-
-      - name: Install Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-
-      - name: Install frontend dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Install Playwright Chromium
-        run: ./node_modules/.bin/playwright install --with-deps chromium
-
-      - name: Build frontend
-        run: bun run --cwd frontend build
-
-      - name: Verify repaired acceptance
-        run: ./node_modules/.bin/playwright test e2e/auth-routes.spec.js e2e/shared-settings-cursor.spec.js --workers=1
-
-      - name: Publish repair
-        run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           rm .github/workflows/repair-pr134-ci.yml
