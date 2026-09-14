@@ -14,7 +14,7 @@ export function ProjectedHitTargetSync({
   onProjectionChange: (projection: BoardProjection) => void;
 }) {
   const { camera, size } = useThree();
-  const previousProjectionRef = useRef<BoardProjection>();
+  const previousProjectionRef = useRef<BoardProjection | undefined>(undefined);
 
   useFrame(() => {
     camera.updateMatrixWorld();
