@@ -1,4 +1,4 @@
-name: Restack event sourcing branch
+name: Complete event-store migration
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  restack:
+  migrate:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -19,20 +19,98 @@ jobs:
           ref: event-sourced-rune-lanes-match
           fetch-depth: 0
 
-      - name: Restack and repair idempotent retry semantics
+      - name: Apply SQLite event-store migration
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git fetch origin extract-rune-lanes-core-cqrs
-          git rebase origin/extract-rune-lanes-core-cqrs
-
           python3 - <<'PY'
           from pathlib import Path
 
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              if old not in text:
+                  raise SystemExit(f'{label} marker not found')
+              return text.replace(old, new, 1)
+
+          # Core event model: keep command idempotency ahead of version checks,
+          # record the projection-index migration base in genesis, and model
+          # forfeit / AI-turn completion as core-owned facts.
           path = Path('rune-lanes-core/src/event_sourcing.rs')
           text = path.read_text()
+          old = '''    Created {
+              initial_snapshot_json: String,
+          },
+          /// Fact that a tabletop command was accepted by the pinned ruleset.
+          /// Rehydration evolves this event by deterministically replaying the command;
+          /// it never re-runs application/auth/transport decisions.
+          CommandAccepted {
+              command_id: CommandId,
+              side: Side,
+              action_index: u32,
+              command: GameCommand,
+          },
+          '''
+          new = '''    Created {
+              initial_snapshot_json: String,
+              /// Next compatibility projection action index at the migration boundary.
+              /// This preserves legacy projection numbering without making action rows
+              /// part of authoritative aggregate recovery.
+              next_action_index: u32,
+          },
+          /// Fact that a tabletop command was accepted by the pinned ruleset.
+          /// Rehydration evolves this event by deterministically replaying the command;
+          /// it never re-runs application/auth/transport decisions.
+          CommandAccepted {
+              command_id: CommandId,
+              side: Side,
+              action_index: u32,
+              command: GameCommand,
+          },
+          /// The application established that a disconnected opponent may be forfeited;
+          /// the state transition itself remains a core-owned domain fact.
+          ForfeitAccepted {
+              command_id: CommandId,
+              winner: Side,
+              action_index: u32,
+          },
+          /// The solo AI policy selected no further concrete action in card-play.
+          /// Scheduling AI remains application orchestration; finishing the turn is a
+          /// deterministic core transition recorded as its own fact.
+          AiTurnFinished {
+              command_id: CommandId,
+              side: Side,
+              action_index: u32,
+          },
+          '''
+          text = replace_once(text, old, new, 'event variants')
 
-          old_order = '''        if metadata.expected_version != self.version {
+          start = text.index('    pub fn create(\n')
+          end = text.index('    pub fn state(&self) -> &MatchState {', start)
+          create_block = '''    pub fn create(
+              initial_state: MatchState,
+          ) -> Result<(Self, EventEnvelope), EventSourcingError> {
+              Self::create_migration_genesis(initial_state, 0)
+          }
+
+          pub fn create_migration_genesis(
+              initial_state: MatchState,
+              next_action_index: u32,
+          ) -> Result<(Self, EventEnvelope), EventSourcingError> {
+              let ruleset_version = RulesetVersion::current();
+              let event = EventEnvelope {
+                  aggregate_version: AggregateVersion(1),
+                  event_schema_version: CURRENT_EVENT_SCHEMA_VERSION,
+                  ruleset_version: ruleset_version.clone(),
+                  event: MatchEvent::Created {
+                      initial_snapshot_json: initial_state.to_snapshot_json()?,
+                      next_action_index,
+                  },
+              };
+              let aggregate = Self::rehydrate(std::slice::from_ref(&event))?;
+              Ok((aggregate, event))
+          }
+
+          '''
+          text = text[:start] + create_block + text[end:]
+
+          old_checks = '''        if metadata.expected_version != self.version {
               return Err(EventSourcingError::VersionConflict {
                   expected: metadata.expected_version,
                   actual: self.version,
@@ -45,48 +123,1260 @@ jobs:
               });
           }
           '''
-          new_order = '''        if let Some(version) = self.applied_commands.get(&metadata.command_id) {
+          new_checks = '''        if let Some(version) = self.validate_command_metadata(&metadata)? {
               return Ok(CommandDecision::AlreadyApplied {
-                  aggregate_version: *version,
-              });
-          }
-
-          if metadata.expected_version != self.version {
-              return Err(EventSourcingError::VersionConflict {
-                  expected: metadata.expected_version,
-                  actual: self.version,
+                  aggregate_version: version,
               });
           }
           '''
-          if old_order not in text:
-              raise SystemExit('decide ordering block not found')
-          text = text.replace(old_order, new_order, 1)
+          text = replace_once(text, old_checks, new_checks, 'command metadata ordering')
 
-          old_name = 'fn duplicate_command_id_is_idempotent_after_successful_evolution() {'
-          new_name = 'fn duplicate_command_id_is_idempotent_with_original_expected_version_after_evolution() {'
-          if old_name not in text:
-              raise SystemExit('idempotency test not found')
-          text = text.replace(old_name, new_name, 1)
+          decide_end = text.index('    /// Evolve authoritative state from an already accepted/persisted event.')
+          extra_decisions = '''    pub fn decide_forfeit(
+              &self,
+              metadata: CommandMetadata,
+              winner: Side,
+          ) -> Result<CommandDecision, EventSourcingError> {
+              if let Some(version) = self.validate_command_metadata(&metadata)? {
+                  return Ok(CommandDecision::AlreadyApplied {
+                      aggregate_version: version,
+                  });
+              }
+              if self.state.winner.is_some() {
+                  return Err(EventSourcingError::Rule(MatchError::MatchOver));
+              }
 
-          start = text.index(new_name)
-          end = text.index('\n    #[test]\n    fn stale_expected_version_fails_closed()', start)
-          test = text[start:end]
-          marker = '        let command_id = CommandId::new("same-command").unwrap();\n'
-          if marker not in test:
-              raise SystemExit('command id marker not found')
-          test = test.replace(
-              marker,
-              marker + '        let original_expected_version = aggregate.version();\n',
+              Ok(CommandDecision::Append(EventEnvelope {
+                  aggregate_version: self.version.next(),
+                  event_schema_version: CURRENT_EVENT_SCHEMA_VERSION,
+                  ruleset_version: self.ruleset_version.clone(),
+                  event: MatchEvent::ForfeitAccepted {
+                      command_id: metadata.command_id,
+                      winner,
+                      action_index: metadata.action_index,
+                  },
+              }))
+          }
+
+          pub fn decide_ai_turn_finished(
+              &self,
+              metadata: CommandMetadata,
+          ) -> Result<CommandDecision, EventSourcingError> {
+              if let Some(version) = self.validate_command_metadata(&metadata)? {
+                  return Ok(CommandDecision::AlreadyApplied {
+                      aggregate_version: version,
+                  });
+              }
+
+              let mut candidate = self.state.clone();
+              candidate.finish_solo_ai_turn_recording(metadata.side, metadata.action_index)?;
+
+              Ok(CommandDecision::Append(EventEnvelope {
+                  aggregate_version: self.version.next(),
+                  event_schema_version: CURRENT_EVENT_SCHEMA_VERSION,
+                  ruleset_version: self.ruleset_version.clone(),
+                  event: MatchEvent::AiTurnFinished {
+                      command_id: metadata.command_id,
+                      side: metadata.side,
+                      action_index: metadata.action_index,
+                  },
+              }))
+          }
+
+          '''
+          text = text[:decide_end] + extra_decisions + text[decide_end:]
+
+          evolve_start = text.index('    pub fn evolve(\n')
+          evolve_end = text.index('    pub fn rehydrate(events: &[EventEnvelope])', evolve_start)
+          evolve_block = '''    pub fn evolve(
+              &mut self,
+              envelope: &EventEnvelope,
+          ) -> Result<EvolutionOutcome, EventSourcingError> {
+              self.validate_envelope(envelope)?;
+              let expected_next = self.version.next();
+              if envelope.aggregate_version != expected_next {
+                  return Err(EventSourcingError::EventVersionGap {
+                      expected: expected_next,
+                      actual: envelope.aggregate_version,
+                  });
+              }
+
+              let command_id = match &envelope.event {
+                  MatchEvent::Created { .. } => {
+                      return Err(EventSourcingError::UnexpectedGenesisEvent {
+                          aggregate_version: envelope.aggregate_version,
+                      });
+                  }
+                  MatchEvent::CommandAccepted { command_id, .. }
+                  | MatchEvent::ForfeitAccepted { command_id, .. }
+                  | MatchEvent::AiTurnFinished { command_id, .. } => command_id,
+              };
+
+              if let Some(existing_version) = self.applied_commands.get(command_id) {
+                  return Err(EventSourcingError::DuplicateCommandEvent {
+                      command_id: command_id.clone(),
+                      first_version: *existing_version,
+                      duplicate_version: envelope.aggregate_version,
+                  });
+              }
+
+              let replay_frames = match &envelope.event {
+                  MatchEvent::Created { .. } => unreachable!("genesis rejected above"),
+                  MatchEvent::CommandAccepted {
+                      side,
+                      action_index,
+                      command,
+                      ..
+                  } => command
+                      .clone()
+                      .execute_compatibility(
+                          &mut self.state,
+                          CommandContext {
+                              side: *side,
+                              action_index: *action_index,
+                          },
+                      )?
+                      .replay_frames,
+                  MatchEvent::ForfeitAccepted {
+                      winner,
+                      action_index,
+                      ..
+                  } => self.state.forfeit_recording(*winner, *action_index),
+                  MatchEvent::AiTurnFinished {
+                      side,
+                      action_index,
+                      ..
+                  } => self
+                      .state
+                      .finish_solo_ai_turn_recording(*side, *action_index)?,
+              };
+
+              self.version = envelope.aggregate_version;
+              self.applied_commands
+                  .insert(command_id.clone(), envelope.aggregate_version);
+
+              Ok(EvolutionOutcome { replay_frames })
+          }
+
+          '''
+          text = text[:evolve_start] + evolve_block + text[evolve_end:]
+
+          text = replace_once(
+              text,
+              '''        let MatchEvent::Created {
+              initial_snapshot_json,
+          } = &first.event
+          ''',
+              '''        let MatchEvent::Created {
+              initial_snapshot_json,
+              ..
+          } = &first.event
+          ''',
+              'genesis rehydrate pattern',
+          )
+
+          validate_marker = '    fn validate_envelope(&self, envelope: &EventEnvelope) -> Result<(), EventSourcingError> {'
+          validate_pos = text.index(validate_marker)
+          metadata_helper = '''    fn validate_command_metadata(
+              &self,
+              metadata: &CommandMetadata,
+          ) -> Result<Option<AggregateVersion>, EventSourcingError> {
+              if let Some(version) = self.applied_commands.get(&metadata.command_id) {
+                  return Ok(Some(*version));
+              }
+              if metadata.expected_version != self.version {
+                  return Err(EventSourcingError::VersionConflict {
+                      expected: metadata.expected_version,
+                      actual: self.version,
+                  });
+              }
+              Ok(None)
+          }
+
+          '''
+          text = text[:validate_pos] + metadata_helper + text[validate_pos:]
+          path.write_text(text)
+
+          # Expose one deterministic AI planning step from core without exposing
+          # application scheduling or duplicating policy in the backend.
+          path = Path('rune-lanes-core/src/match_session/solo_ai_policy.rs')
+          text = path.read_text()
+          text = replace_once(
+              text,
+              'use serde::{Deserialize, Serialize};\n',
+              'use serde::{Deserialize, Serialize};\n\nuse crate::cqrs::GameCommand;\nuse super::{MatchError, MatchMode, MatchState, Phase, RecordedReplayFrame};\n',
+              'AI command imports',
+          )
+          marker = '#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]\n#[serde(rename_all = "camelCase")]\npub enum SoloAiRuleId {'
+          insert = '''impl MatchState {
+              /// Resolve exactly one deterministic solo-AI step into a concrete domain
+              /// command. `None` means the policy has no further card-play action and
+              /// the caller should record `AiTurnFinished` instead.
+              pub fn next_solo_ai_game_command(
+                  &self,
+                  side: Side,
+              ) -> Result<Option<GameCommand>, MatchError> {
+                  let policy = SoloAiPolicy::default();
+                  self.next_solo_ai_game_command_with_policy(side, &policy)
+              }
+
+              pub fn next_solo_ai_game_command_with_policy(
+                  &self,
+                  side: Side,
+                  policy: &SoloAiPolicy,
+              ) -> Result<Option<GameCommand>, MatchError> {
+                  if self.mode != MatchMode::Solo {
+                      return Err(MatchError::AiUnavailable);
+                  }
+                  if !self.action_stack.is_empty() {
+                      if self.priority_side != Some(side) {
+                          return Err(MatchError::NotPrioritySide);
+                      }
+                      return Ok(Some(GameCommand::PassPriority));
+                  }
+                  if self.active_side != side {
+                      return Err(MatchError::AiUnavailable);
+                  }
+
+                  let decision = || policy.decide(&self.solo_ai_view_for_side(side));
+                  match self.phase {
+                      Phase::Movement => {
+                          if self.side_has_legal_attack(side) {
+                              return Ok(Some(GameCommand::StartAttackPhase));
+                          }
+                          Ok(Some(match decision() {
+                              SoloAiDecision::TakeAction(intent @ SoloAiActionIntent::MovePiece { .. })
+                              | SoloAiDecision::TakeAction(intent @ SoloAiActionIntent::ActivateItem { .. }) => {
+                                  ai_intent_game_command(intent)
+                              }
+                              SoloAiDecision::TakeAction(SoloAiActionIntent::Attack { .. }) => {
+                                  GameCommand::StartAttackPhase
+                              }
+                              _ => GameCommand::StartCardPlay,
+                          }))
+                      }
+                      Phase::Attack => Ok(Some(match decision() {
+                          SoloAiDecision::TakeAction(intent @ SoloAiActionIntent::Attack { .. })
+                          | SoloAiDecision::TakeAction(intent @ SoloAiActionIntent::ActivateItem { .. }) => {
+                              ai_intent_game_command(intent)
+                          }
+                          _ => GameCommand::StartCardPlay,
+                      })),
+                      Phase::CardPlay => match decision() {
+                          SoloAiDecision::TakeAction(intent @ SoloAiActionIntent::PlayCard { .. })
+                          | SoloAiDecision::TakeAction(intent @ SoloAiActionIntent::ActivateItem { .. }) => {
+                              Ok(Some(ai_intent_game_command(intent)))
+                          }
+                          _ => Ok(None),
+                      },
+                      Phase::MatchOver => Err(MatchError::MatchOver),
+                  }
+              }
+
+              pub fn finish_solo_ai_turn_recording(
+                  &mut self,
+                  side: Side,
+                  action_index: u32,
+              ) -> Result<Vec<RecordedReplayFrame>, MatchError> {
+                  if self.mode != MatchMode::Solo {
+                      return Err(MatchError::AiUnavailable);
+                  }
+                  if self.active_side != side {
+                      return Err(MatchError::AiUnavailable);
+                  }
+                  self.require_phase(Phase::CardPlay)?;
+                  if !self.action_stack.is_empty() {
+                      return Err(MatchError::StackPending);
+                  }
+
+                  let mut frames = Vec::new();
+                  self.finish_ai_turn(side, &mut frames, Some(action_index));
+                  self.truncate_log();
+                  Ok(frames)
+              }
+          }
+
+          fn ai_intent_game_command(intent: SoloAiActionIntent) -> GameCommand {
+              match intent {
+                  SoloAiActionIntent::Attack {
+                      attacker_id,
+                      target_id,
+                  } => GameCommand::Attack {
+                      attacker_id,
+                      target_id,
+                  },
+                  SoloAiActionIntent::PlayCard { card_id, target } => {
+                      GameCommand::PlayCard { card_id, target }
+                  }
+                  SoloAiActionIntent::MovePiece { piece_id, to } => {
+                      GameCommand::MovePiece { piece_id, to }
+                  }
+                  SoloAiActionIntent::ActivateItem {
+                      carrier_id,
+                      item_id,
+                      target,
+                  } => GameCommand::ActivateItem {
+                      carrier_id,
+                      item_id,
+                      target,
+                  },
+              }
+          }
+
+          '''
+          if marker not in text:
+              raise SystemExit('AI rule marker not found')
+          text = text.replace(marker, insert + marker, 1)
+          path.write_text(text)
+
+          # SQLite schema for the authoritative append-only stream and derived snapshots.
+          path = Path('backend/src/match_store/schema.rs')
+          text = path.read_text()
+          marker = '''        CREATE TABLE IF NOT EXISTS shared_matches (
+          '''
+          tables = '''        CREATE TABLE IF NOT EXISTS match_events (
+              match_id TEXT NOT NULL,
+              aggregate_version INTEGER NOT NULL,
+              event_schema_version INTEGER NOT NULL,
+              ruleset_version TEXT NOT NULL,
+              command_id TEXT,
+              action_index INTEGER,
+              event_json TEXT NOT NULL,
+              created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+              PRIMARY KEY (match_id, aggregate_version)
+          );
+          CREATE UNIQUE INDEX IF NOT EXISTS match_events_command_id
+              ON match_events(match_id, command_id)
+              WHERE command_id IS NOT NULL;
+          CREATE TABLE IF NOT EXISTS match_event_snapshots (
+              match_id TEXT PRIMARY KEY NOT NULL,
+              aggregate_version INTEGER NOT NULL,
+              snapshot_schema_version INTEGER NOT NULL,
+              event_schema_version INTEGER NOT NULL,
+              ruleset_version TEXT NOT NULL,
+              snapshot_json TEXT NOT NULL,
+              updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+          );
+          '''
+          if marker not in text:
+              raise SystemExit('schema insertion marker not found')
+          text = text.replace(marker, tables + marker, 1)
+          text = replace_once(
+              text,
+              '''            DELETE FROM match_replay_frames;
+              DELETE FROM match_actions;
+              DELETE FROM match_seats;
+          ''',
+              '''            DELETE FROM match_event_snapshots;
+              DELETE FROM match_events;
+              DELETE FROM match_replay_frames;
+              DELETE FROM match_actions;
+              DELETE FROM match_seats;
+          ''',
+              'legacy cleanup',
+          )
+          path.write_text(text)
+
+          # Parent store wiring: keep adapters below the SQLite boundary, seed genesis
+          # in the same transaction as new-match projections, and expose fail-closed
+          # event-store errors.
+          path = Path('backend/src/match_store.rs')
+          text = path.read_text()
+          text = replace_once(text, 'mod db_values;\n', 'mod db_values;\nmod event_store;\n', 'event-store module')
+          text = replace_once(
+              text,
+              '''    Progression(progression::ProgressionError),
+          }
+          ''',
+              '''    Progression(progression::ProgressionError),
+              EventSourcing(rune_lanes_core::event_sourcing::EventSourcingError),
+              EventStore(String),
+              VersionConflict {
+                  expected: rune_lanes_core::event_sourcing::AggregateVersion,
+                  actual: rune_lanes_core::event_sourcing::AggregateVersion,
+              },
+          }
+          ''',
+              'store error variants',
+          )
+          text = replace_once(
+              text,
+              '''            Self::Progression(error) => write!(f, "{error}"),
+              }
+          ''',
+              '''            Self::Progression(error) => write!(f, "{error}"),
+                  Self::EventSourcing(error) => write!(f, "event-sourced match failed: {error}"),
+                  Self::EventStore(reason) => write!(f, "event store is inconsistent: {reason}"),
+                  Self::VersionConflict { expected, actual } => write!(
+                      f,
+                      "event store version conflict: expected {}, actual {}",
+                      expected.0, actual.0
+                  ),
+              }
+          ''',
+              'store error display',
+          )
+          from_marker = '''impl From<progression::ProgressionError> for MatchStoreError {
+              fn from(error: progression::ProgressionError) -> Self {
+                  Self::Progression(error)
+              }
+          }
+          '''
+          from_insert = from_marker + '''
+          impl From<rune_lanes_core::event_sourcing::EventSourcingError> for MatchStoreError {
+              fn from(error: rune_lanes_core::event_sourcing::EventSourcingError) -> Self {
+                  Self::EventSourcing(error)
+              }
+          }
+          '''
+          text = replace_once(text, from_marker, from_insert, 'event sourcing error conversion')
+          text = text.replace(
+              'insert_replay_frame(&transaction, &id, 0, &initial_frame, &event_json)?;\n',
+              'insert_replay_frame(&transaction, &id, 0, &initial_frame, &event_json)?;\n                event_store::insert_genesis(&transaction, &id, &state, 0)?;\n',
+          )
+          text = text.replace(
+              'insert_replay_frame(&transaction, id, 0, &initial_frame, &event_json)?;\n',
+              'insert_replay_frame(&transaction, id, 0, &initial_frame, &event_json)?;\n                event_store::insert_genesis(&transaction, id, &state, 0)?;\n',
+          )
+          path.write_text(text)
+
+          event_store = r'''use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
+          use rune_lanes_core::MatchState;
+          use rune_lanes_core::event_sourcing::{
+              AggregateSnapshot, AggregateVersion, EventEnvelope, EventSourcedMatch, MatchEvent,
+          };
+
+          use crate::match_session::{RecordedReplayFrame, Side};
+          use crate::progression;
+
+          use super::db_values::SideDbValue;
+          use super::{MatchStoreError, SqliteMatchStore, insert_replay_frame, next_frame_index};
+
+          const SNAPSHOT_INTERVAL: u64 = 32;
+
+          impl SqliteMatchStore {
+              pub(crate) fn load_event_sourced_match(
+                  &mut self,
+                  id: &str,
+              ) -> Result<Option<(EventSourcedMatch, u32)>, MatchStoreError> {
+                  self.ensure_event_stream(id)?;
+
+                  let events = load_events(&self.connection, id)?;
+                  if events.is_empty() {
+                      return Ok(None);
+                  }
+                  let next_action_index = next_action_index_from_events(&events)?;
+                  let snapshot = load_snapshot(&self.connection, id)?;
+                  let aggregate = if let Some(snapshot) = snapshot {
+                      let last_version = events
+                          .last()
+                          .map(|event| event.aggregate_version)
+                          .ok_or_else(|| MatchStoreError::EventStore("event stream disappeared".to_string()))?;
+                      if snapshot.aggregate_version > last_version {
+                          return Err(MatchStoreError::EventStore(format!(
+                              "snapshot version {} is newer than stream version {} for {id}",
+                              snapshot.aggregate_version.0, last_version.0
+                          )));
+                      }
+                      let tail = events
+                          .iter()
+                          .filter(|event| event.aggregate_version > snapshot.aggregate_version)
+                          .cloned()
+                          .collect::<Vec<_>>();
+                      EventSourcedMatch::rehydrate_from_snapshot(&snapshot, &tail)?
+                  } else {
+                      EventSourcedMatch::rehydrate(&events)?
+                  };
+
+                  Ok(Some((aggregate, next_action_index)))
+              }
+
+              #[allow(clippy::too_many_arguments, reason = "atomic event + compatibility projection commit")]
+              pub(crate) fn append_event_and_projection(
+                  &mut self,
+                  id: &str,
+                  event: &EventEnvelope,
+                  aggregate_snapshot: &AggregateSnapshot,
+                  request_json: &str,
+                  state: &MatchState,
+                  frames: &[RecordedReplayFrame],
+                  forfeit_winner: Option<Side>,
+              ) -> Result<Option<AggregateVersion>, MatchStoreError> {
+                  let expected = AggregateVersion(
+                      event
+                          .aggregate_version
+                          .0
+                          .checked_sub(1)
+                          .ok_or_else(|| MatchStoreError::EventStore("cannot append aggregate version zero".to_string()))?,
+                  );
+                  let command_id = event_command_id(event).ok_or_else(|| {
+                      MatchStoreError::EventStore("non-genesis event has no command id".to_string())
+                  })?;
+                  let action_index = event_action_index(event).ok_or_else(|| {
+                      MatchStoreError::EventStore("non-genesis event has no action index".to_string())
+                  })?;
+
+                  let transaction = self
+                      .connection
+                      .transaction_with_behavior(TransactionBehavior::Immediate)?;
+
+                  let existing_version = transaction
+                      .query_row(
+                          "SELECT aggregate_version FROM match_events WHERE match_id = ?1 AND command_id = ?2",
+                          params![id, command_id],
+                          |row| row.get::<_, i64>(0),
+                      )
+                      .optional()?;
+                  if let Some(existing_version) = existing_version {
+                      let existing_version = stored_version(existing_version, id)?;
+                      return Ok(Some(existing_version));
+                  }
+
+                  let actual_raw = transaction.query_row(
+                      "SELECT COALESCE(MAX(aggregate_version), 0) FROM match_events WHERE match_id = ?1",
+                      params![id],
+                      |row| row.get::<_, i64>(0),
+                  )?;
+                  let actual = stored_version(actual_raw, id)?;
+                  if actual != expected {
+                      return Err(MatchStoreError::VersionConflict { expected, actual });
+                  }
+
+                  insert_event(&transaction, id, event)?;
+                  transaction.execute(
+                      "INSERT INTO match_actions (match_id, action_index, request_json, accepted_at) VALUES (?1, ?2, ?3, unixepoch())",
+                      params![id, i64::from(action_index), request_json],
+                  )?;
+
+                  let next_frame = next_frame_index(&transaction, id)?;
+                  for (offset, frame) in frames.iter().enumerate() {
+                      let event_json = serde_json::to_string(&frame.event)?;
+                      insert_replay_frame(
+                          &transaction,
+                          id,
+                          next_frame + offset as u32,
+                          frame,
+                          &event_json,
+                      )?;
+                  }
+
+                  let completed_at = if state.winner.is_some() {
+                      "completed_at = COALESCE(completed_at, unixepoch()),"
+                  } else {
+                      ""
+                  };
+                  transaction.execute(
+                      &format!(
+                          "UPDATE matches SET snapshot_json = ?2, {completed_at} updated_at = unixepoch() WHERE id = ?1"
+                      ),
+                      params![id, aggregate_snapshot.state_snapshot_json],
+                  )?;
+
+                  if state.winner.is_some() {
+                      if let Some(winner) = forfeit_winner {
+                          transaction.execute(
+                              "UPDATE shared_matches SET status = 'forfeited', forfeit_winner = ?2, updated_at = unixepoch() WHERE match_id = ?1",
+                              params![id, winner.to_db()],
+                          )?;
+                      } else {
+                          transaction.execute(
+                              "UPDATE shared_matches SET status = CASE status WHEN 'forfeited' THEN 'forfeited' ELSE 'completed' END, updated_at = unixepoch() WHERE match_id = ?1",
+                              params![id],
+                          )?;
+                      }
+                      progression::award_completed_match_in_transaction(&transaction, id)?;
+                  }
+
+                  if event.aggregate_version.0 % SNAPSHOT_INTERVAL == 0 || state.winner.is_some() {
+                      upsert_snapshot(&transaction, id, aggregate_snapshot)?;
+                  }
+
+                  transaction.commit()?;
+                  Ok(None)
+              }
+
+              fn ensure_event_stream(&mut self, id: &str) -> Result<(), MatchStoreError> {
+                  let transaction = self
+                      .connection
+                      .transaction_with_behavior(TransactionBehavior::Immediate)?;
+                  let event_count = transaction.query_row(
+                      "SELECT COUNT(*) FROM match_events WHERE match_id = ?1",
+                      params![id],
+                      |row| row.get::<_, i64>(0),
+                  )?;
+                  if event_count == 0 {
+                      let legacy = transaction
+                          .query_row(
+                              "SELECT matches.snapshot_json, (SELECT COALESCE(MAX(match_actions.action_index) + 1, 0) FROM match_actions WHERE match_actions.match_id = matches.id) FROM matches WHERE matches.id = ?1",
+                              params![id],
+                              |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+                          )
+                          .optional()?;
+                      let Some((snapshot_json, next_action_index)) = legacy else {
+                          transaction.commit()?;
+                          return Ok(());
+                      };
+                      let next_action_index = u32::try_from(next_action_index).map_err(|_| {
+                          MatchStoreError::EventStore(format!("legacy action index is out of range for {id}"))
+                      })?;
+                      let state = MatchState::from_snapshot_json(&snapshot_json)?;
+                      insert_genesis(&transaction, id, &state, next_action_index)?;
+                  }
+                  transaction.commit()?;
+                  Ok(())
+              }
+          }
+
+          pub(super) fn insert_genesis(
+              transaction: &Transaction<'_>,
+              id: &str,
+              state: &MatchState,
+              next_action_index: u32,
+          ) -> Result<(), MatchStoreError> {
+              let existing = transaction.query_row(
+                  "SELECT COUNT(*) FROM match_events WHERE match_id = ?1",
+                  params![id],
+                  |row| row.get::<_, i64>(0),
+              )?;
+              if existing != 0 {
+                  return Err(MatchStoreError::EventStore(format!(
+                      "refusing to replace existing event stream for {id}"
+                  )));
+              }
+
+              let (aggregate, genesis) = EventSourcedMatch::create_migration_genesis(
+                  state.clone(),
+                  next_action_index,
+              )?;
+              insert_event(transaction, id, &genesis)?;
+              upsert_snapshot(transaction, id, &aggregate.snapshot()?)?;
+              Ok(())
+          }
+
+          fn load_events(
+              connection: &rusqlite::Connection,
+              id: &str,
+          ) -> Result<Vec<EventEnvelope>, MatchStoreError> {
+              let mut statement = connection.prepare(
+                  "SELECT aggregate_version, event_schema_version, ruleset_version, command_id, action_index, event_json FROM match_events WHERE match_id = ?1 ORDER BY aggregate_version",
+              )?;
+              let mut rows = statement.query(params![id])?;
+              let mut events = Vec::new();
+              while let Some(row) = rows.next()? {
+                  let stored_aggregate = stored_version(row.get::<_, i64>(0)?, id)?;
+                  let stored_schema = u16::try_from(row.get::<_, i64>(1)?).map_err(|_| {
+                      MatchStoreError::EventStore(format!("event schema version is out of range for {id}"))
+                  })?;
+                  let stored_ruleset = row.get::<_, String>(2)?;
+                  let stored_command_id = row.get::<_, Option<String>>(3)?;
+                  let stored_action_index = row
+                      .get::<_, Option<i64>>(4)?
+                      .map(u32::try_from)
+                      .transpose()
+                      .map_err(|_| MatchStoreError::EventStore(format!("action index is out of range for {id}")))?;
+                  let event_json = row.get::<_, String>(5)?;
+                  let event: EventEnvelope = serde_json::from_str(&event_json)?;
+
+                  if event.aggregate_version != stored_aggregate
+                      || event.event_schema_version.0 != stored_schema
+                      || event.ruleset_version.as_str() != stored_ruleset
+                      || event_command_id(&event).map(str::to_owned) != stored_command_id
+                      || event_action_index(&event) != stored_action_index
+                  {
+                      return Err(MatchStoreError::EventStore(format!(
+                          "event envelope metadata does not match stored columns for {id} at version {}",
+                          stored_aggregate.0
+                      )));
+                  }
+                  events.push(event);
+              }
+              Ok(events)
+          }
+
+          fn load_snapshot(
+              connection: &rusqlite::Connection,
+              id: &str,
+          ) -> Result<Option<AggregateSnapshot>, MatchStoreError> {
+              let row = connection
+                  .query_row(
+                      "SELECT aggregate_version, snapshot_schema_version, event_schema_version, ruleset_version, snapshot_json FROM match_event_snapshots WHERE match_id = ?1",
+                      params![id],
+                      |row| {
+                          Ok((
+                              row.get::<_, i64>(0)?,
+                              row.get::<_, i64>(1)?,
+                              row.get::<_, i64>(2)?,
+                              row.get::<_, String>(3)?,
+                              row.get::<_, String>(4)?,
+                          ))
+                      },
+                  )
+                  .optional()?;
+              let Some((aggregate_version, snapshot_schema, event_schema, ruleset, snapshot_json)) = row else {
+                  return Ok(None);
+              };
+              let snapshot: AggregateSnapshot = serde_json::from_str(&snapshot_json)?;
+              if snapshot.aggregate_version != stored_version(aggregate_version, id)?
+                  || i64::from(snapshot.snapshot_schema_version.0) != snapshot_schema
+                  || i64::from(snapshot.event_schema_version.0) != event_schema
+                  || snapshot.ruleset_version.as_str() != ruleset
+              {
+                  return Err(MatchStoreError::EventStore(format!(
+                      "snapshot envelope metadata does not match stored columns for {id}"
+                  )));
+              }
+              Ok(Some(snapshot))
+          }
+
+          fn insert_event(
+              transaction: &Transaction<'_>,
+              id: &str,
+              event: &EventEnvelope,
+          ) -> Result<(), MatchStoreError> {
+              let event_json = serde_json::to_string(event)?;
+              transaction.execute(
+                  "INSERT INTO match_events (match_id, aggregate_version, event_schema_version, ruleset_version, command_id, action_index, event_json, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, unixepoch())",
+                  params![
+                      id,
+                      i64::try_from(event.aggregate_version.0).map_err(|_| MatchStoreError::EventStore("aggregate version exceeds SQLite integer range".to_string()))?,
+                      i64::from(event.event_schema_version.0),
+                      event.ruleset_version.as_str(),
+                      event_command_id(event),
+                      event_action_index(event).map(i64::from),
+                      event_json,
+                  ],
+              )?;
+              Ok(())
+          }
+
+          fn upsert_snapshot(
+              transaction: &Transaction<'_>,
+              id: &str,
+              snapshot: &AggregateSnapshot,
+          ) -> Result<(), MatchStoreError> {
+              let snapshot_json = serde_json::to_string(snapshot)?;
+              transaction.execute(
+                  "INSERT INTO match_event_snapshots (match_id, aggregate_version, snapshot_schema_version, event_schema_version, ruleset_version, snapshot_json, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, unixepoch()) ON CONFLICT(match_id) DO UPDATE SET aggregate_version = excluded.aggregate_version, snapshot_schema_version = excluded.snapshot_schema_version, event_schema_version = excluded.event_schema_version, ruleset_version = excluded.ruleset_version, snapshot_json = excluded.snapshot_json, updated_at = unixepoch()",
+                  params![
+                      id,
+                      i64::try_from(snapshot.aggregate_version.0).map_err(|_| MatchStoreError::EventStore("snapshot aggregate version exceeds SQLite integer range".to_string()))?,
+                      i64::from(snapshot.snapshot_schema_version.0),
+                      i64::from(snapshot.event_schema_version.0),
+                      snapshot.ruleset_version.as_str(),
+                      snapshot_json,
+                  ],
+              )?;
+              Ok(())
+          }
+
+          fn event_command_id(event: &EventEnvelope) -> Option<&str> {
+              match &event.event {
+                  MatchEvent::Created { .. } => None,
+                  MatchEvent::CommandAccepted { command_id, .. }
+                  | MatchEvent::ForfeitAccepted { command_id, .. }
+                  | MatchEvent::AiTurnFinished { command_id, .. } => Some(command_id.as_str()),
+              }
+          }
+
+          fn event_action_index(event: &EventEnvelope) -> Option<u32> {
+              match &event.event {
+                  MatchEvent::Created { .. } => None,
+                  MatchEvent::CommandAccepted { action_index, .. }
+                  | MatchEvent::ForfeitAccepted { action_index, .. }
+                  | MatchEvent::AiTurnFinished { action_index, .. } => Some(*action_index),
+              }
+          }
+
+          fn next_action_index_from_events(events: &[EventEnvelope]) -> Result<u32, MatchStoreError> {
+              let Some(first) = events.first() else {
+                  return Err(MatchStoreError::EventStore("event stream is empty".to_string()));
+              };
+              let MatchEvent::Created {
+                  next_action_index,
+                  ..
+              } = first.event
+              else {
+                  return Err(MatchStoreError::EventStore("event stream is missing genesis".to_string()));
+              };
+              let mut next = next_action_index;
+              for event in &events[1..] {
+                  let Some(action_index) = event_action_index(event) else {
+                      return Err(MatchStoreError::EventStore("non-genesis event is missing action index".to_string()));
+                  };
+                  next = next.max(action_index.checked_add(1).ok_or_else(|| {
+                      MatchStoreError::EventStore("action index overflow".to_string())
+                  })?);
+              }
+              Ok(next)
+          }
+
+          fn stored_version(value: i64, id: &str) -> Result<AggregateVersion, MatchStoreError> {
+              let value = u64::try_from(value).map_err(|_| {
+                  MatchStoreError::EventStore(format!("negative aggregate version stored for {id}"))
+              })?;
+              Ok(AggregateVersion(value))
+          }
+
+          #[cfg(test)]
+          mod tests {
+              use super::*;
+              use crate::match_session::HeroType;
+
+              #[test]
+              fn new_match_has_authoritative_genesis_beside_projection_rows() {
+                  let path = std::env::temp_dir().join(format!(
+                      "rune-lanes-event-store-genesis-{}.sqlite3",
+                      rand::random::<u128>()
+                  ));
+                  let mut store = SqliteMatchStore::new(path).expect("store should open");
+                  let created = store
+                      .create_match_for_user(HeroType::Pyromancer, None)
+                      .expect("match should create");
+                  let event_count: i64 = store
+                      .connection_mut()
+                      .query_row(
+                          "SELECT COUNT(*) FROM match_events WHERE match_id = ?1",
+                          params![created.id],
+                          |row| row.get(0),
+                      )
+                      .expect("event count should load");
+                  let action_count: i64 = store
+                      .connection_mut()
+                      .query_row(
+                          "SELECT COUNT(*) FROM match_actions WHERE match_id = ?1",
+                          params![created.id],
+                          |row| row.get(0),
+                      )
+                      .expect("action count should load");
+                  assert_eq!(event_count, 1);
+                  assert_eq!(action_count, 0);
+              }
+
+              #[test]
+              fn legacy_projection_bootstrap_uses_snapshot_and_only_carries_index_forward() {
+                  let path = std::env::temp_dir().join(format!(
+                      "rune-lanes-event-store-legacy-{}.sqlite3",
+                      rand::random::<u128>()
+                  ));
+                  let mut store = SqliteMatchStore::new(path).expect("store should open");
+                  let created = store
+                      .create_match_for_user(HeroType::Pyromancer, None)
+                      .expect("match should create");
+                  store
+                      .connection_mut()
+                      .execute("DELETE FROM match_event_snapshots WHERE match_id = ?1", params![created.id])
+                      .unwrap();
+                  store
+                      .connection_mut()
+                      .execute("DELETE FROM match_events WHERE match_id = ?1", params![created.id])
+                      .unwrap();
+                  store
+                      .connection_mut()
+                      .execute(
+                          "INSERT INTO match_actions (match_id, action_index, request_json, accepted_at) VALUES (?1, 7, '{}', unixepoch())",
+                          params![created.id],
+                      )
+                      .unwrap();
+
+                  let (aggregate, next_action_index) = store
+                      .load_event_sourced_match(&created.id)
+                      .expect("legacy stream should bootstrap")
+                      .expect("match should exist");
+                  assert_eq!(aggregate.version(), AggregateVersion(1));
+                  assert_eq!(aggregate.state(), &created.state);
+                  assert_eq!(next_action_index, 8);
+              }
+          }
+          '''
+          Path('backend/src/match_store/event_store.rs').write_text(event_store)
+
+          # Route all gameplay mutations through aggregate decide -> append -> evolve;
+          # keep existing action/replay rows as atomic projections of accepted events.
+          path = Path('backend/src/match_commands.rs')
+          text = path.read_text()
+          tests = text[text.index('#[cfg(test)]'):]
+          prefix = r'''use std::error::Error;
+          use std::fmt;
+
+          use rand::random;
+          use rune_lanes_core::cqrs::{CommandConversionError, GameCommand};
+          use rune_lanes_core::event_sourcing::{
+              CommandDecision, CommandId, CommandMetadata, EventSourcedMatch, EventSourcingError,
+          };
+
+          use crate::match_access::{Actor, MatchAccess};
+          use crate::match_session::{MatchActionRequest, MatchError, RecordedReplayFrame, Side};
+          use crate::match_store::{
+              MatchStoreError, SharedMatchStatus, SqliteMatchStore, StoredMatch, StoredSharedMatch,
+          };
+
+          pub struct MatchCommands<'a> {
+              store: &'a mut SqliteMatchStore,
+          }
+
+          #[derive(Clone, Debug)]
+          pub struct AppliedSoloAction {
+              pub stored_match: StoredMatch,
+              pub replay_frames: Vec<RecordedReplayFrame>,
+          }
+
+          #[derive(Clone, Debug)]
+          pub struct AppliedSharedAction {
+              pub shared_match: StoredSharedMatch,
+          }
+
+          #[derive(Debug)]
+          pub enum MatchCommandError {
+              NotFound,
+              Forbidden,
+              NotActiveSharedMatch,
+              SharedMatchNotStarted,
+              OpponentStillConnected,
+              ForfeitNotClaimable,
+              Rule(MatchError),
+              Store(MatchStoreError),
+          }
+
+          impl fmt::Display for MatchCommandError {
+              fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                  match self {
+                      Self::NotFound => write!(f, "Shared match seat was not found"),
+                      Self::Forbidden => write!(f, "Match was not found"),
+                      Self::NotActiveSharedMatch => write!(f, "Shared match is not active"),
+                      Self::SharedMatchNotStarted => write!(f, "Shared match has not started"),
+                      Self::OpponentStillConnected => write!(f, "Opponent is still connected"),
+                      Self::ForfeitNotClaimable => write!(f, "Forfeit is not claimable yet"),
+                      Self::Rule(error) => write!(f, "{error}"),
+                      Self::Store(error) => write!(f, "{error}"),
+                  }
+              }
+          }
+
+          impl Error for MatchCommandError {}
+
+          impl From<MatchStoreError> for MatchCommandError {
+              fn from(error: MatchStoreError) -> Self {
+                  Self::Store(error)
+              }
+          }
+
+          impl From<MatchError> for MatchCommandError {
+              fn from(error: MatchError) -> Self {
+                  Self::Rule(error)
+              }
+          }
+
+          impl From<EventSourcingError> for MatchCommandError {
+              fn from(error: EventSourcingError) -> Self {
+                  match error {
+                      EventSourcingError::Rule(error) => Self::Rule(error),
+                      other => Self::Store(MatchStoreError::EventSourcing(other)),
+                  }
+              }
+          }
+
+          impl<'a> MatchCommands<'a> {
+              pub fn new(store: &'a mut SqliteMatchStore) -> Self {
+                  Self { store }
+              }
+
+              pub fn apply_solo_action(
+                  &mut self,
+                  actor: Actor,
+                  match_id: &str,
+                  request: MatchActionRequest,
+              ) -> Result<AppliedSoloAction, MatchCommandError> {
+                  self.apply_solo_action_inner(actor, match_id, request, None)
+              }
+
+              fn apply_solo_action_inner(
+                  &mut self,
+                  actor: Actor,
+                  match_id: &str,
+                  request: MatchActionRequest,
+                  command_id: Option<CommandId>,
+              ) -> Result<AppliedSoloAction, MatchCommandError> {
+                  if self.store.load_match(match_id)?.is_none() {
+                      return Err(MatchCommandError::NotFound);
+                  }
+                  if !MatchAccess::new(self.store).can_apply_solo_action(&actor, match_id) {
+                      return Err(MatchCommandError::Forbidden);
+                  }
+
+                  let (aggregate, action_index) = self
+                      .store
+                      .load_event_sourced_match(match_id)?
+                      .ok_or(MatchCommandError::NotFound)?;
+                  let command_id = command_id
+                      .unwrap_or_else(|| fresh_command_id(match_id, action_index));
+                  let request_json = serde_json::to_string(&request)
+                      .map_err(MatchStoreError::from)?;
+
+                  let decision = match GameCommand::try_from(request.clone()) {
+                      Ok(command) => aggregate.decide(
+                          CommandMetadata {
+                              command_id,
+                              expected_version: aggregate.version(),
+                              side: Side::Player,
+                              action_index,
+                          },
+                          command,
+                      )?,
+                      Err(CommandConversionError::AdvanceAiIsApplicationOrchestration) => {
+                          let metadata = CommandMetadata {
+                              command_id,
+                              expected_version: aggregate.version(),
+                              side: Side::Opponent,
+                              action_index,
+                          };
+                          match aggregate
+                              .state()
+                              .next_solo_ai_game_command(Side::Opponent)?
+                          {
+                              Some(command) => aggregate.decide(metadata, command)?,
+                              None => aggregate.decide_ai_turn_finished(metadata)?,
+                          }
+                      }
+                  };
+                  let (aggregate, replay_frames) = self.persist_decision(
+                      match_id,
+                      &request_json,
+                      aggregate,
+                      decision,
+                      None,
+                  )?;
+
+                  Ok(AppliedSoloAction {
+                      stored_match: StoredMatch {
+                          id: match_id.to_string(),
+                          state: aggregate.state().clone(),
+                      },
+                      replay_frames,
+                  })
+              }
+
+              #[cfg(test)]
+              fn apply_solo_action_with_command_id(
+                  &mut self,
+                  actor: Actor,
+                  match_id: &str,
+                  request: MatchActionRequest,
+                  command_id: CommandId,
+              ) -> Result<AppliedSoloAction, MatchCommandError> {
+                  self.apply_solo_action_inner(actor, match_id, request, Some(command_id))
+              }
+
+              pub fn apply_shared_seat_action(
+                  &mut self,
+                  match_id: &str,
+                  seat_token: &str,
+                  request: MatchActionRequest,
+              ) -> Result<AppliedSharedAction, MatchCommandError> {
+                  self.store.mark_shared_seat_seen(match_id, seat_token)?;
+                  let shared = self
+                      .store
+                      .load_shared_match_for_seat(match_id, seat_token)?
+                      .ok_or(MatchCommandError::NotFound)?;
+                  if shared.status != SharedMatchStatus::Active {
+                      return Err(MatchCommandError::NotActiveSharedMatch);
+                  }
+                  if shared.state.is_none() {
+                      return Err(MatchCommandError::SharedMatchNotStarted);
+                  }
+
+                  let command = GameCommand::try_from(request.clone()).map_err(|error| match error {
+                      CommandConversionError::AdvanceAiIsApplicationOrchestration => {
+                          MatchCommandError::Rule(MatchError::AiUnavailable)
+                      }
+                  })?;
+                  let (aggregate, action_index) = self
+                      .store
+                      .load_event_sourced_match(match_id)?
+                      .ok_or(MatchCommandError::NotFound)?;
+                  let request_json = serde_json::to_string(&request)
+                      .map_err(MatchStoreError::from)?;
+                  let decision = aggregate.decide(
+                      CommandMetadata {
+                          command_id: fresh_command_id(match_id, action_index),
+                          expected_version: aggregate.version(),
+                          side: shared.viewer_seat.side,
+                          action_index,
+                      },
+                      command,
+                  )?;
+                  self.persist_decision(
+                      match_id,
+                      &request_json,
+                      aggregate,
+                      decision,
+                      None,
+                  )?;
+
+                  let shared_match = self
+                      .store
+                      .load_shared_match_for_seat(match_id, seat_token)?
+                      .ok_or(MatchCommandError::NotFound)?;
+                  Ok(AppliedSharedAction { shared_match })
+              }
+
+              pub fn claim_shared_forfeit(
+                  &mut self,
+                  match_id: &str,
+                  seat_token: &str,
+                  now: i64,
+              ) -> Result<AppliedSharedAction, MatchCommandError> {
+                  let shared = self
+                      .store
+                      .load_shared_match_for_seat(match_id, seat_token)?
+                      .ok_or(MatchCommandError::NotFound)?;
+                  if shared.status != SharedMatchStatus::Active {
+                      return Err(MatchCommandError::NotActiveSharedMatch);
+                  }
+                  let opposing_disconnect_times: Vec<_> = shared
+                      .seats
+                      .iter()
+                      .filter(|seat| seat.side.team() != shared.viewer_seat.side.team())
+                      .map(|seat| seat.disconnected_at)
+                      .collect();
+                  if opposing_disconnect_times.iter().any(Option::is_none) {
+                      return Err(MatchCommandError::OpponentStillConnected);
+                  }
+                  let claimable_at = opposing_disconnect_times
+                      .into_iter()
+                      .flatten()
+                      .map(|disconnected_at| disconnected_at + 120)
+                      .max()
+                      .ok_or(MatchCommandError::OpponentStillConnected)?;
+                  if now < claimable_at {
+                      return Err(MatchCommandError::ForfeitNotClaimable);
+                  }
+
+                  let (aggregate, action_index) = self
+                      .store
+                      .load_event_sourced_match(match_id)?
+                      .ok_or(MatchCommandError::SharedMatchNotStarted)?;
+                  let decision = aggregate.decide_forfeit(
+                      CommandMetadata {
+                          command_id: fresh_command_id(match_id, action_index),
+                          expected_version: aggregate.version(),
+                          side: shared.viewer_seat.side,
+                          action_index,
+                      },
+                      shared.viewer_seat.side,
+                  )?;
+                  self.persist_decision(
+                      match_id,
+                      r#"{"type":"claimForfeit"}"#,
+                      aggregate,
+                      decision,
+                      Some(shared.viewer_seat.side),
+                  )?;
+
+                  let shared_match = self
+                      .store
+                      .load_shared_match_for_seat(match_id, seat_token)?
+                      .ok_or(MatchCommandError::NotFound)?;
+                  Ok(AppliedSharedAction { shared_match })
+              }
+
+              fn persist_decision(
+                  &mut self,
+                  match_id: &str,
+                  request_json: &str,
+                  aggregate: EventSourcedMatch,
+                  decision: CommandDecision,
+                  forfeit_winner: Option<Side>,
+              ) -> Result<(EventSourcedMatch, Vec<RecordedReplayFrame>), MatchCommandError> {
+                  let CommandDecision::Append(event) = decision else {
+                      return Ok((aggregate, Vec::new()));
+                  };
+
+                  let mut candidate = aggregate.clone();
+                  let outcome = candidate.evolve(&event)?;
+                  let snapshot = candidate.snapshot()?;
+                  let duplicate_version = self.store.append_event_and_projection(
+                      match_id,
+                      &event,
+                      &snapshot,
+                      request_json,
+                      candidate.state(),
+                      &outcome.replay_frames,
+                      forfeit_winner,
+                  )?;
+                  if duplicate_version.is_some() {
+                      let (latest, _) = self
+                          .store
+                          .load_event_sourced_match(match_id)?
+                          .ok_or(MatchCommandError::NotFound)?;
+                      return Ok((latest, Vec::new()));
+                  }
+
+                  Ok((candidate, outcome.replay_frames))
+              }
+          }
+
+          fn fresh_command_id(match_id: &str, action_index: u32) -> CommandId {
+              CommandId::new(format!(
+                  "backend:{match_id}:{action_index}:{:032x}",
+                  random::<u128>()
+              ))
+              .expect("generated command id is never empty")
+          }
+
+          '''
+          tests = tests.replace(
+              '    fn insert_user(store: &mut SqliteMatchStore, user_id: i64, email: &str) {',
+              '''    #[test]
+              fn duplicate_command_id_is_not_reappended_or_reprojected() {
+                  let path = test_db_path("solo-idempotent");
+                  let mut store = SqliteMatchStore::new(path).expect("store should open");
+                  let created = store
+                      .create_match_for_user(HeroType::Pyromancer, None)
+                      .expect("match should create");
+                  let command_id = CommandId::new("same-http-command").unwrap();
+
+                  MatchCommands::new(&mut store)
+                      .apply_solo_action_with_command_id(
+                          Actor::Anonymous,
+                          &created.id,
+                          MatchActionRequest::StartCardPlay,
+                          command_id.clone(),
+                      )
+                      .expect("first command should apply");
+                  let duplicate = MatchCommands::new(&mut store)
+                      .apply_solo_action_with_command_id(
+                          Actor::Anonymous,
+                          &created.id,
+                          MatchActionRequest::StartCardPlay,
+                          command_id,
+                      )
+                      .expect("duplicate command should be idempotent");
+
+                  assert!(duplicate.replay_frames.is_empty());
+                  let event_count: i64 = store
+                      .connection_mut()
+                      .query_row(
+                          "SELECT COUNT(*) FROM match_events WHERE match_id = ?1",
+                          params![created.id],
+                          |row| row.get(0),
+                      )
+                      .unwrap();
+                  let action_count: i64 = store
+                      .connection_mut()
+                      .query_row(
+                          "SELECT COUNT(*) FROM match_actions WHERE match_id = ?1",
+                          params![created.id],
+                          |row| row.get(0),
+                      )
+                      .unwrap();
+                  assert_eq!(event_count, 2);
+                  assert_eq!(action_count, 1);
+              }
+
+              fn insert_user(store: &mut SqliteMatchStore, user_id: i64, email: &str) {''',
               1,
           )
-          if test.count('expected_version: aggregate.version(),') != 2:
-              raise SystemExit('unexpected idempotency expected-version shape')
-          test = test.replace(
-              'expected_version: aggregate.version(),',
-              'expected_version: original_expected_version,',
-          )
-          text = text[:start] + test + text[end:]
-          path.write_text(text)
+          path.write_text(prefix + tests)
           PY
 
       - name: Install Rust
@@ -94,17 +1384,20 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Validate event-sourcing slice
+      - name: Validate migration
         run: |
           cargo fmt --all
           cargo test -p rune-lanes-core event_sourcing
+          cargo test -p backend match_commands
+          cargo test -p backend event_store
+          cargo test -p backend
           cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-      - name: Squash onto repaired base and publish
+      - name: Publish migration
         run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           rm .github/workflows/restack-event-sourcing.yml
           git add -A
-          git commit -m 'fix(core): make event-sourced retries idempotent'
-          git reset --soft origin/extract-rune-lanes-core-cqrs
-          git commit -m 'feat: add event-sourced Rune Lanes match aggregate'
-          git push --force-with-lease origin HEAD:event-sourced-rune-lanes-match
+          git commit -m 'feat: persist Rune Lanes matches as SQLite event streams'
+          git push origin HEAD:event-sourced-rune-lanes-match
