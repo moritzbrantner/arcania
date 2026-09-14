@@ -1,7 +1,11 @@
 @media (min-width: 721px) and (max-width: 1320px) {
-  .opponent-hand-display {
+  .battlefield-hud-hand {
     width: 172px;
-    min-width: 172px;
+  }
+
+  .battlefield-hud-hand .opponent-hand-display {
+    width: 100%;
+    min-width: 0;
   }
 }
 
