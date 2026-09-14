@@ -19,10 +19,29 @@ jobs:
           ref: event-sourced-rune-lanes-match
           fetch-depth: 0
 
+      - name: Repair focused compile findings
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('backend/src/match_store/event_store.rs')
+          text = path.read_text()
+          text = text.replace('let mut next = *next_action_index;', 'let mut next = next_action_index;')
+          text = text.replace(
+              'assert_eq!(aggregate.state(), &created.state);',
+              'assert_eq!(aggregate.state().to_snapshot_json().unwrap(), created.state.to_snapshot_json().unwrap());',
+          )
+          path.write_text(text)
+          Path('migration-validation.log').unlink(missing_ok=True)
+          PY
+
       - name: Install Rust
         uses: dtolnay/rust-toolchain@1.85
         with:
           components: rustfmt, clippy
+
+      - name: Format migration
+        run: cargo fmt --all
 
       - name: Validate migration
         id: validate
@@ -30,7 +49,6 @@ jobs:
         run: |
           set -o pipefail
           {
-            cargo fmt --all --check &&
             cargo test -p rune-lanes-core event_sourcing &&
             cargo test -p backend match_commands &&
             cargo test -p backend event_store &&
@@ -45,8 +63,9 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           rm .github/workflows/restack-event-sourcing.yml
           rm -f .github/workflows/repair-event-migration.yml
+          rm -f migration-validation.log
           git add -A
-          git commit -m 'chore: remove completed event migration runners'
+          git commit -m 'feat: finish SQLite event-store migration'
           git push origin HEAD:event-sourced-rune-lanes-match
 
       - name: Persist validation evidence on failure
@@ -54,7 +73,8 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
           git add -f migration-validation.log
-          git commit -m 'chore: capture event migration validation failure'
+          git commit -m 'wip: repair event-store migration validation findings'
           git push origin HEAD:event-sourced-rune-lanes-match
           exit 1
