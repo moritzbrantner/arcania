@@ -43,6 +43,18 @@ pub(crate) enum DeckLibraryError {
     UnknownTemplate(String),
 }
 
+impl std::fmt::Display for DeckLibraryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnknownTemplate(template_id) => {
+                write!(f, "unknown card template {template_id}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for DeckLibraryError {}
+
 pub(crate) fn starter_deck_snapshot() -> DeckRecipeSnapshot {
     DeckRecipeSnapshot {
         cards: BALANCED_STARTER_COUNTS
@@ -53,14 +65,6 @@ pub(crate) fn starter_deck_snapshot() -> DeckRecipeSnapshot {
             })
             .collect(),
     }
-}
-
-pub(crate) fn starter_recipe_count(template_id: &str) -> u16 {
-    BALANCED_STARTER_COUNTS
-        .iter()
-        .find(|(candidate, _)| *candidate == template_id)
-        .map(|(_, count)| *count)
-        .unwrap_or(0)
 }
 
 pub(crate) fn deck_from_snapshot(
