@@ -29,5 +29,8 @@ use match_store::SqliteMatchStore;
 use routes::create_app;
 
 #[cfg(test)]
+mod event_store_migration_tests;
+
+#[cfg(test)]
 #[path = "main_tests/mod.rs"]
 mod main_tests;
