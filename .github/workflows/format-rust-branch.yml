@@ -1,0 +1,38 @@
+name: Format Rust branch
+
+on:
+  push:
+    branches:
+      - extract-rune-lanes-core-cqrs
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          ref: extract-rune-lanes-core-cqrs
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@1.85
+        with:
+          components: rustfmt
+
+      - name: Format workspace
+        run: cargo fmt --all
+
+      - name: Commit formatting
+        run: |
+          if git diff --quiet -- '*.rs'; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- '*.rs'
+          git commit -m 'style: format Rust workspace'
+          git push origin HEAD:extract-rune-lanes-core-cqrs
