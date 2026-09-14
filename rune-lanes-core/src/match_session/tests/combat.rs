@@ -553,14 +553,9 @@ fn hero_death_ends_the_match() {
 fn surviving_melee_attacker_advances_after_destroying_unit() {
     let mut game = MatchState::new_with_seed(7);
     enter_attack_phase(&mut game);
-    game.board.units.push(board_unit(
-        "player-unit",
-        Side::Player,
-        hex(0, 1),
-        3,
-        1,
-        4,
-    ));
+    game.board
+        .units
+        .push(board_unit("player-unit", Side::Player, hex(0, 1), 3, 1, 4));
     game.board.units.push(board_unit(
         "opponent-unit",
         Side::Opponent,
@@ -602,14 +597,9 @@ fn surviving_melee_attacker_advances_after_destroying_unit() {
 fn ranged_kill_does_not_advance_attacker() {
     let mut game = MatchState::new_with_seed(7);
     enter_attack_phase(&mut game);
-    game.board.units.push(board_unit(
-        "player-unit",
-        Side::Player,
-        hex(0, 2),
-        3,
-        2,
-        4,
-    ));
+    game.board
+        .units
+        .push(board_unit("player-unit", Side::Player, hex(0, 2), 3, 2, 4));
     game.board.units.push(board_unit(
         "opponent-unit",
         Side::Opponent,
@@ -638,14 +628,9 @@ fn ranged_kill_does_not_advance_attacker() {
 fn simultaneous_melee_death_does_not_advance_attacker() {
     let mut game = MatchState::new_with_seed(7);
     enter_attack_phase(&mut game);
-    game.board.units.push(board_unit(
-        "player-unit",
-        Side::Player,
-        hex(0, 1),
-        2,
-        1,
-        2,
-    ));
+    game.board
+        .units
+        .push(board_unit("player-unit", Side::Player, hex(0, 1), 2, 1, 2));
     game.board.units.push(board_unit(
         "opponent-unit",
         Side::Opponent,
@@ -661,16 +646,14 @@ fn simultaneous_melee_death_does_not_advance_attacker() {
     })
     .expect("simultaneous death should resolve");
 
-    assert!(!game
-        .board
-        .units
-        .iter()
-        .any(|unit| unit.id == "player-unit"));
-    assert!(!game
-        .board
-        .units
-        .iter()
-        .any(|unit| unit.position == hex(0, 0)));
+    assert!(!game.board.units.iter().any(|unit| unit.id == "player-unit"));
+    assert!(
+        !game
+            .board
+            .units
+            .iter()
+            .any(|unit| unit.position == hex(0, 0))
+    );
 }
 
 #[test]

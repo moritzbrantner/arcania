@@ -194,7 +194,10 @@ pub enum ProgressionError {
     UnknownRune(String),
     LockedRune(String),
     DuplicateRune(String),
-    TooManyRunes { requested: usize, allowed: usize },
+    TooManyRunes {
+        requested: usize,
+        allowed: usize,
+    },
     UnknownSkill(String),
     SkillAlreadyUnlocked(String),
     SkillPrerequisiteMissing(String),
