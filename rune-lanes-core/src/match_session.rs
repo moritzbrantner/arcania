@@ -42,6 +42,12 @@ enum AiDecisionApplication {
     Illegal(MatchError),
 }
 
+impl Default for MatchState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl MatchState {
     #[allow(dead_code, reason = "kept as the default rules-engine constructor")]
     pub fn new() -> Self {
@@ -168,6 +174,10 @@ impl MatchState {
         )
     }
 
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "2v2 setup passes mirrored per-seat setup explicitly"
+    )]
     pub fn new_shared_two_v_two_with_progression_loadouts(
         player_hero_type: HeroType,
         opponent_hero_type: HeroType,
