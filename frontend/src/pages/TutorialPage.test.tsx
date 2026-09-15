@@ -105,9 +105,6 @@ describe("TutorialPage", () => {
     clickTutorialTarget("tutorial-card-spark-jolt");
     clickTile(1, -1);
 
-    continueIntro();
-    fireEvent.click(screen.getByText("Pass Priority", { selector: "button" }));
-
     expect(window.localStorage.getItem(TUTORIAL_COMPLETION_STORAGE_KEY)).toBe("true");
     expect(screen.getByText("Start Playing", { selector: "button" })).toBeInTheDocument();
   });

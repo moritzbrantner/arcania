@@ -141,6 +141,9 @@ export function AccountActions({
 }
 
 export function TopNav({ currentUser, onNavigate, onSignOut, activePath = "", ...accountActionProps }: AccountProps & { activePath?: string }) {
+  const activeAccountRoute =
+    accountActionProps.activeAccountRoute ??
+    (activePath === "/profile" ? "profile" : activePath === "/settings" ? "settings" : null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [learnOpen, setLearnOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -191,6 +194,7 @@ export function TopNav({ currentUser, onNavigate, onSignOut, activePath = "", ..
         onNavigate={onNavigate}
         onSignOut={onSignOut}
         {...accountActionProps}
+        activeAccountRoute={activeAccountRoute}
       />
       <button ref={triggerRef} className="icon-button nav-drawer-trigger" type="button" aria-label="Open navigation menu" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}><Menu size={20}/></button>
       {drawerOpen ? <div className="nav-drawer-backdrop" onMouseDown={() => setDrawerOpen(false)}><div className="nav-drawer" role="dialog" aria-modal="true" aria-label="Navigation menu" onMouseDown={(event) => event.stopPropagation()}><div className="nav-drawer-heading"><strong>Navigation</strong><button className="icon-button" type="button" aria-label="Close navigation menu" onClick={() => setDrawerOpen(false)}><X size={18}/></button></div>{coreLinks.filter((link) => !link.signedIn || currentUser).map(({ to, label, icon: Icon }) => <button key={to} className={activePath === to ? "active" : ""} type="button" onClick={() => navigate(to)}><Icon size={18}/>{label}</button>)}<hr/>{learnLinks.map(({to,label,icon:Icon}) => <button key={to} type="button" onClick={() => navigate(to)}><Icon size={18}/>{label}</button>)}</div></div> : null}

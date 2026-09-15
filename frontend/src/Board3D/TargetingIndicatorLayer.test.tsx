@@ -2,8 +2,9 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { TargetingIndicatorLayer } from "./TargetingIndicatorLayer";
+import { createBoardProjection } from "../boardProjection";
 import type { TargetingIndicator } from "../targetingIndicators";
+import { TargetingIndicatorLayer } from "./TargetingIndicatorLayer";
 
 afterEach(() => cleanup());
 
@@ -20,13 +21,11 @@ describe("TargetingIndicatorLayer", () => {
             secondaryFootprintCoords: [{ q: 1, r: 0 }],
           }),
         ]}
-        positionsByCoordKey={
-          new Map([
-            ["0:0", { x: 10, y: 20, visible: true }],
-            ["1:1", { x: 80, y: 90, visible: true }],
-            ["1:0", { x: 60, y: 70, visible: true }],
-          ])
-        }
+        projection={createBoardProjection([
+          { coord: { q: 0, r: 0 }, position: { x: 10, y: 20, visible: true } },
+          { coord: { q: 1, r: 1 }, position: { x: 80, y: 90, visible: true } },
+          { coord: { q: 1, r: 0 }, position: { x: 60, y: 70, visible: true } },
+        ])}
       />,
     );
 
@@ -41,12 +40,10 @@ describe("TargetingIndicatorLayer", () => {
     const { container } = render(
       <TargetingIndicatorLayer
         indicators={[indicator({ id: "hidden" })]}
-        positionsByCoordKey={
-          new Map([
-            ["0:0", { x: 10, y: 20, visible: true }],
-            ["1:1", { x: 80, y: 90, visible: false }],
-          ])
-        }
+        projection={createBoardProjection([
+          { coord: { q: 0, r: 0 }, position: { x: 10, y: 20, visible: true } },
+          { coord: { q: 1, r: 1 }, position: { x: 80, y: 90, visible: false } },
+        ])}
       />,
     );
 
