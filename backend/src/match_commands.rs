@@ -130,9 +130,10 @@ impl<'a> MatchCommands<'a> {
                     side: Side::Opponent,
                     action_index,
                 };
+                let policy = crate::match_session::SoloAiPolicy::baseline();
                 match aggregate
                     .state()
-                    .next_solo_ai_game_command(Side::Opponent)?
+                    .next_solo_ai_game_command_with_policy(Side::Opponent, &policy)?
                 {
                     Some(command) => aggregate.decide(metadata, command)?,
                     None => aggregate.decide_ai_turn_finished(metadata)?,
