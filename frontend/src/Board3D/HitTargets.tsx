@@ -1,35 +1,34 @@
 import { useFrame, useThree } from "@react-three/fiber";
 import { useRef, type DragEvent } from "react";
+import { createBoardProjection, type BoardProjection } from "../boardProjection";
 import { projectBoardPositionToViewport } from "../boardRenderer";
-import { targetingProjectionPositionsEqual } from "../targetingOverlay";
 import type { HexCoord } from "../types";
 import { coordKey } from "./geometry";
 import type { Board3DTileInteraction, BoardProjectedPosition } from "./types";
 
 export function ProjectedHitTargetSync({
   tileInteractions,
-  onPositionsChange,
+  onProjectionChange,
 }: {
   tileInteractions: Board3DTileInteraction[];
-  onPositionsChange: (positions: Map<string, BoardProjectedPosition>) => void;
+  onProjectionChange: (projection: BoardProjection) => void;
 }) {
   const { camera, size } = useThree();
-  const previousPositionsRef = useRef<Map<string, BoardProjectedPosition>>(new Map());
+  const previousProjectionRef = useRef<BoardProjection | undefined>(undefined);
 
   useFrame(() => {
     camera.updateMatrixWorld();
-    const nextPositions = new Map<string, BoardProjectedPosition>();
+    const nextProjection = createBoardProjection(
+      tileInteractions.map((interaction) => ({
+        coord: interaction.coord,
+        position: projectBoardPositionToViewport(interaction.coord, camera, size),
+      })),
+      previousProjectionRef.current,
+    );
 
-    for (const interaction of tileInteractions) {
-      nextPositions.set(
-        coordKey(interaction.coord),
-        projectBoardPositionToViewport(interaction.coord, camera, size),
-      );
-    }
-
-    if (!targetingProjectionPositionsEqual(previousPositionsRef.current, nextPositions)) {
-      previousPositionsRef.current = nextPositions;
-      onPositionsChange(nextPositions);
+    if (nextProjection !== previousProjectionRef.current) {
+      previousProjectionRef.current = nextProjection;
+      onProjectionChange(nextProjection);
     }
   });
 

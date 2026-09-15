@@ -541,7 +541,8 @@ impl SqliteMatchStore {
 
         if shared.format == SharedMatchFormat::TwoVTwo {
             if let Some(loadouts) = ready_shared_two_v_two_loadouts(&transaction, id)? {
-                let player_deck = deck_library::deck_from_snapshot(Side::Player, &loadouts.player.1)?;
+                let player_deck =
+                    deck_library::deck_from_snapshot(Side::Player, &loadouts.player.1)?;
                 let opponent_deck =
                     deck_library::deck_from_snapshot(Side::Opponent, &loadouts.opponent.1)?;
                 let player_two_deck =
@@ -1044,7 +1045,8 @@ impl SqliteMatchStore {
             params![match_id, user_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         ).optional()?;
-        Ok(seat.and_then(|(side, deck_name)| side_from_db(&side).map(|side| (side.team(), deck_name))))
+        Ok(seat
+            .and_then(|(side, deck_name)| side_from_db(&side).map(|side| (side.team(), deck_name))))
     }
 
     pub fn load_replay(&self, id: &str) -> Result<Option<StoredReplay>, MatchStoreError> {
@@ -1123,16 +1125,18 @@ impl SqliteMatchStore {
             )
             .optional()?;
 
-        row.map(|(id, snapshot, created_at, updated_at, player_deck_name, frame_count)| {
-            MatchState::from_snapshot_json(&snapshot).map(|state| StoredMatchSummary {
-                id,
-                created_at,
-                updated_at,
-                frame_count: frame_count as usize,
-                player_deck_name,
-                state,
-            })
-        })
+        row.map(
+            |(id, snapshot, created_at, updated_at, player_deck_name, frame_count)| {
+                MatchState::from_snapshot_json(&snapshot).map(|state| StoredMatchSummary {
+                    id,
+                    created_at,
+                    updated_at,
+                    frame_count: frame_count as usize,
+                    player_deck_name,
+                    state,
+                })
+            },
+        )
         .transpose()
         .map_err(MatchStoreError::from)
     }

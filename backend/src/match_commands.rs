@@ -1,8 +1,10 @@
 use std::error::Error;
 use std::fmt;
 
+use rune_lanes_core::cqrs::{CommandContext, CommandConversionError, GameCommand};
+
 use crate::match_access::{Actor, MatchAccess};
-use crate::match_session::{MatchActionRequest, MatchError, RecordedReplayFrame};
+use crate::match_session::{MatchActionRequest, MatchError, MatchState, RecordedReplayFrame, Side};
 use crate::match_store::{
     MatchStoreError, SharedMatchStatus, SqliteMatchStore, StoredMatch, StoredSharedMatch,
 };
@@ -63,6 +65,41 @@ impl From<MatchError> for MatchCommandError {
     }
 }
 
+fn execute_game_request(
+    game: &mut MatchState,
+    side: Side,
+    request: MatchActionRequest,
+    action_index: u32,
+) -> Result<Vec<RecordedReplayFrame>, MatchError> {
+    match GameCommand::try_from(request) {
+        Ok(command) => command
+            .execute_compatibility(game, CommandContext { side, action_index })
+            .map(|outcome| outcome.replay_frames),
+        Err(CommandConversionError::AdvanceAiIsApplicationOrchestration) => {
+            // AI scheduling is application orchestration. Resolve exactly one
+            // deterministic policy step to a concrete core command so the
+            // authoritative mutation still crosses the same command boundary
+            // as a player action. The checked-in default policy currently
+            // matches this baseline order, avoiding cwd/config-dependent core
+            // evolution while the event-sourcing slice adds policy/version
+            // metadata around orchestration.
+            let policy = crate::match_session::SoloAiPolicy::baseline();
+            match game.next_solo_ai_game_command_with_policy(Side::Opponent, &policy)? {
+                Some(command) => command
+                    .execute_compatibility(
+                        game,
+                        CommandContext {
+                            side: Side::Opponent,
+                            action_index,
+                        },
+                    )
+                    .map(|outcome| outcome.replay_frames),
+                None => game.finish_solo_ai_turn_recording(Side::Opponent, action_index),
+            }
+        }
+    }
+}
+
 impl<'a> MatchCommands<'a> {
     pub fn new(store: &'a mut SqliteMatchStore) -> Self {
         Self { store }
@@ -84,9 +121,12 @@ impl<'a> MatchCommands<'a> {
         }
 
         let action_index = self.store.next_action_index(match_id)?;
-        let replay_frames = stored_match
-            .state
-            .apply_action_recording(request.clone(), action_index)?;
+        let replay_frames = execute_game_request(
+            &mut stored_match.state,
+            Side::Player,
+            request.clone(),
+            action_index,
+        )?;
         self.store.save_action_and_replay_frames(
             &stored_match.id,
             action_index,
@@ -119,7 +159,8 @@ impl<'a> MatchCommands<'a> {
             .state
             .ok_or(MatchCommandError::SharedMatchNotStarted)?;
         let action_index = self.store.next_action_index(match_id)?;
-        let frames = match_state.apply_action_recording_for_side(
+        let frames = execute_game_request(
+            &mut match_state,
             shared.viewer_seat.side,
             request.clone(),
             action_index,
@@ -201,7 +242,7 @@ mod tests {
 
     use super::*;
     use crate::deck_library::starter_deck_snapshot;
-    use crate::match_session::{HeroType, MatchProgressionLoadout, ReplayEvent, Side};
+    use crate::match_session::{HeroType, MatchProgressionLoadout, ReplayEvent};
     use crate::match_store::SharedMatchFormat;
 
     fn test_db_path(name: &str) -> std::path::PathBuf {

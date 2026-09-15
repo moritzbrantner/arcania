@@ -4,7 +4,8 @@ test("dashboard and play page expose tutorial mode", async ({ page }) => {
   await mockApi(page);
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Tutorial" }).click();
+  await page.getByRole("button", { name: "Learn & settings" }).click();
+  await page.getByRole("menuitem", { name: "Tutorial" }).click();
   await expect(page).toHaveURL(/\/tutorial$/);
   await expect(page.getByRole("heading", { name: "Tutorial" })).toBeVisible();
 

@@ -1,7 +1,8 @@
 use super::{Building, BuildingEffect, HexBoard, HexCoord, HexTile, PieceView};
 
 impl HexBoard {
-    pub(crate) fn new(radius: i32) -> Self {
+    /// Construct a deterministic hex board for rules, simulations, and projections.
+    pub fn new(radius: i32) -> Self {
         let mut tiles = Vec::new();
         for q in -radius..=radius {
             for r in -radius..=radius {
@@ -26,11 +27,16 @@ impl HexBoard {
         }
     }
 
-    pub(crate) fn is_valid(&self, coord: HexCoord) -> bool {
+    /// Return whether a coordinate belongs to this board.
+    pub fn is_valid(&self, coord: HexCoord) -> bool {
         coord.distance(HexCoord { q: 0, r: 0 }) <= self.radius
     }
 
-    pub(crate) fn replace_mana_wells(&mut self, coords: impl IntoIterator<Item = HexCoord>) {
+    /// Compatibility hook for deterministic AI-lab rule presets.
+    ///
+    /// Product match commands should not use this to bypass normal building
+    /// legality. A later experiment-config API will replace this setup hook.
+    pub fn replace_mana_wells(&mut self, coords: impl IntoIterator<Item = HexCoord>) {
         self.mana_sources.clear();
         self.buildings
             .retain(|building| !matches!(building.effect, BuildingEffect::TurnStartMana { .. }));

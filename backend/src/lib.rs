@@ -1,3 +1,7 @@
+#[allow(
+    clippy::single_match,
+    reason = "AI lab rule-preset overrides predate this core extraction and are behaviorally unrelated to it"
+)]
 pub mod ai_lab;
 pub mod match_store;
 pub mod routes;
@@ -9,12 +13,20 @@ pub(crate) mod deck_library;
 pub(crate) mod deck_recipe_legality;
 pub(crate) mod http_errors;
 pub(crate) mod http_types;
+#[allow(
+    clippy::format_collect,
+    reason = "identity token formatting is existing backend behavior outside the Rune Lanes extraction"
+)]
 pub(crate) mod identity;
 pub(crate) mod loadout_resolution;
 pub(crate) mod match_access;
 pub(crate) mod match_commands;
 pub(crate) mod match_session;
 pub(crate) mod preferences;
+#[allow(
+    dead_code,
+    reason = "progression contains a tested staged hero-appearance API that is not yet wired to production routes"
+)]
 pub(crate) mod progression;
 
 pub(crate) use http_types::*;

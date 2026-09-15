@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { TargetingIndicatorLayer } from "./targetingOverlay";
+import { createBoardProjection } from "./boardProjection";
+import { TargetingOverlay } from "./targetingOverlay";
 import type { TargetingIndicator } from "./targetingIndicators";
 
 const indicators: TargetingIndicator[] = [
@@ -17,18 +18,18 @@ const indicators: TargetingIndicator[] = [
   },
 ];
 
-const positionsByCoordKey = new Map([
-  ["0,0", { x: 100, y: 100, visible: true }],
-  ["1,0", { x: 240, y: 140, visible: true }],
-  ["1,1", { x: 260, y: 230, visible: true }],
+const projection = createBoardProjection([
+  { coord: { q: 0, r: 0 }, position: { x: 100, y: 100, visible: true } },
+  { coord: { q: 1, r: 0 }, position: { x: 240, y: 140, visible: true } },
+  { coord: { q: 1, r: 1 }, position: { x: 260, y: 230, visible: true } },
 ]);
 
 const meta = {
   title: "Components/TargetingOverlay",
-  component: TargetingIndicatorLayer,
+  component: TargetingOverlay,
   args: {
     indicators,
-    positionsByCoordKey,
+    projection,
   },
   decorators: [
     (Story) => (
@@ -39,7 +40,7 @@ const meta = {
       </main>
     ),
   ],
-} satisfies Meta<typeof TargetingIndicatorLayer>;
+} satisfies Meta<typeof TargetingOverlay>;
 
 export default meta;
 

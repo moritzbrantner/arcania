@@ -486,7 +486,10 @@ async fn update_preferred_hero(
         Err(response) => return response,
     };
     let updated = {
-        let mut store = state.store.lock().expect("store lock should not be poisoned");
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
         let mut identity = IdentityModule::new(store.connection_mut());
         match identity.update_preferred_hero(profile.id, request.hero_type) {
             Ok(Some(profile)) => profile,
@@ -519,7 +522,10 @@ async fn list_profile_matches(
                         Ok(context) => context,
                         Err(error) => return store_error_response(error),
                     };
-                    let (team, deck_name) = context.unwrap_or((crate::match_session::Team::Player, summary.player_deck_name.clone()));
+                    let (team, deck_name) = context.unwrap_or((
+                        crate::match_session::Team::Player,
+                        summary.player_deck_name.clone(),
+                    ));
                     summaries.push(MatchSummary::for_viewer(summary, team, deck_name));
                 }
                 summaries
@@ -528,10 +534,7 @@ async fn list_profile_matches(
         }
     };
 
-    Json(MatchArchiveResponse {
-        matches,
-    })
-    .into_response()
+    Json(MatchArchiveResponse { matches }).into_response()
 }
 
 async fn load_preferences(
@@ -1307,7 +1310,13 @@ async fn load_match_summary(
     let match_id = summary.id.clone();
     Json(MatchSummaryResponse {
         match_id,
-        summary: MatchSummary::for_viewer(summary.clone(), viewer_side.map(|side| side.team()).unwrap_or(crate::match_session::Team::Player), summary.player_deck_name.clone()),
+        summary: MatchSummary::for_viewer(
+            summary.clone(),
+            viewer_side
+                .map(|side| side.team())
+                .unwrap_or(crate::match_session::Team::Player),
+            summary.player_deck_name.clone(),
+        ),
         viewer,
         reward,
     })
@@ -1349,7 +1358,12 @@ async fn load_shared_match_summary(
         } else {
             None
         };
-        (replay.summary, viewer_side, shared.viewer_seat.deck_recipe_name.clone(), reward)
+        (
+            replay.summary,
+            viewer_side,
+            shared.viewer_seat.deck_recipe_name.clone(),
+            reward,
+        )
     };
 
     let viewer = MatchSummaryViewer {
@@ -1404,7 +1418,11 @@ fn replay_response(replay: crate::match_store::StoredReplay) -> axum::response::
         ReplayVisibility::Public
     };
     let match_id = replay.summary.id.clone();
-    let summary = MatchSummary::for_viewer(replay.summary.clone(), crate::match_session::Team::Player, replay.summary.player_deck_name.clone());
+    let summary = MatchSummary::for_viewer(
+        replay.summary.clone(),
+        crate::match_session::Team::Player,
+        replay.summary.player_deck_name.clone(),
+    );
     let frames = replay
         .frames
         .into_iter()

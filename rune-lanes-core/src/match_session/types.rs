@@ -591,7 +591,7 @@ pub enum MatchActionRequest {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum AiAdvanceOutcome {
+pub enum AiAdvanceOutcome {
     ActionApplied,
     PriorityPassed,
     FinishedTurn,

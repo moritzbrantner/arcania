@@ -39,8 +39,17 @@ impl SharedMatchFormat {
     }
 }
 
-impl Side {
-    pub(super) fn to_db(self) -> &'static str {
+/// Infrastructure-only SQLite representation for a domain side.
+///
+/// This is deliberately an extension trait in the backend rather than an
+/// inherent method on `rune_lanes_core::Side`: database encoding is not a game
+/// rule and must not leak into the core crate.
+pub(super) trait SideDbValue {
+    fn to_db(self) -> &'static str;
+}
+
+impl SideDbValue for Side {
+    fn to_db(self) -> &'static str {
         match self {
             Self::Player => "player",
             Self::Opponent => "opponent",
@@ -50,8 +59,13 @@ impl Side {
     }
 }
 
-impl HeroType {
-    pub(super) fn to_db(self) -> &'static str {
+/// Infrastructure-only SQLite representation for a domain hero type.
+pub(super) trait HeroTypeDbValue {
+    fn to_db(self) -> &'static str;
+}
+
+impl HeroTypeDbValue for HeroType {
+    fn to_db(self) -> &'static str {
         match self {
             Self::Runekeeper => "runekeeper",
             Self::Pyromancer => "pyromancer",

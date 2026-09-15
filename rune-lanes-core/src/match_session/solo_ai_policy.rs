@@ -8,8 +8,11 @@ use super::{
 };
 use serde::{Deserialize, Serialize};
 
+use super::{MatchError, MatchMode, MatchState, Phase, RecordedReplayFrame};
+use crate::cqrs::GameCommand;
+
 #[derive(Clone, Debug)]
-pub(crate) struct SoloAiPolicy {
+pub struct SoloAiPolicy {
     rules: Vec<SoloAiRuleId>,
 }
 
@@ -20,11 +23,11 @@ impl Default for SoloAiPolicy {
 }
 
 impl SoloAiPolicy {
-    pub(crate) fn baseline() -> Self {
+    pub fn baseline() -> Self {
         Self::new(baseline_rules())
     }
 
-    pub(crate) fn new(rules: Vec<SoloAiRuleId>) -> Self {
+    pub fn new(rules: Vec<SoloAiRuleId>) -> Self {
         Self { rules }
     }
 
@@ -33,11 +36,11 @@ impl SoloAiPolicy {
         &self.rules
     }
 
-    pub(crate) fn from_definition(definition: &AiPolicyDefinition) -> Self {
+    pub fn from_definition(definition: &AiPolicyDefinition) -> Self {
         Self::new(definition.rules.clone())
     }
 
-    pub(crate) fn from_checked_in_config() -> Result<Self, AiPolicyConfigError> {
+    pub fn from_checked_in_config() -> Result<Self, AiPolicyConfigError> {
         let config = AiPolicyConfig::load_from_default_path()?;
         config.default_policy()
     }
@@ -54,7 +57,7 @@ impl SoloAiPolicy {
 
     fn evaluate_rule(&self, rule: SoloAiRuleId, view: &SoloAiView) -> Option<SoloAiActionIntent> {
         match rule {
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             SoloAiRuleId::InvalidAttack => Some(SoloAiActionIntent::Attack {
                 attacker_id: "missing-attacker".to_string(),
                 target_id: "missing-target".to_string(),
@@ -416,10 +419,120 @@ pub(super) enum SoloAiActionIntent {
     },
 }
 
+impl MatchState {
+    /// Resolve exactly one deterministic solo-AI step into a concrete domain
+    /// command. `None` means the policy has no further card-play action and
+    /// the caller should record `AiTurnFinished` instead.
+    pub fn next_solo_ai_game_command(&self, side: Side) -> Result<Option<GameCommand>, MatchError> {
+        let policy = SoloAiPolicy::default();
+        self.next_solo_ai_game_command_with_policy(side, &policy)
+    }
+
+    pub fn next_solo_ai_game_command_with_policy(
+        &self,
+        side: Side,
+        policy: &SoloAiPolicy,
+    ) -> Result<Option<GameCommand>, MatchError> {
+        if self.mode != MatchMode::Solo {
+            return Err(MatchError::AiUnavailable);
+        }
+        if !self.action_stack.is_empty() {
+            if self.priority_side != Some(side) {
+                return Err(MatchError::NotPrioritySide);
+            }
+            return Ok(Some(GameCommand::PassPriority));
+        }
+        if self.active_side != side {
+            return Err(MatchError::AiUnavailable);
+        }
+
+        let decision = || policy.decide(&self.solo_ai_view_for_side(side));
+        match self.phase {
+            Phase::Movement => {
+                if self.side_has_legal_attack(side) {
+                    return Ok(Some(GameCommand::StartAttackPhase));
+                }
+                Ok(Some(match decision() {
+                    SoloAiDecision::TakeAction(intent @ SoloAiActionIntent::MovePiece { .. })
+                    | SoloAiDecision::TakeAction(
+                        intent @ SoloAiActionIntent::ActivateItem { .. },
+                    ) => ai_intent_game_command(intent),
+                    SoloAiDecision::TakeAction(SoloAiActionIntent::Attack { .. }) => {
+                        GameCommand::StartAttackPhase
+                    }
+                    _ => GameCommand::StartCardPlay,
+                }))
+            }
+            Phase::Attack => Ok(Some(match decision() {
+                SoloAiDecision::TakeAction(intent @ SoloAiActionIntent::Attack { .. })
+                | SoloAiDecision::TakeAction(intent @ SoloAiActionIntent::ActivateItem { .. }) => {
+                    ai_intent_game_command(intent)
+                }
+                _ => GameCommand::StartCardPlay,
+            })),
+            Phase::CardPlay => match decision() {
+                SoloAiDecision::TakeAction(intent @ SoloAiActionIntent::PlayCard { .. })
+                | SoloAiDecision::TakeAction(intent @ SoloAiActionIntent::ActivateItem { .. }) => {
+                    Ok(Some(ai_intent_game_command(intent)))
+                }
+                _ => Ok(None),
+            },
+            Phase::MatchOver => Err(MatchError::MatchOver),
+        }
+    }
+
+    pub fn finish_solo_ai_turn_recording(
+        &mut self,
+        side: Side,
+        action_index: u32,
+    ) -> Result<Vec<RecordedReplayFrame>, MatchError> {
+        if self.mode != MatchMode::Solo {
+            return Err(MatchError::AiUnavailable);
+        }
+        if self.active_side != side {
+            return Err(MatchError::AiUnavailable);
+        }
+        self.require_phase(Phase::CardPlay)?;
+        if !self.action_stack.is_empty() {
+            return Err(MatchError::StackPending);
+        }
+
+        let mut frames = Vec::new();
+        self.finish_ai_turn(side, &mut frames, Some(action_index));
+        self.truncate_log();
+        Ok(frames)
+    }
+}
+
+fn ai_intent_game_command(intent: SoloAiActionIntent) -> GameCommand {
+    match intent {
+        SoloAiActionIntent::Attack {
+            attacker_id,
+            target_id,
+        } => GameCommand::Attack {
+            attacker_id,
+            target_id,
+        },
+        SoloAiActionIntent::PlayCard { card_id, target } => {
+            GameCommand::PlayCard { card_id, target }
+        }
+        SoloAiActionIntent::MovePiece { piece_id, to } => GameCommand::MovePiece { piece_id, to },
+        SoloAiActionIntent::ActivateItem {
+            carrier_id,
+            item_id,
+            target,
+        } => GameCommand::ActivateItem {
+            carrier_id,
+            item_id,
+            target,
+        },
+    }
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub(crate) enum SoloAiRuleId {
-    #[cfg(test)]
+pub enum SoloAiRuleId {
+    #[cfg(any(test, feature = "test-support"))]
     InvalidAttack,
     InRangeAttack,
     UsefulSpell,
@@ -432,20 +545,20 @@ pub(crate) enum SoloAiRuleId {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct AiPolicyConfig {
-    pub(crate) default_policy_id: String,
-    pub(crate) policies: Vec<AiPolicyDefinition>,
+pub struct AiPolicyConfig {
+    default_policy_id: String,
+    policies: Vec<AiPolicyDefinition>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct AiPolicyDefinition {
-    pub(crate) id: String,
-    pub(crate) rules: Vec<SoloAiRuleId>,
+pub struct AiPolicyDefinition {
+    id: String,
+    rules: Vec<SoloAiRuleId>,
 }
 
 #[derive(Debug)]
-pub(crate) enum AiPolicyConfigError {
+pub enum AiPolicyConfigError {
     Io(std::io::Error),
     Json(serde_json::Error),
     MissingDefault(String),
@@ -480,22 +593,22 @@ impl From<serde_json::Error> for AiPolicyConfigError {
 }
 
 impl AiPolicyConfig {
-    pub(crate) fn load_from_default_path() -> Result<Self, AiPolicyConfigError> {
+    pub fn load_from_default_path() -> Result<Self, AiPolicyConfigError> {
         Self::load_from_path(default_policy_config_path())
     }
 
-    pub(crate) fn load_from_path(path: impl AsRef<Path>) -> Result<Self, AiPolicyConfigError> {
+    pub fn load_from_path(path: impl AsRef<Path>) -> Result<Self, AiPolicyConfigError> {
         let text = fs::read_to_string(path)?;
         Self::from_json(&text)
     }
 
-    pub(crate) fn from_json(text: &str) -> Result<Self, AiPolicyConfigError> {
+    pub fn from_json(text: &str) -> Result<Self, AiPolicyConfigError> {
         let config: Self = serde_json::from_str(text)?;
         config.validate()?;
         Ok(config)
     }
 
-    pub(crate) fn validate(&self) -> Result<(), AiPolicyConfigError> {
+    pub fn validate(&self) -> Result<(), AiPolicyConfigError> {
         let mut ids = HashSet::new();
         for policy in &self.policies {
             if !ids.insert(policy.id.clone()) {
@@ -517,18 +630,18 @@ impl AiPolicyConfig {
         Ok(())
     }
 
-    pub(crate) fn default_policy(&self) -> Result<SoloAiPolicy, AiPolicyConfigError> {
+    pub fn default_policy(&self) -> Result<SoloAiPolicy, AiPolicyConfigError> {
         let policy = self
             .policy(&self.default_policy_id)
             .ok_or_else(|| AiPolicyConfigError::MissingDefault(self.default_policy_id.clone()))?;
         Ok(SoloAiPolicy::from_definition(policy))
     }
 
-    pub(crate) fn policy(&self, id: &str) -> Option<&AiPolicyDefinition> {
+    pub fn policy(&self, id: &str) -> Option<&AiPolicyDefinition> {
         self.policies.iter().find(|policy| policy.id == id)
     }
 
-    pub(crate) fn set_default_policy_id(&mut self, id: &str) -> Result<(), AiPolicyConfigError> {
+    pub fn set_default_policy_id(&mut self, id: &str) -> Result<(), AiPolicyConfigError> {
         if self.policy(id).is_none() {
             return Err(AiPolicyConfigError::MissingDefault(id.to_string()));
         }
@@ -537,7 +650,7 @@ impl AiPolicyConfig {
     }
 }
 
-pub(crate) fn default_policy_config_path() -> &'static str {
+pub fn default_policy_config_path() -> &'static str {
     if Path::new("backend/config/ai-policies.json").exists() {
         "backend/config/ai-policies.json"
     } else {
