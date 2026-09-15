@@ -76,7 +76,26 @@ fn execute_game_request(
             .execute_compatibility(game, CommandContext { side, action_index })
             .map(|outcome| outcome.replay_frames),
         Err(CommandConversionError::AdvanceAiIsApplicationOrchestration) => {
-            game.apply_action_recording_for_side(side, MatchActionRequest::AdvanceAi, action_index)
+            // AI scheduling is application orchestration. Resolve exactly one
+            // deterministic policy step to a concrete core command so the
+            // authoritative mutation still crosses the same command boundary
+            // as a player action. The checked-in default policy currently
+            // matches this baseline order, avoiding cwd/config-dependent core
+            // evolution while the event-sourcing slice adds policy/version
+            // metadata around orchestration.
+            let policy = crate::match_session::SoloAiPolicy::baseline();
+            match game.next_solo_ai_game_command_with_policy(Side::Opponent, &policy)? {
+                Some(command) => command
+                    .execute_compatibility(
+                        game,
+                        CommandContext {
+                            side: Side::Opponent,
+                            action_index,
+                        },
+                    )
+                    .map(|outcome| outcome.replay_frames),
+                None => game.finish_solo_ai_turn_recording(Side::Opponent, action_index),
+            }
         }
     }
 }
