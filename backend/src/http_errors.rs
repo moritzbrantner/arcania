@@ -11,8 +11,12 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 
 pub(crate) fn store_error_response(error: MatchStoreError) -> axum::response::Response {
+    let status = match error {
+        MatchStoreError::VersionConflict { .. } => StatusCode::CONFLICT,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    };
     (
-        StatusCode::INTERNAL_SERVER_ERROR,
+        status,
         Json(ApiError {
             message: error.to_string(),
         }),
