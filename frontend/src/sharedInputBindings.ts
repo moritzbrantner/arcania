@@ -7,7 +7,7 @@ export const INPUT_BINDINGS_BUNDLE_URL =
 
 const ACTION_PREFIX = "runeLanes.";
 
-type SharedDispatch = {
+export type SharedDispatch = {
   action: string;
   phase: "press" | "repeat" | "release";
 };
@@ -71,6 +71,10 @@ export function sharedHotkeyRegistry(hotkeys: HotkeyBinding[], handlers: HotkeyH
   };
 }
 
+export function sharedCommandIdForDispatch(dispatch: SharedDispatch): HotkeyCommandId | null {
+  return dispatch.phase === "release" ? null : commandIdForAction(dispatch.action);
+}
+
 export function attachSharedHotkeyRuntime(hotkeys: HotkeyBinding[], handlers: HotkeyHandlers) {
   let disposed = false;
   let detachRuntime = attachCompatibilityHotkeyRuntime(hotkeys, handlers);
@@ -88,12 +92,10 @@ export function attachSharedHotkeyRuntime(hotkeys: HotkeyBinding[], handlers: Ho
         getActiveContexts: () => new Set(["runeLanes"]),
         consumePolicy: "never",
         onDispatch: (dispatch) => {
-          if (dispatch.phase === "release") {
-            return;
+          const commandId = sharedCommandIdForDispatch(dispatch);
+          if (commandId) {
+            handledCurrentKeydown = handlers[commandId]?.() ?? false;
           }
-
-          const commandId = commandIdForAction(dispatch.action);
-          handledCurrentKeydown = commandId ? (handlers[commandId]?.() ?? false) : false;
         },
       });
 
