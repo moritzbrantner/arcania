@@ -17,8 +17,8 @@ jobs:
         with:
           ref: adopt-settings-input-bindings
       - uses: dtolnay/rust-toolchain@1.85
-      - name: Regenerate lockfile
-        run: cargo generate-lockfile
+      - name: Resolve manifest against existing lockfile
+        run: cargo metadata --format-version 1 > /dev/null
       - name: Commit generated lockfile
         shell: bash
         run: |
@@ -29,5 +29,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Cargo.lock
-          git commit -m "Regenerate Cargo lockfile"
+          git commit -m "Update Cargo lockfile for settings-core"
           git push origin HEAD:adopt-settings-input-bindings
