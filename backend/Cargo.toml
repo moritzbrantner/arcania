@@ -14,6 +14,7 @@ rune-lanes-core.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+settings-core.workspace = true
 tokio.workspace = true
 tower.workspace = true
 tower-http.workspace = true

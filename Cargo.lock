@@ -100,6 +100,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "settings-core",
  "tokio",
  "tower",
  "tower-http",
@@ -712,6 +713,16 @@ dependencies = [
  "itoa",
  "ryu",
  "serde",
+]
+
+[[package]]
+name = "settings-core"
+version = "0.1.0"
+source = "git+https://github.com/moritzbrantner/settings?rev=da2f9c2eaa1ad0633ea787a03023d87daed6902a#da2f9c2eaa1ad0633ea787a03023d87daed6902a"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]

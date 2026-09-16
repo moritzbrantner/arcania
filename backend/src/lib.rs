@@ -28,6 +28,7 @@ pub(crate) mod preferences;
     reason = "progression contains a tested staged hero-appearance API that is not yet wired to production routes"
 )]
 pub(crate) mod progression;
+pub(crate) mod settings_foundation;
 
 pub(crate) use http_types::*;
 
