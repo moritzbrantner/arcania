@@ -1,14 +1,17 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use settings_core::SettingsRegistry;
 use tokio::sync::broadcast;
 
 use crate::match_store::SqliteMatchStore;
+use crate::settings_foundation::settings_registry;
 
 pub(crate) type SharedState = Arc<AppState>;
 
 pub(crate) struct AppState {
     pub(crate) store: Mutex<SqliteMatchStore>,
+    _settings_registry: SettingsRegistry,
     live_matches: Mutex<HashMap<String, broadcast::Sender<()>>>,
 }
 
@@ -16,6 +19,7 @@ impl AppState {
     pub(crate) fn new(store: SqliteMatchStore) -> Self {
         Self {
             store: Mutex::new(store),
+            _settings_registry: settings_registry(),
             live_matches: Mutex::new(HashMap::new()),
         }
     }
