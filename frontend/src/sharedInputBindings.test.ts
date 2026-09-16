@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { HotkeyHandlers } from "./hotkeyRuntime";
-import { sharedHotkeyRegistry } from "./sharedInputBindings";
+import { sharedCommandIdForDispatch, sharedHotkeyRegistry } from "./sharedInputBindings";
 import type { HotkeyBinding } from "./types";
 
 const hotkeys: HotkeyBinding[] = [
@@ -48,5 +48,17 @@ describe("sharedHotkeyRegistry", () => {
 
     expect(registry.actions).toHaveLength(1);
     expect(registry.actions[0]?.id).toBe("runeLanes.openSettings");
+  });
+
+  it("executes both initial and repeat keydown dispatches but not releases", () => {
+    expect(
+      sharedCommandIdForDispatch({ action: "runeLanes.cursorNorthwest", phase: "press" }),
+    ).toBe("cursorNorthwest");
+    expect(
+      sharedCommandIdForDispatch({ action: "runeLanes.cursorNorthwest", phase: "repeat" }),
+    ).toBe("cursorNorthwest");
+    expect(
+      sharedCommandIdForDispatch({ action: "runeLanes.cursorNorthwest", phase: "release" }),
+    ).toBeNull();
   });
 });
