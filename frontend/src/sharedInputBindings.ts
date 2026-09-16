@@ -85,48 +85,71 @@ export function attachSharedHotkeyRuntime(hotkeys: HotkeyBinding[], handlers: Ho
         return;
       }
 
-      const shared = module as SharedInputBindingsModule;
-      let handledCurrentKeydown = false;
-      const controller = new shared.InputRuntimeController({
-        registry: sharedHotkeyRegistry(hotkeys, handlers),
-        getActiveContexts: () => new Set(["runeLanes"]),
-        consumePolicy: "never",
-        onDispatch: (dispatch) => {
-          const commandId = sharedCommandIdForDispatch(dispatch);
-          if (commandId) {
-            handledCurrentKeydown = handlers[commandId]?.() ?? false;
+      let detachSharedRuntime: (() => void) | null = null;
+      let consumeHandledKeydown: ((event: KeyboardEvent) => void) | null = null;
+
+      try {
+        const shared = module as SharedInputBindingsModule;
+        let handledCurrentKeydown = false;
+        const controller = new shared.InputRuntimeController({
+          registry: sharedHotkeyRegistry(hotkeys, handlers),
+          getActiveContexts: () => new Set(["runeLanes"]),
+          consumePolicy: "never",
+          onDispatch: (dispatch) => {
+            const commandId = sharedCommandIdForDispatch(dispatch);
+            if (commandId) {
+              handledCurrentKeydown = handlers[commandId]?.() ?? false;
+            }
+          },
+        });
+
+        // Attach the shared runtime before removing the compatibility listener. An
+        // incompatible Pages bundle can fail during initialization even after the
+        // module itself imported successfully.
+        detachSharedRuntime = shared.attachKeyboardRuntime(controller, {
+          ignoreTextEntry: true,
+          mode: "logical",
+          resetOnBlur: true,
+          resetOnHidden: true,
+          resetOnDetach: true,
+        });
+
+        // The shared runtime currently decides consumption before the consumer callback
+        // can report whether an action was actually handled. Preserve Rune Lanes' old
+        // contract by letting the shared resolver dispatch with consumePolicy=never and
+        // applying preventDefault only after a handler returns true.
+        consumeHandledKeydown = (event: KeyboardEvent) => {
+          if (handledCurrentKeydown) {
+            event.preventDefault();
           }
-        },
-      });
+          handledCurrentKeydown = false;
+        };
+        window.addEventListener("keydown", consumeHandledKeydown);
 
-      // Keep the existing listener live until the shared module is ready so an outage,
-      // CSP rule, or offline session cannot disable every shortcut. Once the shared
-      // runtime is attached it is authoritative; this fallback is no longer active.
-      detachRuntime();
-      const detachSharedRuntime = shared.attachKeyboardRuntime(controller, {
-        ignoreTextEntry: true,
-        mode: "logical",
-        resetOnBlur: true,
-        resetOnHidden: true,
-        resetOnDetach: true,
-      });
-
-      // The shared runtime currently decides consumption before the consumer callback
-      // can report whether an action was actually handled. Preserve Rune Lanes' old
-      // contract by letting the shared resolver dispatch with consumePolicy=never and
-      // applying preventDefault only after a handler returns true.
-      const consumeHandledKeydown = (event: KeyboardEvent) => {
-        if (handledCurrentKeydown) {
-          event.preventDefault();
+        if (disposed) {
+          detachSharedRuntime();
+          window.removeEventListener("keydown", consumeHandledKeydown);
+          return;
         }
-        handledCurrentKeydown = false;
-      };
-      window.addEventListener("keydown", consumeHandledKeydown);
 
-      detachRuntime = () => {
-        detachSharedRuntime();
-        window.removeEventListener("keydown", consumeHandledKeydown);
-      };
+        const detachCompatibilityRuntime = detachRuntime;
+        detachRuntime = () => {
+          detachSharedRuntime?.();
+          if (consumeHandledKeydown) {
+            window.removeEventListener("keydown", consumeHandledKeydown);
+          }
+        };
+        detachCompatibilityRuntime();
+      } catch (error) {
+        detachSharedRuntime?.();
+        if (consumeHandledKeydown) {
+          window.removeEventListener("keydown", consumeHandledKeydown);
+        }
+        console.error(
+          "Failed to initialize shared input-bindings runtime; keeping compatibility hotkeys",
+          error,
+        );
+      }
     },
     (error) => {
       console.error(
