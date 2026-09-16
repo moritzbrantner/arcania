@@ -1,5 +1,5 @@
 import { HOTKEY_COMMANDS, normalizeHotkeysWithDefaults } from "./hotkeys";
-import type { HotkeyHandlers } from "./hotkeyRuntime";
+import { dispatchHotkeyEvent, type HotkeyHandlers } from "./hotkeyRuntime";
 import type { HotkeyBinding, HotkeyCommandId } from "./types";
 
 export const INPUT_BINDINGS_BUNDLE_URL =
@@ -15,7 +15,7 @@ type SharedDispatch = {
 type RuntimeControllerOptions = {
   registry: ReturnType<typeof sharedHotkeyRegistry>;
   getActiveContexts: () => Set<string>;
-  consumePolicy: "dispatched";
+  consumePolicy: "never";
   onDispatch: (dispatch: SharedDispatch) => void;
 };
 
@@ -73,7 +73,7 @@ export function sharedHotkeyRegistry(hotkeys: HotkeyBinding[], handlers: HotkeyH
 
 export function attachSharedHotkeyRuntime(hotkeys: HotkeyBinding[], handlers: HotkeyHandlers) {
   let disposed = false;
-  let detachRuntime = () => {};
+  let detachRuntime = attachCompatibilityHotkeyRuntime(hotkeys, handlers);
 
   const ready = import(/* @vite-ignore */ INPUT_BINDINGS_BUNDLE_URL).then(
     (module) => {
@@ -82,32 +82,55 @@ export function attachSharedHotkeyRuntime(hotkeys: HotkeyBinding[], handlers: Ho
       }
 
       const shared = module as SharedInputBindingsModule;
+      let handledCurrentKeydown = false;
       const controller = new shared.InputRuntimeController({
         registry: sharedHotkeyRegistry(hotkeys, handlers),
         getActiveContexts: () => new Set(["runeLanes"]),
-        consumePolicy: "dispatched",
+        consumePolicy: "never",
         onDispatch: (dispatch) => {
           if (dispatch.phase !== "press") {
             return;
           }
 
           const commandId = commandIdForAction(dispatch.action);
-          if (commandId) {
-            handlers[commandId]?.();
-          }
+          handledCurrentKeydown = commandId ? (handlers[commandId]?.() ?? false) : false;
         },
       });
 
-      detachRuntime = shared.attachKeyboardRuntime(controller, {
+      // Keep the existing listener live until the shared module is ready so an outage,
+      // CSP rule, or offline session cannot disable every shortcut. Once the shared
+      // runtime is attached it is authoritative; this fallback is no longer active.
+      detachRuntime();
+      const detachSharedRuntime = shared.attachKeyboardRuntime(controller, {
         ignoreTextEntry: true,
         mode: "logical",
         resetOnBlur: true,
         resetOnHidden: true,
         resetOnDetach: true,
       });
+
+      // The shared runtime currently decides consumption before the consumer callback
+      // can report whether an action was actually handled. Preserve Rune Lanes' old
+      // contract by letting the shared resolver dispatch with consumePolicy=never and
+      // applying preventDefault only after a handler returns true.
+      const consumeHandledKeydown = (event: KeyboardEvent) => {
+        if (handledCurrentKeydown) {
+          event.preventDefault();
+        }
+        handledCurrentKeydown = false;
+      };
+      window.addEventListener("keydown", consumeHandledKeydown);
+
+      detachRuntime = () => {
+        detachSharedRuntime();
+        window.removeEventListener("keydown", consumeHandledKeydown);
+      };
     },
     (error) => {
-      console.error("Failed to load shared input-bindings runtime", error);
+      console.error(
+        "Failed to load shared input-bindings runtime; keeping compatibility hotkeys",
+        error,
+      );
     },
   );
 
@@ -118,6 +141,14 @@ export function attachSharedHotkeyRuntime(hotkeys: HotkeyBinding[], handlers: Ho
       detachRuntime();
     },
   };
+}
+
+function attachCompatibilityHotkeyRuntime(hotkeys: HotkeyBinding[], handlers: HotkeyHandlers) {
+  const onKeyDown = (event: KeyboardEvent) => {
+    dispatchHotkeyEvent(event, hotkeys, handlers);
+  };
+  window.addEventListener("keydown", onKeyDown);
+  return () => window.removeEventListener("keydown", onKeyDown);
 }
 
 function actionId(commandId: HotkeyCommandId) {
@@ -142,5 +173,5 @@ function normalizeLogicalKey(key: string) {
   if (key === "Esc") {
     return "Escape";
   }
-  return key.length === 1 ? key.toLocaleLowerCase() : key;
+  return key.length === 1 ? key.toLowerCase() : key;
 }
