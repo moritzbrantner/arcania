@@ -29,6 +29,18 @@ describe("sharedHotkeyRegistry", () => {
     });
   });
 
+  it("normalizes printable keys without depending on the browser locale", () => {
+    const registry = sharedHotkeyRegistry(
+      [{ commandId: "openCardInfo", binding: "I" }],
+      { openCardInfo: () => true },
+    );
+
+    expect(registry.actions[0]?.defaults[0]?.sequence[0]?.key).toEqual({
+      kind: "logical",
+      value: "i",
+    });
+  });
+
   it("registers only actions owned by the active consumer surface", () => {
     const registry = sharedHotkeyRegistry(hotkeys, {
       openSettings: () => true,
