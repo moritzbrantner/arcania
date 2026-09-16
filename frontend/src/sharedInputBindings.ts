@@ -9,7 +9,7 @@ const ACTION_PREFIX = "runeLanes.";
 
 type SharedDispatch = {
   action: string;
-  phase: string;
+  phase: "press" | "repeat" | "release";
 };
 
 type RuntimeControllerOptions = {
@@ -88,7 +88,7 @@ export function attachSharedHotkeyRuntime(hotkeys: HotkeyBinding[], handlers: Ho
         getActiveContexts: () => new Set(["runeLanes"]),
         consumePolicy: "never",
         onDispatch: (dispatch) => {
-          if (dispatch.phase !== "press") {
+          if (dispatch.phase === "release") {
             return;
           }
 
