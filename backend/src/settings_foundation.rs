@@ -18,16 +18,8 @@ pub(crate) fn settings_registry() -> SettingsRegistry {
             &["system", "dark", "light", "highContrast"],
         ),
         choice_setting(MOTION_ID, "system", &["system", "reduced", "full"]),
-        choice_setting(
-            ANIMATION_SPEED_ID,
-            "normal",
-            &["slow", "normal", "fast"],
-        ),
-        choice_setting(
-            BOARD_SCALE_ID,
-            "normal",
-            &["compact", "normal", "large"],
-        ),
+        choice_setting(ANIMATION_SPEED_ID, "normal", &["slow", "normal", "fast"]),
+        choice_setting(BOARD_SCALE_ID, "normal", &["compact", "normal", "large"]),
         choice_setting(BOARD_VISUAL_MODE_ID, "3d", &["2d", "3d"]),
     ] {
         registry
@@ -90,13 +82,9 @@ mod tests {
             ANIMATION_SPEED_ID,
             &SettingValue::Choice("normal".to_owned()),
         )));
-        assert!(defaults.contains(&(
-            BOARD_SCALE_ID,
-            &SettingValue::Choice("normal".to_owned()),
-        )));
-        assert!(defaults.contains(&(
-            BOARD_VISUAL_MODE_ID,
-            &SettingValue::Choice("3d".to_owned()),
-        )));
+        assert!(defaults.contains(&(BOARD_SCALE_ID, &SettingValue::Choice("normal".to_owned()),)));
+        assert!(
+            defaults.contains(&(BOARD_VISUAL_MODE_ID, &SettingValue::Choice("3d".to_owned()),))
+        );
     }
 }
