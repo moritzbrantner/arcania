@@ -3,37 +3,11 @@ use settings_core::{
     SettingsRegistry,
 };
 
-use crate::identity::BoardVisualMode;
-use crate::preferences::{
-    AnimationSpeed, BoardScale, MotionPreference, PreferenceTheme, PreferencesError,
-    UpdatePreferencesRequest,
-};
-
 const THEME_ID: &str = "appearance.theme";
 const MOTION_ID: &str = "accessibility.motion";
 const ANIMATION_SPEED_ID: &str = "appearance.animationSpeed";
 const BOARD_SCALE_ID: &str = "appearance.boardScale";
 const BOARD_VISUAL_MODE_ID: &str = "appearance.boardVisualMode";
-
-pub(crate) fn validate_preferences(
-    request: &UpdatePreferencesRequest,
-) -> Result<(), PreferencesError> {
-    let registry = settings_registry();
-    validate_choice(&registry, THEME_ID, theme_value(&request.theme))?;
-    validate_choice(&registry, MOTION_ID, motion_value(&request.motion))?;
-    validate_choice(
-        &registry,
-        ANIMATION_SPEED_ID,
-        animation_speed_value(&request.animation_speed),
-    )?;
-    validate_choice(&registry, BOARD_SCALE_ID, board_scale_value(&request.board_scale))?;
-    validate_choice(
-        &registry,
-        BOARD_VISUAL_MODE_ID,
-        board_visual_mode_value(request.board_visual_mode),
-    )?;
-    Ok(())
-}
 
 pub(crate) fn settings_registry() -> SettingsRegistry {
     let mut registry = SettingsRegistry::new();
@@ -76,62 +50,6 @@ fn choice_setting(id: &str, default: &str, options: &[&str]) -> SettingDefinitio
     }
 }
 
-fn validate_choice(
-    registry: &SettingsRegistry,
-    id: &str,
-    value: &str,
-) -> Result<(), PreferencesError> {
-    let id = SettingId::new(id).map_err(|error| {
-        PreferencesError::Validation(format!("Invalid Rune Lanes setting id: {error}"))
-    })?;
-    let definition = registry.get(&id).ok_or_else(|| {
-        PreferencesError::Validation(format!("Unknown Rune Lanes setting: {id}"))
-    })?;
-    definition
-        .validate_value(&SettingValue::Choice(value.to_owned()))
-        .map_err(|error| PreferencesError::Validation(format!("Invalid setting {id}: {error}")))
-}
-
-fn theme_value(theme: &PreferenceTheme) -> &'static str {
-    match theme {
-        PreferenceTheme::System => "system",
-        PreferenceTheme::Dark => "dark",
-        PreferenceTheme::Light => "light",
-        PreferenceTheme::HighContrast => "highContrast",
-    }
-}
-
-fn motion_value(motion: &MotionPreference) -> &'static str {
-    match motion {
-        MotionPreference::System => "system",
-        MotionPreference::Reduced => "reduced",
-        MotionPreference::Full => "full",
-    }
-}
-
-fn animation_speed_value(speed: &AnimationSpeed) -> &'static str {
-    match speed {
-        AnimationSpeed::Slow => "slow",
-        AnimationSpeed::Normal => "normal",
-        AnimationSpeed::Fast => "fast",
-    }
-}
-
-fn board_scale_value(scale: &BoardScale) -> &'static str {
-    match scale {
-        BoardScale::Compact => "compact",
-        BoardScale::Normal => "normal",
-        BoardScale::Large => "large",
-    }
-}
-
-fn board_visual_mode_value(mode: BoardVisualMode) -> &'static str {
-    match mode {
-        BoardVisualMode::TwoD => "2d",
-        BoardVisualMode::ThreeD => "3d",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -159,16 +77,26 @@ mod tests {
     }
 
     #[test]
-    fn existing_preference_values_conform_to_shared_settings_definitions() {
-        let request = UpdatePreferencesRequest {
-            theme: PreferenceTheme::HighContrast,
-            motion: MotionPreference::Reduced,
-            animation_speed: AnimationSpeed::Fast,
-            board_scale: BoardScale::Large,
-            board_visual_mode: BoardVisualMode::TwoD,
-            hotkeys: Vec::new(),
-        };
+    fn registry_preserves_current_preference_defaults() {
+        let registry = settings_registry();
+        let defaults = registry
+            .iter()
+            .map(|(id, definition)| (id.as_str(), &definition.default))
+            .collect::<Vec<_>>();
 
-        validate_preferences(&request).expect("existing preference values should be valid");
+        assert!(defaults.contains(&(THEME_ID, &SettingValue::Choice("system".to_owned()))));
+        assert!(defaults.contains(&(MOTION_ID, &SettingValue::Choice("system".to_owned()))));
+        assert!(defaults.contains(&(
+            ANIMATION_SPEED_ID,
+            &SettingValue::Choice("normal".to_owned()),
+        )));
+        assert!(defaults.contains(&(
+            BOARD_SCALE_ID,
+            &SettingValue::Choice("normal".to_owned()),
+        )));
+        assert!(defaults.contains(&(
+            BOARD_VISUAL_MODE_ID,
+            &SettingValue::Choice("3d".to_owned()),
+        )));
     }
 }
