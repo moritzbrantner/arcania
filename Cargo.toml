@@ -16,6 +16,7 @@ rune-lanes-core = { path = "rune-lanes-core" }
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+settings-core = { git = "https://github.com/moritzbrantner/settings", rev = "da2f9c2eaa1ad0633ea787a03023d87daed6902a" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "fs"] }
