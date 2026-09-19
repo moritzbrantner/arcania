@@ -2,7 +2,7 @@ import type { HeroAppearanceAssignment, HeroType, Side } from "./types";
 
 export type HeroAppearanceId = string;
 
-export const HERO_APPEARANCE_STORAGE_PREFIX = "rune-lanes-hero-appearance";
+export const HERO_APPEARANCE_STORAGE_PREFIX = "arcania-hero-appearance";
 
 export function baseHeroAppearanceId(heroType: HeroType): HeroAppearanceId {
   return `${heroType}-base`;
