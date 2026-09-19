@@ -15,10 +15,10 @@ import {
 
 describe("shared lobby model", () => {
   it("names per-match session storage keys", () => {
-    expect(sharedHeroStorageKey("rl-1")).toBe("rune-lanes-hero:rl-1");
-    expect(sharedRuneStorageKey("rl-1")).toBe("rune-lanes-runes:rl-1");
-    expect(sharedDeckChoiceStorageKey("rl-1")).toBe("rune-lanes-deck-choice:rl-1");
-    expect(sharedInviteStorageKey("rl-1")).toBe("rune-lanes-invite:rl-1");
+    expect(sharedHeroStorageKey("arc-1")).toBe("arcania-hero:arc-1");
+    expect(sharedRuneStorageKey("arc-1")).toBe("arcania-runes:arc-1");
+    expect(sharedDeckChoiceStorageKey("arc-1")).toBe("arcania-deck-choice:arc-1");
+    expect(sharedInviteStorageKey("arc-1")).toBe("arcania-invite:arc-1");
   });
 
   it("keeps the existing lobby action labels", () => {
@@ -60,7 +60,7 @@ describe("shared lobby model", () => {
 
 function shared(overrides: Partial<SharedMatchResponse>): SharedMatchResponse {
   return {
-    matchId: "rl-1",
+    matchId: "arc-1",
     mode: "shared",
     status: "setup",
     viewerSide: "player",
