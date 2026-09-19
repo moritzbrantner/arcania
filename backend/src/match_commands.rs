@@ -2,8 +2,8 @@ use std::error::Error;
 use std::fmt;
 
 use rand::random;
-use rune_lanes_core::cqrs::{CommandConversionError, GameCommand};
-use rune_lanes_core::event_sourcing::{
+use arcania_core::cqrs::{CommandConversionError, GameCommand};
+use arcania_core::event_sourcing::{
     CommandDecision, CommandId, CommandMetadata, EventSourcedMatch, EventSourcingError,
 };
 
@@ -329,7 +329,7 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_nanos())
             .unwrap_or(0);
-        std::env::temp_dir().join(format!("rune-lanes-match-commands-{name}-{suffix}.sqlite3"))
+        std::env::temp_dir().join(format!("arcania-match-commands-{name}-{suffix}.sqlite3"))
     }
 
     #[test]
