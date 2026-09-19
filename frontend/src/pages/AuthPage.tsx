@@ -43,7 +43,7 @@ export function AuthPage({
     <main className="app-shell picker-shell">
       <section className="match-picker auth-panel" aria-label="Account access">
         <div>
-          <p className="eyebrow">Rune Lanes</p>
+          <p className="eyebrow">Arcania</p>
           <h1>{mode === "register" ? "Create Account" : "Sign In"}</h1>
         </div>
         <form className="auth-form" onSubmit={handleSubmit}>
