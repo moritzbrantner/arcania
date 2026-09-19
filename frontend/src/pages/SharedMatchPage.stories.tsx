@@ -8,13 +8,13 @@ const meta = {
   component: SharedMatchPage,
   decorators: [withMockApi()],
   args: {
-    matchId: "rl-shared",
+    matchId: "arc-shared",
     seatToken: "player-seat",
     currentUser: storyAccount,
     onNavigate: fn(),
     onSignOut: fn(),
     allowSignOut: true,
-    loginNextPath: "/match/rl-shared/player-seat",
+    loginNextPath: "/match/arc-shared/player-seat",
     visualPreferences: storyVisualPreferences,
   },
 } satisfies Meta<typeof SharedMatchPage>;
