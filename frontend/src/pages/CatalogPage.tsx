@@ -72,7 +72,7 @@ export function CatalogPage({ onNavigate }: { onNavigate: (to: string) => void }
       <section className="catalog-layout" aria-label="Card catalog">
         <header className="top-bar catalog-header">
           <div>
-            <p className="eyebrow">Rune Lanes</p>
+            <p className="eyebrow">Arcania</p>
             <h1>Card Catalog</h1>
           </div>
           <div className="actions">
