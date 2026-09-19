@@ -1,6 +1,6 @@
-# Rune Lanes
+# Arcania
 
-Rune Lanes is a card/board game hybrid about heroes summoning units and casting spells on a shared hex arena.
+Arcania is a card/board game hybrid about heroes summoning units and casting spells on a shared hex arena.
 
 ## Language
 
@@ -113,7 +113,7 @@ A built-in Hero identity rule active in a match without spending cards, runes, o
 _Avoid_: base skill, innate perk
 
 **Radius-3 arena**:
-The 37-hex board used by the first hex version of Rune Lanes.
+The 37-hex board used by the first hex version of Arcania.
 _Avoid_: lane board
 
 **Starter deck**:
@@ -133,7 +133,7 @@ The set of named deck recipes owned by an account.
 _Avoid_: collection
 
 **Legal deck recipe**:
-A deck recipe that satisfies Rune Lanes deck-building rules and can be used to start a match.
+A deck recipe that satisfies Arcania deck-building rules and can be used to start a match.
 _Avoid_: valid deck
 
 **Draft deck recipe**:
@@ -141,7 +141,7 @@ A saved deck recipe that does not currently satisfy deck-building rules.
 _Avoid_: invalid deck
 
 **System deck recipe**:
-A predefined legal recipe shipped by Rune Lanes, used for starter/default play and AI opponent choices.
+A predefined legal recipe shipped by Arcania, used for starter/default play and AI opponent choices.
 _Avoid_: AI-only deck
 
 **Match loadout**:
@@ -369,7 +369,7 @@ One teaching beat inside a tutorial scene, consisting of a paused concept introd
 _Avoid_: tooltip, prompt
 
 **Rules wiki**:
-A public player-facing reference surface that explains Rune Lanes match rules and core mechanics through linked topic pages.
+A public player-facing reference surface that explains Arcania match rules and core mechanics through linked topic pages.
 _Avoid_: help center, docs site, internal rulebook
 
 **Wiki topic**:
