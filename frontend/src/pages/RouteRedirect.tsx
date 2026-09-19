@@ -6,5 +6,5 @@ export function RouteRedirect({ to, onNavigate }: { to: string; onNavigate: (to:
     onNavigate(to);
   }, [onNavigate, to]);
 
-  return <ShellMessage title="Rune Lanes" message="Opening account" />;
+  return <ShellMessage title="Arcania" message="Opening account" />;
 }
