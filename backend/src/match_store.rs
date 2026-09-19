@@ -26,7 +26,7 @@ mod shared_matches;
 use db_values::*;
 use ids::*;
 
-pub const MATCH_DATABASE_PATH_ENV: &str = "RUNE_LANES_DB_PATH";
+pub const MATCH_DATABASE_PATH_ENV: &str = "ARCANIA_DB_PATH";
 
 type ReadySharedLoadouts = (
     HeroType,
@@ -131,11 +131,11 @@ pub enum MatchStoreError {
     Identity(identity::IdentityError),
     Deck(DeckLibraryError),
     Progression(progression::ProgressionError),
-    EventSourcing(rune_lanes_core::event_sourcing::EventSourcingError),
+    EventSourcing(arcania_core::event_sourcing::EventSourcingError),
     EventStore(String),
     VersionConflict {
-        expected: rune_lanes_core::event_sourcing::AggregateVersion,
-        actual: rune_lanes_core::event_sourcing::AggregateVersion,
+        expected: arcania_core::event_sourcing::AggregateVersion,
+        actual: arcania_core::event_sourcing::AggregateVersion,
     },
 }
 
@@ -197,8 +197,8 @@ impl From<progression::ProgressionError> for MatchStoreError {
     }
 }
 
-impl From<rune_lanes_core::event_sourcing::EventSourcingError> for MatchStoreError {
-    fn from(error: rune_lanes_core::event_sourcing::EventSourcingError) -> Self {
+impl From<arcania_core::event_sourcing::EventSourcingError> for MatchStoreError {
+    fn from(error: arcania_core::event_sourcing::EventSourcingError) -> Self {
         Self::EventSourcing(error)
     }
 }
@@ -1481,7 +1481,7 @@ pub fn database_path_from_environment() -> PathBuf {
 pub fn database_path_from_override(value: Option<OsString>) -> PathBuf {
     value
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("data/rune-lanes.sqlite3"))
+        .unwrap_or_else(|| PathBuf::from("data/arcania.sqlite3"))
 }
 
 #[cfg(test)]
