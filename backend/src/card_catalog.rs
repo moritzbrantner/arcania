@@ -2,7 +2,7 @@ use serde::Serialize;
 
 use crate::deck_library::starter_recipe_count;
 use crate::match_session::{CardKind, Rarity};
-pub use rune_lanes_core::{card_template_by_id, starter_card_templates};
+pub use arcania_core::{card_template_by_id, starter_card_templates};
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
