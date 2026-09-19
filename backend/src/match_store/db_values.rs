@@ -42,7 +42,7 @@ impl SharedMatchFormat {
 /// Infrastructure-only SQLite representation for a domain side.
 ///
 /// This is deliberately an extension trait in the backend rather than an
-/// inherent method on `rune_lanes_core::Side`: database encoding is not a game
+/// inherent method on `arcania_core::Side`: database encoding is not a game
 /// rule and must not leak into the core crate.
 pub(super) trait SideDbValue {
     fn to_db(self) -> &'static str;
