@@ -15,7 +15,7 @@ pub(crate) mod http_errors;
 pub(crate) mod http_types;
 #[allow(
     clippy::format_collect,
-    reason = "identity token formatting is existing backend behavior outside the Rune Lanes extraction"
+    reason = "identity token formatting is existing backend behavior outside the Arcania extraction"
 )]
 pub(crate) mod identity;
 pub(crate) mod loadout_resolution;
