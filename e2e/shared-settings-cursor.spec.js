@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-const AUTH_TOKEN_STORAGE_KEY = "rune-lanes-auth-token";
-const BOARD_VISUAL_MODE_STORAGE_KEY = "rune-lanes-board-visual-mode";
-const MATCH_CHROME_STORAGE_KEY = "rune-lanes-match-chrome-minimized";
+const AUTH_TOKEN_STORAGE_KEY = "arcania-auth-token";
+const BOARD_VISUAL_MODE_STORAGE_KEY = "arcania-board-visual-mode";
+const MATCH_CHROME_STORAGE_KEY = "arcania-match-chrome-minimized";
 const MATCH_ID = "shared-cursor";
 const PLAYER_SEAT_TOKEN = "player-seat";
 const OPPONENT_SEAT_TOKEN = "opponent-seat";
