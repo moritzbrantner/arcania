@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 const MATCH_ID = "e2e-ai";
-const BOARD_VISUAL_MODE_STORAGE_KEY = "rune-lanes-board-visual-mode";
+const BOARD_VISUAL_MODE_STORAGE_KEY = "arcania-board-visual-mode";
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(
