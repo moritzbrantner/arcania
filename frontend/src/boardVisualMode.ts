@@ -1,6 +1,6 @@
 import type { AuthUser, BoardVisualMode } from "./types";
 
-export const BOARD_VISUAL_MODE_STORAGE_KEY = "rune-lanes-board-visual-mode";
+export const BOARD_VISUAL_MODE_STORAGE_KEY = "arcania-board-visual-mode";
 
 type StorageLike = {
   getItem: (key: string) => string | null;
