@@ -134,7 +134,7 @@ export function App() {
   useHotkeyHandlers(preferences.state.preferences.hotkeys, appHotkeyHandlers);
 
   if (authState.status === "loading") {
-    return <ShellMessage title="Rune Lanes" message="Checking account" />;
+    return <ShellMessage title="Arcania" message="Checking account" />;
   }
 
   if (normalizedPath === "/login" || normalizedPath === "/register") {
@@ -393,7 +393,7 @@ export function App() {
 
   return (
     <ShellMessage
-      title="Rune Lanes"
+      title="Arcania"
       message="Route not found"
       actions={
         <button className="primary-button" type="button" onClick={() => navigate("/")}>
