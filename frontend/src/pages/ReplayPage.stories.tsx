@@ -8,12 +8,12 @@ const meta = {
   component: ReplayPage,
   decorators: [withMockApi()],
   args: {
-    matchId: "rl-story",
+    matchId: "arc-story",
     currentUser: storyAccount,
     onNavigate: fn(),
     onSignOut: fn(),
     allowSignOut: true,
-    loginNextPath: "/matches/rl-story/replay",
+    loginNextPath: "/matches/arc-story/replay",
     visualPreferences: storyVisualPreferences,
   },
 } satisfies Meta<typeof ReplayPage>;
