@@ -63,7 +63,7 @@ async fn create_match_persists_and_can_be_loaded_by_id() {
     .await;
     assert_eq!(status, StatusCode::OK);
     let match_id = created["matchId"].as_str().expect("match id should exist");
-    assert!(match_id.starts_with("rl-"));
+    assert!(match_id.starts_with("arc-"));
     assert_eq!(created["matchState"]["round"], 1);
 
     let (status, loaded) = json_request(
@@ -464,14 +464,14 @@ async fn missing_match_returns_json_404() {
     let (status, body) = json_request(
         app,
         Request::builder()
-            .uri("/api/matches/rl-unknown")
+            .uri("/api/matches/arc-unknown")
             .body(Body::empty())
             .expect("request should build"),
     )
     .await;
 
     assert_eq!(status, StatusCode::NOT_FOUND);
-    assert_eq!(body["message"], "Match rl-unknown was not found");
+    assert_eq!(body["message"], "Match arc-unknown was not found");
 
     let _ = fs::remove_file(path);
 }
@@ -485,7 +485,7 @@ async fn missing_match_action_returns_json_404() {
         app,
         Request::builder()
             .method("POST")
-            .uri("/api/matches/rl-unknown/actions")
+            .uri("/api/matches/arc-unknown/actions")
             .header("content-type", "application/json")
             .body(Body::from(r#"{"type":"endTurn"}"#))
             .expect("request should build"),
@@ -493,7 +493,7 @@ async fn missing_match_action_returns_json_404() {
     .await;
 
     assert_eq!(status, StatusCode::NOT_FOUND);
-    assert_eq!(body["message"], "Match rl-unknown was not found");
+    assert_eq!(body["message"], "Match arc-unknown was not found");
 
     let _ = fs::remove_file(path);
 }
@@ -502,6 +502,6 @@ async fn missing_match_action_returns_json_404() {
 fn database_path_defaults_to_ignored_data_directory() {
     assert_eq!(
         match_store::database_path_from_environment(),
-        PathBuf::from("data/rune-lanes.sqlite3")
+        PathBuf::from("data/arcania.sqlite3")
     );
 }
