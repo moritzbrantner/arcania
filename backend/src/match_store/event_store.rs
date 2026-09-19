@@ -1,5 +1,5 @@
-use rune_lanes_core::MatchState;
-use rune_lanes_core::event_sourcing::{
+use arcania_core::MatchState;
+use arcania_core::event_sourcing::{
     AggregateSnapshot, AggregateVersion, EventEnvelope, EventSourcedMatch, MatchEvent,
 };
 use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
@@ -393,7 +393,7 @@ mod tests {
     #[test]
     fn new_match_has_authoritative_genesis_beside_projection_rows() {
         let path = std::env::temp_dir().join(format!(
-            "rune-lanes-event-store-genesis-{}.sqlite3",
+            "arcania-event-store-genesis-{}.sqlite3",
             rand::random::<u128>()
         ));
         let mut store = SqliteMatchStore::new(path).expect("store should open");
@@ -423,7 +423,7 @@ mod tests {
     #[test]
     fn legacy_projection_bootstrap_uses_snapshot_and_only_carries_index_forward() {
         let path = std::env::temp_dir().join(format!(
-            "rune-lanes-event-store-legacy-{}.sqlite3",
+            "arcania-event-store-legacy-{}.sqlite3",
             rand::random::<u128>()
         ));
         let mut store = SqliteMatchStore::new(path).expect("store should open");
