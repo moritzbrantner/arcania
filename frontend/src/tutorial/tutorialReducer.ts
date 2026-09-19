@@ -23,7 +23,7 @@ import type {
 } from "./tutorialTypes";
 import { sameTutorialCoord } from "./tutorialHighlights";
 
-export const TUTORIAL_COMPLETION_STORAGE_KEY = "rune-lanes-tutorial-completed";
+export const TUTORIAL_COMPLETION_STORAGE_KEY = "arcania-tutorial-completed";
 
 export const TUTORIAL_STEPS: TutorialStep[] = [
   {
