@@ -1,13 +1,13 @@
-# Card Board Hybrid
+# Arcania
 
-Rune Lanes is a small vertical slice for a card game / board game hybrid.
+Arcania is a small vertical slice for a card game / board game hybrid.
 
 Players control heroes on a radius-3 hex arena. Cards cost mana and hero action points to summon units or cast spells; units then spend their own action points to move across adjacent hexes and attack enemies within their attack range.
 
 ## GitHub Pages
 
 The Pages workflow publishes the frontend as a static preview at
-`https://moritzbrantner.github.io/card-board-hybrid/`.
+`https://moritzbrantner.github.io/arcania/`.
 
 The public dashboard, rules/wiki, and fully local tutorial work without the Rust
 backend. Account authentication, the backend-driven catalog, persisted matches,
@@ -59,7 +59,7 @@ The frontend proxies `/api` to `http://localhost:4000`.
   players are redirected to `/login?next=/decks`.
 - `/matches` is the account-only match archive. Signed-out players are
   redirected to `/login?next=/matches`.
-- `/match/<match-id>` opens the public playable Rune Lanes board for a persisted
+- `/match/<match-id>` opens the public playable Arcania board for a persisted
   solo match.
 - `/match/<match-id>/<seat-token>` opens a private shared-match seat link. Seat
   links are capability URLs and do not require an account.
@@ -79,11 +79,11 @@ matches can choose from predefined AI deck recipes.
 The backend creates matches through `POST /api/matches`, loads them through
 `GET /api/matches/:matchId`, and applies playable actions through
 `POST /api/matches/:matchId/actions`. New matches receive short readable IDs
-such as `rl-lx5n2w`, and the full match snapshot is stored in SQLite after
+such as `arc-lx5n2w`, and the full match snapshot is stored in SQLite after
 creation and after each successful action.
 
-SQLite data defaults to `data/rune-lanes.sqlite3`, which is ignored by git. Set
-`RUNE_LANES_DB_PATH=/path/to/rune-lanes.sqlite3` to use a different database,
+SQLite data defaults to `data/arcania.sqlite3`, which is ignored by git. Set
+`ARCANIA_DB_PATH=/path/to/arcania.sqlite3` to use a different database,
 including isolated temporary databases for tests or local experiments.
 
 ## Shared multiplayer
