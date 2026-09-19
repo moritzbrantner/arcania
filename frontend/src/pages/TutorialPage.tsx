@@ -161,7 +161,7 @@ export function TutorialPage({
       <section className="table match-table tutorial-table">
         <header className="top-bar match-chrome">
           <div>
-            <p className="eyebrow">Rune Lanes</p>
+            <p className="eyebrow">Arcania</p>
             <h1>Tutorial</h1>
             <p className="match-id">Scripted lesson</p>
           </div>
