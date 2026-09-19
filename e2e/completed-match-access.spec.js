@@ -1,18 +1,18 @@
 import { expect, test } from "@playwright/test";
 
-const AUTH_TOKEN_STORAGE_KEY = "rune-lanes-auth-token";
+const AUTH_TOKEN_STORAGE_KEY = "arcania-auth-token";
 
 test("private completed summary prompts signed-out viewers to sign in and preserves next path", async ({
   page,
 }) => {
   await mockCompletedMatchAccessApi(page);
 
-  await page.goto("/matches/rl-private/summary");
+  await page.goto("/matches/arc-private/summary");
 
   await expect(page.getByText("Sign in to view this match summary")).toBeVisible();
   await page.getByRole("button", { name: "Sign In" }).click();
 
-  await expect(page).toHaveURL(/\/login\?next=%2Fmatches%2Frl-private%2Fsummary$/);
+  await expect(page).toHaveURL(/\/login\?next=%2Fmatches%2Farc-private%2Fsummary$/);
 });
 
 test("private completed replay prompts signed-out viewers to sign in and preserves next path", async ({
@@ -20,18 +20,18 @@ test("private completed replay prompts signed-out viewers to sign in and preserv
 }) => {
   await mockCompletedMatchAccessApi(page);
 
-  await page.goto("/matches/rl-private/replay");
+  await page.goto("/matches/arc-private/replay");
 
   await expect(page.getByText("Sign in to view this replay")).toBeVisible();
   await page.getByRole("button", { name: "Sign In" }).click();
 
-  await expect(page).toHaveURL(/\/login\?next=%2Fmatches%2Frl-private%2Freplay$/);
+  await expect(page).toHaveURL(/\/login\?next=%2Fmatches%2Farc-private%2Freplay$/);
 });
 
 test("shared seat-link summary still loads without account login", async ({ page }) => {
   await mockCompletedMatchAccessApi(page);
 
-  await page.goto("/match/rl-shared/player-seat/summary");
+  await page.goto("/match/arc-shared/player-seat/summary");
 
   await expect(page.getByRole("heading", { name: "Victory" })).toBeVisible();
   await expect(page.getByText("Sign in to view this match summary")).toHaveCount(0);
@@ -61,24 +61,24 @@ async function mockCompletedMatchAccessApi(page) {
       return;
     }
 
-    if (url.pathname === "/api/matches/rl-private/summary") {
+    if (url.pathname === "/api/matches/arc-private/summary") {
       await route.fulfill({
         status: 404,
-        json: { message: "Match summary for match rl-private was not found" },
+        json: { message: "Match summary for match arc-private was not found" },
       });
       return;
     }
 
-    if (url.pathname === "/api/matches/rl-private/replay") {
+    if (url.pathname === "/api/matches/arc-private/replay") {
       await route.fulfill({
         status: 404,
-        json: { message: "Replay for match rl-private was not found" },
+        json: { message: "Replay for match arc-private was not found" },
       });
       return;
     }
 
-    if (url.pathname === "/api/shared-matches/rl-shared/seats/player-seat/summary") {
-      await route.fulfill({ json: summaryResponse("rl-shared", "shared") });
+    if (url.pathname === "/api/shared-matches/arc-shared/seats/player-seat/summary") {
+      await route.fulfill({ json: summaryResponse("arc-shared", "shared") });
       return;
     }
 
