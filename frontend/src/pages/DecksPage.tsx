@@ -293,7 +293,7 @@ export function DecksPage({ currentUser, onNavigate, onSignOut }: AccountProps &
       <section className="deck-layout" aria-label="Deck library">
         <header className="top-bar catalog-header deck-page-header">
           <div>
-            <p className="eyebrow">Rune Lanes</p>
+            <p className="eyebrow">Arcania</p>
             <h1>Decks</h1>
           </div>
           <div className="actions">
