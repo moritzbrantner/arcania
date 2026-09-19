@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
 
 const MATCH_ID = "e2e-3d-board";
-const BOARD_VISUAL_MODE_STORAGE_KEY = "rune-lanes-board-visual-mode";
-const MATCH_CHROME_STORAGE_KEY = "rune-lanes-match-chrome-minimized";
+const BOARD_VISUAL_MODE_STORAGE_KEY = "arcania-board-visual-mode";
+const MATCH_CHROME_STORAGE_KEY = "arcania-match-chrome-minimized";
 
 test.describe.configure({ timeout: 30_000 });
 
