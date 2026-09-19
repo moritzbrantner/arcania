@@ -11,34 +11,34 @@ import {
 
 describe("route parsers", () => {
   it("maps GitHub Pages browser URLs back to application routes", () => {
-    expect(routePathFromBrowserLocation("/card-board-hybrid/", "", "/card-board-hybrid/")).toBe("/");
-    expect(routePathFromBrowserLocation("/card-board-hybrid/tutorial", "?step=2", "/card-board-hybrid/")).toBe("/tutorial?step=2");
-    expect(routePathFromBrowserLocation("/card-board-hybridized/tutorial", "", "/card-board-hybrid/")).toBe("/card-board-hybridized/tutorial");
+    expect(routePathFromBrowserLocation("/arcania/", "", "/arcania/")).toBe("/");
+    expect(routePathFromBrowserLocation("/arcania/tutorial", "?step=2", "/arcania/")).toBe("/tutorial?step=2");
+    expect(routePathFromBrowserLocation("/arcaniaized/tutorial", "", "/arcania/")).toBe("/arcaniaized/tutorial");
   });
 
   it("maps application routes into the deployment subpath", () => {
-    expect(browserRoutePath("/", "/card-board-hybrid/")).toBe("/card-board-hybrid/");
-    expect(browserRoutePath("/tutorial?step=2#board", "/card-board-hybrid/")).toBe("/card-board-hybrid/tutorial?step=2#board");
-    expect(browserRoutePath("/card-board-hybrid/wiki", "/card-board-hybrid/")).toBe("/card-board-hybrid/wiki");
-    expect(browserRoutePath("//example.test/wiki", "/card-board-hybrid/")).toBe("//example.test/wiki");
+    expect(browserRoutePath("/", "/arcania/")).toBe("/arcania/");
+    expect(browserRoutePath("/tutorial?step=2#board", "/arcania/")).toBe("/arcania/tutorial?step=2#board");
+    expect(browserRoutePath("/arcania/wiki", "/arcania/")).toBe("/arcania/wiki");
+    expect(browserRoutePath("//example.test/wiki", "/arcania/")).toBe("//example.test/wiki");
   });
 
   it("parses match summary routes", () => {
-    expect(matchSummaryRouteFromPath("/matches/rl-123/summary")).toBe("rl-123");
-    expect(matchSummaryRouteFromPath("/matches/rl-123/replay")).toBeNull();
+    expect(matchSummaryRouteFromPath("/matches/arc-123/summary")).toBe("arc-123");
+    expect(matchSummaryRouteFromPath("/matches/arc-123/replay")).toBeNull();
   });
 
   it("parses shared summary and replay routes before shared match routes", () => {
-    expect(sharedMatchSummaryRouteFromPath("/match/rl-123/player-token/summary")).toEqual({
-      matchId: "rl-123",
+    expect(sharedMatchSummaryRouteFromPath("/match/arc-123/player-token/summary")).toEqual({
+      matchId: "arc-123",
       seatToken: "player-token",
     });
-    expect(sharedReplayRouteFromPath("/match/rl-123/player-token/replay")).toEqual({
-      matchId: "rl-123",
+    expect(sharedReplayRouteFromPath("/match/arc-123/player-token/replay")).toEqual({
+      matchId: "arc-123",
       seatToken: "player-token",
     });
-    expect(sharedMatchRouteFromPath("/match/rl-123/player-token/summary")).toBeNull();
-    expect(sharedMatchRouteFromPath("/match/rl-123/player-token/replay")).toBeNull();
+    expect(sharedMatchRouteFromPath("/match/arc-123/player-token/summary")).toBeNull();
+    expect(sharedMatchRouteFromPath("/match/arc-123/player-token/replay")).toBeNull();
   });
 
   it("parses wiki topic routes", () => {
