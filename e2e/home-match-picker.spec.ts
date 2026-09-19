@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const AUTH_TOKEN_STORAGE_KEY = "rune-lanes-auth-token";
+const AUTH_TOKEN_STORAGE_KEY = "arcania-auth-token";
 const MATCH_ID = "solo-account-deck";
 const SHARED_MATCH_ID = "shared-home-match";
 
@@ -140,13 +140,13 @@ test("home screen creates a shared match from the multiplayer action", async ({ 
   expect(sharedMatchRequests).toEqual([{ heroType: "pyromancer" }]);
   expect(matchRequests).toEqual([]);
   expect(
-    await page.evaluate((matchId) => sessionStorage.getItem(`rune-lanes-hero:${matchId}`), SHARED_MATCH_ID),
+    await page.evaluate((matchId) => sessionStorage.getItem(`arcania-hero:${matchId}`), SHARED_MATCH_ID),
   ).toBe("pyromancer");
   expect(
-    await page.evaluate((matchId) => sessionStorage.getItem(`rune-lanes-runes:${matchId}`), SHARED_MATCH_ID),
+    await page.evaluate((matchId) => sessionStorage.getItem(`arcania-runes:${matchId}`), SHARED_MATCH_ID),
   ).toBe(JSON.stringify(["spark-stone"]));
   expect(
-    await page.evaluate((matchId) => sessionStorage.getItem(`rune-lanes-deck-choice:${matchId}`), SHARED_MATCH_ID),
+    await page.evaluate((matchId) => sessionStorage.getItem(`arcania-deck-choice:${matchId}`), SHARED_MATCH_ID),
   ).toBe(JSON.stringify({ source: "account", deckId: 101 }));
 });
 
