@@ -13,7 +13,7 @@ pub(super) fn readable_match_id(attempt: u32) -> String {
     } else {
         format!("-{}", to_base36(u64::from(attempt)))
     };
-    format!("rl-{}{}", to_base36(millis), suffix)
+    format!("arc-{}{}", to_base36(millis), suffix)
 }
 
 #[cfg(any(test, debug_assertions))]
