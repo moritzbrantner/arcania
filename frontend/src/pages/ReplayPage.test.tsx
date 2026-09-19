@@ -28,7 +28,7 @@ describe("ReplayPage", () => {
   it("offers sign-in for signed-out private replay failures", async () => {
     const onNavigate = vi.fn();
     vi.mocked(loadReplay).mockRejectedValue(
-      new ApiRequestError("Replay for match rl-private was not found", 404),
+      new ApiRequestError("Replay for match arc-private was not found", 404),
     );
 
     renderReplay({ onNavigate });
@@ -37,7 +37,7 @@ describe("ReplayPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
 
-    expect(onNavigate).toHaveBeenCalledWith("/login?next=%2Fmatches%2Frl-private%2Freplay");
+    expect(onNavigate).toHaveBeenCalledWith("/login?next=%2Fmatches%2Farc-private%2Freplay");
   });
 
   it("renders anonymous ownerless replays after a successful load", async () => {
@@ -45,19 +45,19 @@ describe("ReplayPage", () => {
 
     renderReplay();
 
-    expect(await screen.findByText("Rune Lanes Replay")).toBeInTheDocument();
+    expect(await screen.findByText("Arcania Replay")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Round 1" })).toBeInTheDocument();
     expect(screen.queryByText("Sign in to view this replay")).not.toBeInTheDocument();
   });
 
   it("keeps shared seat-link replay failures on the normal error state", async () => {
     vi.mocked(loadSharedReplay).mockRejectedValue(
-      new ApiRequestError("Replay for match rl-private was not found", 404),
+      new ApiRequestError("Replay for match arc-private was not found", 404),
     );
 
     renderReplay({ seatToken: "player-seat" });
 
-    expect(await screen.findByText("Replay for match rl-private was not found")).toBeInTheDocument();
+    expect(await screen.findByText("Replay for match arc-private was not found")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Match Archive" })).toBeInTheDocument();
     expect(screen.queryByText("Sign in to view this replay")).not.toBeInTheDocument();
   });
@@ -72,13 +72,13 @@ function renderReplay({
 } = {}) {
   return render(
     <ReplayPage
-      matchId="rl-private"
+      matchId="arc-private"
       seatToken={seatToken}
       currentUser={null}
       onNavigate={onNavigate}
       onSignOut={vi.fn()}
       allowSignOut={false}
-      loginNextPath="/matches/rl-private/replay"
+      loginNextPath="/matches/arc-private/replay"
       visualPreferences={{
         preferences: {
           ...DEFAULT_ACCOUNT_PREFERENCES,
@@ -94,10 +94,10 @@ function renderReplay({
 function replayResponse(): MatchReplayResponse {
   const match = storyMatch();
   return {
-    matchId: "rl-private",
+    matchId: "arc-private",
     visibility: "public",
     summary: {
-      matchId: "rl-private",
+      matchId: "arc-private",
       mode: "solo",
       createdAt: 1_700_000_000,
       updatedAt: 1_700_000_400,
