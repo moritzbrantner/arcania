@@ -9,19 +9,19 @@ import type {
 } from "../../types";
 
 export function sharedHeroStorageKey(matchId: string) {
-  return `rune-lanes-hero:${matchId}`;
+  return `arcania-hero:${matchId}`;
 }
 
 export function sharedRuneStorageKey(matchId: string) {
-  return `rune-lanes-runes:${matchId}`;
+  return `arcania-runes:${matchId}`;
 }
 
 export function sharedDeckChoiceStorageKey(matchId: string) {
-  return `rune-lanes-deck-choice:${matchId}`;
+  return `arcania-deck-choice:${matchId}`;
 }
 
 export function sharedInviteStorageKey(matchId: string) {
-  return `rune-lanes-invite:${matchId}`;
+  return `arcania-invite:${matchId}`;
 }
 
 export function legalSharedDecks(decks: DeckRecipeSummary[]) {
