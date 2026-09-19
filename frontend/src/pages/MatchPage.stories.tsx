@@ -8,12 +8,12 @@ const meta = {
   component: MatchPage,
   decorators: [withMockApi()],
   args: {
-    matchId: "rl-story",
+    matchId: "arc-story",
     currentUser: storyAccount,
     onNavigate: fn(),
     onSignOut: fn(),
     allowSignOut: true,
-    loginNextPath: "/match/rl-story",
+    loginNextPath: "/match/arc-story",
     visualPreferences: storyVisualPreferences,
   },
 } satisfies Meta<typeof MatchPage>;
