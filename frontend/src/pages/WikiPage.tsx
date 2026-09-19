@@ -47,7 +47,7 @@ function WikiOverview({ onNavigate }: { onNavigate: (to: string) => void }) {
     <section className="wiki-layout" aria-label="Rules wiki">
       <header className="wiki-hero">
         <div>
-          <p className="eyebrow">Rune Lanes</p>
+          <p className="eyebrow">Arcania</p>
           <h1>Rules Wiki</h1>
           <p>
             Core match rules for defeating the enemy Hero on the hex board, from turn flow and
