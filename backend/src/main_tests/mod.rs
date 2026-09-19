@@ -10,7 +10,7 @@ use tower::ServiceExt;
 fn test_db_path(name: &str) -> PathBuf {
     let mut path = env::temp_dir();
     path.push(format!(
-        "rune-lanes-api-{name}-{}.sqlite3",
+        "arcania-api-{name}-{}.sqlite3",
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system clock should be after epoch")
