@@ -1,17 +1,17 @@
-# ADR 0024: Rune Lanes core uses CQRS, event sourcing, and derived snapshots
+# ADR 0024: Arcania core uses CQRS, event sourcing, and derived snapshots
 
 ## Status
 Accepted
 
 ## Context
 
-Rune Lanes rules currently execute inside the backend process. That couples game authority to Axum/SQLite/WebSocket application concerns and makes it too easy for transport, persistence, AI, or presentation code to acquire business rules of its own.
+Arcania rules currently execute inside the backend process. That couples game authority to Axum/SQLite/WebSocket application concerns and makes it too easy for transport, persistence, AI, or presentation code to acquire business rules of its own.
 
 The project also already records transport actions, replay frames, and serialized snapshots. Those records are useful, but replay events are presentation/audit evidence and do not contain enough information to deterministically reconstruct every part of authoritative match state. They therefore must not be relabeled as domain events.
 
 ## Decision
 
-Rune Lanes will use a standalone `rune-lanes-core` crate as the authoritative rules boundary.
+Arcania will use a standalone `arcania-core` crate as the authoritative rules boundary.
 
 The write side follows CQRS: callers submit typed `GameCommand` values to the Match aggregate. The aggregate validates intent using domain rules. The target mutation model is `decide -> domain events -> evolve`: rejected commands emit no events and leave state unchanged; accepted commands emit versioned domain events; authoritative state changes only by applying those events.
 
@@ -25,9 +25,9 @@ During migration, the current in-place rules implementation may be called throug
 
 ## Integration boundaries
 
-- Axum, SQLite, auth/account state, and WebSockets remain outside `rune-lanes-core`.
-- game-server will own hosted-session lifecycle, seats, reconnect/recovery, and transport while hosting the Rune Lanes aggregate.
-- The shared 3D/rendering foundation owns generic rendering/camera/GPU mechanics; Rune Lanes owns board-specific presentation semantics and the 2D fallback.
+- Axum, SQLite, auth/account state, and WebSockets remain outside `arcania-core`.
+- game-server will own hosted-session lifecycle, seats, reconnect/recovery, and transport while hosting the Arcania aggregate.
+- The shared 3D/rendering foundation owns generic rendering/camera/GPU mechanics; Arcania owns board-specific presentation semantics and the 2D fallback.
 - AI policy may select commands; scheduling `AdvanceAi` is application orchestration and is not a domain command.
 
 ## Consequences

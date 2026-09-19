@@ -9,7 +9,7 @@ use crate::{MatchError, MatchState, RecordedReplayFrame, Side};
 
 pub const CURRENT_EVENT_SCHEMA_VERSION: EventSchemaVersion = EventSchemaVersion(1);
 pub const CURRENT_SNAPSHOT_SCHEMA_VERSION: SnapshotSchemaVersion = SnapshotSchemaVersion(1);
-pub const CURRENT_RULESET_VERSION: &str = "rune-lanes-rules-v1";
+pub const CURRENT_RULESET_VERSION: &str = "arcania-rules-v1";
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct AggregateVersion(pub u64);

@@ -5,7 +5,7 @@ use crate::{
     Side,
 };
 
-/// A transport-independent request to change authoritative Rune Lanes match state.
+/// A transport-independent request to change authoritative Arcania match state.
 ///
 /// `AdvanceAi` is intentionally absent: choosing when an AI acts is application
 /// orchestration, while any action it selects must still enter the domain as one
