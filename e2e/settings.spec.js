@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
-const AUTH_TOKEN_STORAGE_KEY = "rune-lanes-auth-token";
-const BOARD_VISUAL_MODE_STORAGE_KEY = "rune-lanes-board-visual-mode";
+const AUTH_TOKEN_STORAGE_KEY = "arcania-auth-token";
+const BOARD_VISUAL_MODE_STORAGE_KEY = "arcania-board-visual-mode";
 
 test("signed-out players save local board visual mode from settings", async ({ page }) => {
   await mockSettingsApi(page);
