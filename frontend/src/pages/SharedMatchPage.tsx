@@ -514,7 +514,7 @@ export function SharedMatchPage({
         <section className="match-picker" aria-label="Shared match setup">
           <header className="picker-header">
             <div>
-              <p className="eyebrow">Rune Lanes Multiplayer</p>
+              <p className="eyebrow">Arcania Multiplayer</p>
               <h1>Lobby</h1>
               <p className="match-id">Match {matchId}</p>
             </div>
@@ -698,7 +698,7 @@ export function SharedMatchPage({
       <section className="table match-table">
         <header className="top-bar match-chrome">
           <div>
-            <p className="eyebrow">Rune Lanes Multiplayer</p>
+            <p className="eyebrow">Arcania Multiplayer</p>
             <h1>Round {match.round}</h1>
             <p className="match-id">Match {matchId}</p>
           </div>
