@@ -1,6 +1,6 @@
 # Domain Context
 
-This is a single-context repository for the Rune Lanes card/board game hybrid.
+This is a single-context repository for the Arcania card/board game hybrid.
 
 The root `CONTEXT.md` contains the project glossary. Agents should read it for domain vocabulary before making changes.
 
