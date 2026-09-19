@@ -145,13 +145,13 @@ export function PlayPage({
     try {
       const created = await createSharedMatch(selectedLoadout.heroType);
       sessionStorage.setItem(
-        `rune-lanes-invite:${created.matchId}`,
+        `arcania-invite:${created.matchId}`,
         `${window.location.origin}${created.inviteSeatUrl}`,
       );
-      sessionStorage.setItem(`rune-lanes-hero:${created.matchId}`, selectedLoadout.heroType);
-      sessionStorage.setItem(`rune-lanes-runes:${created.matchId}`, JSON.stringify(selectedLoadout.runeIds));
+      sessionStorage.setItem(`arcania-hero:${created.matchId}`, selectedLoadout.heroType);
+      sessionStorage.setItem(`arcania-runes:${created.matchId}`, JSON.stringify(selectedLoadout.runeIds));
       sessionStorage.setItem(
-        `rune-lanes-deck-choice:${created.matchId}`,
+        `arcania-deck-choice:${created.matchId}`,
         JSON.stringify(selectedLoadout.deckChoice),
       );
       onNavigate(created.playerSeatUrl);
@@ -174,7 +174,7 @@ export function PlayPage({
       const seatUrls = created.seatUrls ?? [];
       const playerSeat = seatUrls.find((seat) => seat.side === "player")?.url ?? created.playerSeatUrl;
       sessionStorage.setItem(
-        `rune-lanes-invite:${created.matchId}`,
+        `arcania-invite:${created.matchId}`,
         JSON.stringify(
           seatUrls.map((seat) => ({
             ...seat,
@@ -182,10 +182,10 @@ export function PlayPage({
           })),
         ),
       );
-      sessionStorage.setItem(`rune-lanes-hero:${created.matchId}`, selectedLoadout.heroType);
-      sessionStorage.setItem(`rune-lanes-runes:${created.matchId}`, JSON.stringify(selectedLoadout.runeIds));
+      sessionStorage.setItem(`arcania-hero:${created.matchId}`, selectedLoadout.heroType);
+      sessionStorage.setItem(`arcania-runes:${created.matchId}`, JSON.stringify(selectedLoadout.runeIds));
       sessionStorage.setItem(
-        `rune-lanes-deck-choice:${created.matchId}`,
+        `arcania-deck-choice:${created.matchId}`,
         JSON.stringify(selectedLoadout.deckChoice),
       );
       onNavigate(playerSeat);
@@ -216,7 +216,7 @@ export function PlayPage({
       <TopNav currentUser={currentUser} onNavigate={onNavigate} onSignOut={onSignOut} activePath="/play" />
       <section className="home-layout play-layout" aria-label="Play setup">
         <header className="home-heading">
-          <p className="eyebrow">Rune Lanes</p>
+          <p className="eyebrow">Arcania</p>
           <h1>Play</h1>
         </header>
 
@@ -365,7 +365,7 @@ export function PlayPage({
               id="match-id"
               value={matchId}
               onChange={(event) => setMatchId(event.target.value)}
-              placeholder="rl-lx5n2w"
+              placeholder="arc-lx5n2w"
               autoComplete="off"
             />
             <button className="primary-button" type="submit">
