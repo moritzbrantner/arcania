@@ -1,4 +1,4 @@
-const AUTH_TOKEN_STORAGE_KEY = "rune-lanes-auth-token";
+const AUTH_TOKEN_STORAGE_KEY = "arcania-auth-token";
 
 export function getAuthToken() {
   return localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
