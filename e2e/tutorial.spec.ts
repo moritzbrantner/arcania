@@ -15,7 +15,7 @@ test("dashboard and play page expose tutorial mode", async ({ page }) => {
 
 test("runs the tutorial happy path in 2d and stores completion", async ({ page }) => {
   await page.addInitScript(() => {
-    window.localStorage.setItem("rune-lanes-board-visual-mode", "2d");
+    window.localStorage.setItem("arcania-board-visual-mode", "2d");
   });
   await mockApi(page);
 
@@ -48,13 +48,13 @@ test("runs the tutorial happy path in 2d and stores completion", async ({ page }
   await expect(page.getByRole("button", { name: "Start Playing" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Pass Priority" })).toHaveCount(0);
   await page.waitForFunction(
-    () => window.localStorage.getItem("rune-lanes-tutorial-completed") === "true",
+    () => window.localStorage.getItem("arcania-tutorial-completed") === "true",
   );
 });
 
 test("uses 3d hit target highlights when 3d board mode is selected", async ({ page }) => {
   await page.addInitScript(() => {
-    window.localStorage.setItem("rune-lanes-board-visual-mode", "3d");
+    window.localStorage.setItem("arcania-board-visual-mode", "3d");
   });
   await mockApi(page);
 
