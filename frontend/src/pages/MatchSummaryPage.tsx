@@ -90,7 +90,7 @@ export function MatchSummaryPage({
       <section className="match-summary-layout" aria-label="Match summary">
         <header className="top-bar">
           <div>
-            <p className="eyebrow">Rune Lanes</p>
+            <p className="eyebrow">Arcania</p>
             <h1>Match Summary</h1>
           </div>
           <div className="actions">
