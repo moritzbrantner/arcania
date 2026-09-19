@@ -414,7 +414,7 @@ export function MatchPage({
       <section className="table match-table">
         <header className="top-bar match-chrome">
           <div>
-            <p className="eyebrow">Rune Lanes</p>
+            <p className="eyebrow">Arcania</p>
             <h1>Round {match.round}</h1>
             <p className="match-id">Match {matchId}</p>
           </div>
