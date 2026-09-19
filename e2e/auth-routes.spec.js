@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const AUTH_TOKEN_STORAGE_KEY = "rune-lanes-auth-token";
+const AUTH_TOKEN_STORAGE_KEY = "arcania-auth-token";
 
 test("signed-out players reach the login route from the visible Sign In action", async ({
   page,
