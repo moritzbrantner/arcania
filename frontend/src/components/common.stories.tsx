@@ -52,5 +52,5 @@ export const TopNavigation: Story = {
 
 export const ShellMessageStory: Story = {
   name: "ShellMessage",
-  render: () => <ShellMessage title="Rune Lanes" message="Loading board" />,
+  render: () => <ShellMessage title="Arcania" message="Loading board" />,
 };
