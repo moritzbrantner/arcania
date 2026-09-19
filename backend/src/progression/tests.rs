@@ -409,5 +409,5 @@ fn test_db_path(name: &str) -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis())
         .unwrap_or(0);
-    std::env::temp_dir().join(format!("rune-lanes-{name}-{millis}.sqlite3"))
+    std::env::temp_dir().join(format!("arcania-{name}-{millis}.sqlite3"))
 }
