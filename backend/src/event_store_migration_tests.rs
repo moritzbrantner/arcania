@@ -1,5 +1,5 @@
-use rune_lanes_core::cqrs::GameCommand;
-use rune_lanes_core::event_sourcing::{
+use arcania_core::cqrs::GameCommand;
+use arcania_core::event_sourcing::{
     CommandDecision, CommandId, CommandMetadata, EventSourcedMatch,
 };
 use rusqlite::params;
@@ -11,7 +11,7 @@ use crate::match_store::{MatchStoreError, SqliteMatchStore};
 
 fn test_db_path(name: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!(
-        "rune-lanes-event-store-{name}-{}.sqlite3",
+        "arcania-event-store-{name}-{}.sqlite3",
         rand::random::<u128>()
     ))
 }
@@ -163,7 +163,7 @@ fn append_decision(
     aggregate: &EventSourcedMatch,
     metadata: CommandMetadata,
     command: GameCommand,
-) -> rune_lanes_core::event_sourcing::EventEnvelope {
+) -> arcania_core::event_sourcing::EventEnvelope {
     match aggregate
         .decide(metadata, command)
         .expect("command should be valid against the loaded aggregate")
