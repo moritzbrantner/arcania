@@ -45,7 +45,7 @@ jobs:
 
       - name: Build Pages site
         env:
-          VITE_BASE_PATH: /card-board-hybrid/
+          VITE_BASE_PATH: /arcania/
           VITE_DISABLE_BACKEND_PROXY: "1"
         run: |
           bun run --cwd frontend build
@@ -55,7 +55,7 @@ jobs:
         run: |
           test -s frontend/dist/index.html
           test -s frontend/dist/404.html
-          grep -F '/card-board-hybrid/assets/' frontend/dist/index.html
+          grep -F '/arcania/assets/' frontend/dist/index.html
           cmp frontend/dist/index.html frontend/dist/404.html
 
       - name: Upload Pages artifact
