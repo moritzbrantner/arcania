@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-const AUTH_TOKEN_STORAGE_KEY = "rune-lanes-auth-token";
+const AUTH_TOKEN_STORAGE_KEY = "arcania-auth-token";
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript((authKey) => {
