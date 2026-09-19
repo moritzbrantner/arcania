@@ -64,7 +64,7 @@ export function MatchArchivePage({
       <section className="archive-layout" aria-label="Match archive">
         <header className="top-bar">
           <div>
-            <p className="eyebrow">Rune Lanes</p>
+            <p className="eyebrow">Arcania</p>
             <h1>Match Archive</h1>
           </div>
           <div className="actions">
