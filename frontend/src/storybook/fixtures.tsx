@@ -257,7 +257,7 @@ export const storyProgression: ProgressionResponse = {
 };
 
 export const storyMatchSummary = {
-  matchId: "rl-story",
+  matchId: "arc-story",
   mode: "solo",
   createdAt: 1_700_000_000,
   updatedAt: 1_700_000_600,
@@ -268,7 +268,7 @@ export const storyMatchSummary = {
 } satisfies MatchArchiveResponse["matches"][number];
 
 export const storyMatchResponse: MatchResponse = {
-  matchId: "rl-story",
+  matchId: "arc-story",
   matchState: storyMatch(),
   heroAppearances: [],
   replayFrames: [],
@@ -278,7 +278,7 @@ const replaySecondMatch = storyMatch();
 replaySecondMatch.log = ["Player turn begins."];
 
 export const storyReplayResponse: MatchReplayResponse = {
-  matchId: "rl-story",
+  matchId: "arc-story",
   visibility: "public",
   summary: storyMatchSummary,
   frames: [
@@ -298,7 +298,7 @@ export const storyReplayResponse: MatchReplayResponse = {
 };
 
 export const storySummaryResponse: MatchSummaryResponse = {
-  matchId: "rl-story",
+  matchId: "arc-story",
   summary: storyMatchSummary,
   viewer: {
     side: "player",
@@ -343,7 +343,7 @@ export const storySummaryResponse: MatchSummaryResponse = {
 };
 
 export const storySharedMatch: SharedMatchResponse = {
-  matchId: "rl-shared",
+  matchId: "arc-shared",
   mode: "shared",
   status: "setup",
   viewerSide: "player",
@@ -408,9 +408,9 @@ const baseResponses: MockResponseMap = {
   "/api/system-decks": { rules: storyDeckRules, decks: storySystemDecks } satisfies SystemDeckListResponse,
   "/api/catalog/cards": { cards: catalogCards } satisfies CatalogResponse,
   "/api/matches": { matches: [storyMatchSummary] } satisfies MatchArchiveResponse,
-  "/api/matches/rl-story": storyMatchResponse,
-  "/api/matches/rl-story/replay": storyReplayResponse,
-  "/api/matches/rl-story/summary": storySummaryResponse,
+  "/api/matches/arc-story": storyMatchResponse,
+  "/api/matches/arc-story/replay": storyReplayResponse,
+  "/api/matches/arc-story/summary": storySummaryResponse,
   "/api/dev/match-scenarios": storyScenarios,
   "/api/users/player-one/decks/1": {
     owner: {
@@ -421,9 +421,9 @@ const baseResponses: MockResponseMap = {
     },
     deck: storyDecks[0],
   } satisfies PublicDeckRecipeResponse,
-  "/api/shared-matches/rl-shared/seats/player-seat": storySharedMatch,
-  "/api/shared-matches/rl-shared/seats/player-seat/replay": storyReplayResponse,
-  "/api/shared-matches/rl-shared/seats/player-seat/summary": storySummaryResponse,
+  "/api/shared-matches/arc-shared/seats/player-seat": storySharedMatch,
+  "/api/shared-matches/arc-shared/seats/player-seat/replay": storyReplayResponse,
+  "/api/shared-matches/arc-shared/seats/player-seat/summary": storySummaryResponse,
 };
 
 export function withMockApi(overrides: MockResponseMap = {}): Decorator {
@@ -496,12 +496,12 @@ function postResponseFor(path: string) {
 
   if (path === "/api/shared-matches") {
     return {
-      matchId: "rl-shared",
+      matchId: "arc-shared",
       mode: "shared",
       status: "setup",
       viewerSide: "player",
-      playerSeatUrl: "/match/rl-shared/player-seat",
-      inviteSeatUrl: "/match/rl-shared/opponent-seat",
+      playerSeatUrl: "/match/arc-shared/player-seat",
+      inviteSeatUrl: "/match/arc-shared/opponent-seat",
     } satisfies CreateSharedMatchResponse;
   }
 
