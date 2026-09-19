@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "card-board-hybrid",
+      "name": "arcania",
       "devDependencies": {
         "@playwright/test": "^1.62.1",
         "@types/node": "^26.1.0",
@@ -11,7 +11,7 @@
       },
     },
     "frontend": {
-      "name": "card-board-hybrid-frontend",
+      "name": "arcania-frontend",
       "dependencies": {
         "@react-three/fiber": "^9.6.1",
         "@vitejs/plugin-react": "^5.1.2",
@@ -427,7 +427,7 @@
 
     "caniuse-lite": ["caniuse-lite@1.0.30001799", "", {}, "sha512-hG1bReV+OUU+MOqK4t/ZWI0tZOyz3rqS9XuhOUz1cIcbwBKjOyJEJuw9ER5JuNyqxNk8u/JUVbGibBOL1yrjFw=="],
 
-    "card-board-hybrid-frontend": ["card-board-hybrid-frontend@workspace:frontend"],
+    "arcania-frontend": ["arcania-frontend@workspace:frontend"],
 
     "chai": ["chai@5.3.3", "", { "dependencies": { "assertion-error": "^2.0.1", "check-error": "^2.1.1", "deep-eql": "^5.0.1", "loupe": "^3.1.0", "pathval": "^2.0.0" } }, "sha512-4zNhdJD/iOjSH0A05ea+Ke6MU5mmpQcbQsSOkgdaUMJ9zTlDTD/GYlwohmIE2u0gaxHYiVHEn1Fw9mZ/ktJWgw=="],
 
