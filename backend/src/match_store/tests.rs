@@ -4,7 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 fn test_db_path(name: &str) -> PathBuf {
     let mut path = env::temp_dir();
     path.push(format!(
-        "rune-lanes-{name}-{}.sqlite3",
+        "arcania-{name}-{}.sqlite3",
         SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system clock should be after epoch")
@@ -49,7 +49,7 @@ fn missing_matches_load_as_none() {
     let store = SqliteMatchStore::new(&path).expect("store should open");
 
     let missing = store
-        .load_match("rl-missing")
+        .load_match("arc-missing")
         .expect("lookup should succeed");
 
     assert!(missing.is_none());
@@ -71,7 +71,7 @@ fn legacy_matches_without_replay_metadata_are_excluded_from_replays() {
                 INSERT INTO matches (id, snapshot_json, created_at, updated_at)
                 VALUES (?1, ?2, unixepoch(), unixepoch())
                 ",
-            params!["rl-legacy", snapshot],
+            params!["arc-legacy", snapshot],
         )
         .expect("legacy row should insert");
 
@@ -83,7 +83,7 @@ fn legacy_matches_without_replay_metadata_are_excluded_from_replays() {
     );
     assert!(
         store
-            .load_replay("rl-legacy")
+            .load_replay("arc-legacy")
             .expect("replay lookup should succeed")
             .is_none()
     );
@@ -211,7 +211,7 @@ fn two_v_two_shared_match_starts_after_all_four_seats_join() {
 #[test]
 fn database_path_override_uses_given_value() {
     assert_eq!(
-        database_path_from_override(Some(OsString::from("/tmp/rune-lanes-test.sqlite3"))),
-        PathBuf::from("/tmp/rune-lanes-test.sqlite3")
+        database_path_from_override(Some(OsString::from("/tmp/arcania-test.sqlite3"))),
+        PathBuf::from("/tmp/arcania-test.sqlite3")
     );
 }
