@@ -12,7 +12,7 @@ import {
 import type { AccountPreferencesState, AppliedVisualPreferences } from "./appTypes";
 import type { AccountPreferences, AuthUser } from "./types";
 
-const MATCH_CHROME_STORAGE_KEY = "rune-lanes-match-chrome-minimized";
+const MATCH_CHROME_STORAGE_KEY = "arcania-match-chrome-minimized";
 
 function readStoredMatchChromeMinimized() {
   if (typeof window === "undefined") {
