@@ -108,7 +108,7 @@ export function ReplayPage({
       <section className="table match-table replay-table">
         <header className="top-bar match-chrome">
           <div>
-            <p className="eyebrow">Rune Lanes Replay</p>
+            <p className="eyebrow">Arcania Replay</p>
             <h1>Round {match.round}</h1>
             <p className="match-id">Match {matchId}</p>
           </div>
