@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt;
 
 use rand::random;
-use rune_lanes_core::cqrs::{CommandConversionError, GameCommand};
+use rune_lanes_core::commands::{CommandConversionError, GameCommand};
 use rune_lanes_core::event_sourcing::{
     CommandDecision, CommandId, CommandMetadata, EventSourcedMatch, EventSourcingError,
 };

@@ -5,6 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use rune_lanes_core::rules::CURRENT_RULESET;
 use serde::{Deserialize, Serialize};
 
 use crate::card_catalog::card_template_by_id;
@@ -473,11 +474,18 @@ impl RulePreset {
 }
 
 fn default_hero_position(side: Side) -> HexCoord {
+    let radius = CURRENT_RULESET.arena.duel_radius;
     match side {
-        Side::Player => HexCoord { q: 0, r: 3 },
-        Side::Opponent => HexCoord { q: 0, r: -3 },
-        Side::PlayerTwo => HexCoord { q: 1, r: 2 },
-        Side::OpponentTwo => HexCoord { q: -1, r: -2 },
+        Side::Player => HexCoord { q: 0, r: radius },
+        Side::Opponent => HexCoord { q: 0, r: -radius },
+        Side::PlayerTwo => HexCoord {
+            q: 1,
+            r: radius - 1,
+        },
+        Side::OpponentTwo => HexCoord {
+            q: -1,
+            r: 1 - radius,
+        },
     }
 }
 
@@ -515,7 +523,7 @@ fn validate_hero(hero: &HeroOverride) -> Result<(), AiLabError> {
 }
 
 fn validate_hex(coord: HexCoord) -> Result<(), AiLabError> {
-    if !HexBoard::new(3).is_valid(coord) {
+    if !HexBoard::new(CURRENT_RULESET.arena.duel_radius).is_valid(coord) {
         return Err(AiLabError::Config(format!(
             "rule preset references invalid hex {},{}",
             coord.q, coord.r
@@ -612,7 +620,9 @@ impl UnitSetup {
             name: card.name,
             template_id: Some(self.template_id.clone()),
             attack: self.attack.unwrap_or(attack),
-            attack_range: self.attack_range.unwrap_or(1),
+            attack_range: self
+                .attack_range
+                .unwrap_or(CURRENT_RULESET.turn.default_attack_range),
             armor: self.armor.unwrap_or(max_armor),
             max_armor,
             position: self.position,
@@ -1262,6 +1272,26 @@ mod tests {
         )
         .expect_err("new effect fields should be rejected");
         assert!(unknown_effect.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn preset_units_use_the_core_default_attack_range() {
+        let unit = UnitSetup {
+            id: "unit".to_string(),
+            side: Side::Player,
+            template_id: "ember-squire".to_string(),
+            position: HexCoord { q: 0, r: 2 },
+            attack: None,
+            attack_range: None,
+            armor: None,
+            max_armor: None,
+            ap_remaining: None,
+            max_ap: None,
+        }
+        .to_unit()
+        .expect("known unit setup should convert");
+
+        assert_eq!(unit.attack_range, CURRENT_RULESET.turn.default_attack_range);
     }
 
     #[test]

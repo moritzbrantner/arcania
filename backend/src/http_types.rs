@@ -515,7 +515,7 @@ impl From<StoredSharedMatch> for SharedMatchResponse {
         let match_state = shared
             .state
             .as_ref()
-            .map(|state| state.public_value_for_side(shared.viewer_seat.side));
+            .map(|state| state.queries().public_match(shared.viewer_seat.side));
         let opponent_connected = shared
             .seats
             .iter()

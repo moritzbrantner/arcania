@@ -341,7 +341,7 @@ fn completed_match_awards_account_and_hero_xp_once() {
     let mut stored = store
         .create_match_for_user(HeroType::Pyromancer, Some(1))
         .expect("match should create");
-    let frames = stored.state.forfeit_recording(Side::Player, 0);
+    let frames = rune_lanes_core::test_support::forfeit_match(&mut stored.state, Side::Player, 0);
     store
         .save_custom_action_and_replay_frames(
             &stored.id,

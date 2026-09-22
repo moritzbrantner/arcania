@@ -9,7 +9,7 @@ use super::{
 use serde::{Deserialize, Serialize};
 
 use super::{MatchError, MatchMode, MatchState, Phase, RecordedReplayFrame};
-use crate::cqrs::GameCommand;
+use crate::commands::GameCommand;
 
 #[derive(Clone, Debug)]
 pub struct SoloAiPolicy {

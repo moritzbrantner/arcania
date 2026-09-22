@@ -20,6 +20,35 @@ reimplemented in the Pages build.
 - React frontend with Vite and TypeScript
 - Bun for frontend package scripts
 
+## Commands, queries, and rules
+
+Rune Lanes uses CQRS as an in-process domain boundary around the event-sourced
+match aggregate. It does not use a generic command bus, mediator, repository
+layer, or separate read service.
+
+- Player/application writes are typed `GameCommand` values in
+  `rune-lanes-core/src/commands.rs`. Persisted matches enter through
+  `EventSourcedMatch::decide`, append a domain event, and change authoritative
+  state only through `evolve`.
+- Reads live in `rune-lanes-core/src/queries.rs`. Call `state.queries()` or
+  `aggregate.queries()` for the read-only facade, or dispatch a serializable
+  `GameQuery`. The same query side owns viewer-scoped match projection and
+  command-availability checks.
+- Global arena/turn rules and Hero base stats live together in
+  `rune-lanes-core/src/rules.rs`. Card/template balance remains in the card
+  catalog. These typed files are the normal places to edit when experimenting
+  with gameplay rather than scattering numeric rules through handlers.
+- `GameQuery::CommandAvailability` evaluates the real command rules against a
+  cloned state. Frontend/backend adapters should use that instead of recreating
+  legality rules for buttons, hints, or AI tooling.
+- AI-lab rule presets remain an experiment/scenario layer. They consume the core
+  ruleset defaults and may override a test setup without becoming a second
+  production rules authority.
+
+For a quick rules experiment, edit `CURRENT_RULESET` in
+`rune-lanes-core/src/rules.rs`, run the core tests, and use the ruleset and
+command-availability queries to inspect the resulting behavior.
+
 ## Run
 
 Install frontend dependencies:

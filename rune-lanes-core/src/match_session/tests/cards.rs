@@ -61,6 +61,10 @@ fn playing_a_unit_spends_mana_only_and_summons_adjacent() {
     assert_eq!(unit.ap_remaining, 1);
     assert_eq!(unit.max_ap, 2);
     assert_eq!(
+        unit.attack_range,
+        crate::rules::CURRENT_RULESET.turn.default_attack_range
+    );
+    assert_eq!(
         card_play_event_names(&frames),
         vec!["cardPlayed", "actionQueued", "unitSummoned"]
     );
