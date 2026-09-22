@@ -452,12 +452,13 @@ impl MatchState {
         )
     }
 
-    #[allow(dead_code, reason = "kept as the non-recording rules-engine API")]
+    #[cfg(test)]
     pub(crate) fn apply_action(&mut self, request: MatchActionRequest) -> Result<(), MatchError> {
         self.apply_action_internal(Side::Player, request, None)
             .map(|_| ())
     }
 
+    #[cfg(test)]
     pub(crate) fn apply_action_recording(
         &mut self,
         request: MatchActionRequest,
