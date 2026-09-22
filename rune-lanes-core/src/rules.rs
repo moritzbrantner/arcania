@@ -143,9 +143,7 @@ impl RuneLanesRuleset {
         if self.schema_version != RULESET_SCHEMA_VERSION {
             return Err(RulesetError::UnsupportedSchemaVersion(self.schema_version));
         }
-        if self.arena.duel_radius <= 0
-            || self.arena.two_v_two_radius < self.arena.duel_radius
-        {
+        if self.arena.duel_radius <= 0 || self.arena.two_v_two_radius < self.arena.duel_radius {
             return Err(RulesetError::InvalidArenaRules);
         }
         if self.turn.base_hero_mana == 0
@@ -192,7 +190,10 @@ impl fmt::Display for RulesetError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnsupportedSchemaVersion(version) => {
-                write!(formatter, "unsupported Rune Lanes ruleset schema version {version}")
+                write!(
+                    formatter,
+                    "unsupported Rune Lanes ruleset schema version {version}"
+                )
             }
             Self::InvalidArenaRules => formatter.write_str("invalid arena rules"),
             Self::InvalidTurnRules => formatter.write_str("invalid turn rules"),
