@@ -91,7 +91,8 @@ fn complete_match_by_forfeit(path: &std::path::Path, match_id: &str, winner: Sid
         .load_match(match_id)
         .expect("match lookup should succeed")
         .expect("match should exist");
-    let frames = rune_lanes_core::test_support::forfeit_match(&mut stored.state, winner, 0);
+    let frames =
+        rune_lanes_core::test_support::forfeit_match(&mut stored.state, winner, 0);
     store
         .save_custom_action_and_replay_frames(
             match_id,
