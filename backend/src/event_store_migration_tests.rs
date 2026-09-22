@@ -1,4 +1,4 @@
-use rune_lanes_core::cqrs::GameCommand;
+use rune_lanes_core::commands::GameCommand;
 use rune_lanes_core::event_sourcing::{
     CommandDecision, CommandId, CommandMetadata, EventSourcedMatch,
 };
