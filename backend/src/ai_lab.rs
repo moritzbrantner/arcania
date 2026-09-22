@@ -1291,10 +1291,7 @@ mod tests {
         .to_unit()
         .expect("known unit setup should convert");
 
-        assert_eq!(
-            unit.attack_range,
-            CURRENT_RULESET.turn.default_attack_range
-        );
+        assert_eq!(unit.attack_range, CURRENT_RULESET.turn.default_attack_range);
     }
 
     #[test]

@@ -130,11 +130,13 @@ pub fn current_ruleset_version() -> String {
 }
 
 fn ruleset_version(ruleset: &RuneLanesRuleset) -> String {
-    let encoded = serde_json::to_vec(ruleset)
-        .expect("the statically defined current ruleset must serialize");
-    let fingerprint = encoded.iter().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
-        (hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
-    });
+    let encoded =
+        serde_json::to_vec(ruleset).expect("the statically defined current ruleset must serialize");
+    let fingerprint = encoded
+        .iter()
+        .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+            (hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
+        });
     format!("{RULESET_VERSION_PREFIX}-v{RULESET_SCHEMA_VERSION}-{fingerprint:016x}")
 }
 
