@@ -1,6 +1,8 @@
+use crate::rules::CURRENT_RULESET;
+
 use super::{
-    BOARD_RADIUS, Card, HERO_MANA, Hero, HeroType, HexCoord, MatchProgressionEffects,
-    MatchProgressionLoadout, PlayerState, Side, mana_with_progression,
+    Card, Hero, HeroType, HexCoord, MatchProgressionEffects, MatchProgressionLoadout, PlayerState,
+    Side, mana_with_progression,
 };
 
 impl PlayerState {
@@ -13,7 +15,7 @@ impl PlayerState {
         progression: MatchProgressionLoadout,
     ) -> Self {
         shuffle(&mut deck, &mut rng_seed);
-        let mana = mana_with_progression(HERO_MANA, progression.effects.mana_delta);
+        let mana = mana_with_progression(CURRENT_RULESET.turn.base_hero_mana, progression.effects.mana_delta);
 
         Self {
             side,
@@ -59,14 +61,14 @@ impl Hero {
             Side::Player => (
                 "player-hero",
                 HexCoord {
-                    q: if board_radius > BOARD_RADIUS { -1 } else { 0 },
+                    q: if board_radius > CURRENT_RULESET.arena.duel_radius { -1 } else { 0 },
                     r: board_radius,
                 },
             ),
             Side::Opponent => (
                 "opponent-hero",
                 HexCoord {
-                    q: if board_radius > BOARD_RADIUS { 1 } else { 0 },
+                    q: if board_radius > CURRENT_RULESET.arena.duel_radius { 1 } else { 0 },
                     r: -board_radius,
                 },
             ),
