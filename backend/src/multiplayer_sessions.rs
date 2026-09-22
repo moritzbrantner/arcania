@@ -95,10 +95,7 @@ impl MultiplayerSessions {
 impl MatchSessions {
     fn new() -> Self {
         Self {
-            registry: SessionRegistry::new(
-                MAX_SHARED_SEATS,
-                DURABLE_SEAT_RECONNECT_GRACE_TICKS,
-            ),
+            registry: SessionRegistry::new(MAX_SHARED_SEATS, DURABLE_SEAT_RECONNECT_GRACE_TICKS),
             seats: HashMap::new(),
         }
     }
