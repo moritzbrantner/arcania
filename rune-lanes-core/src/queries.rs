@@ -17,6 +17,9 @@ pub enum GameQuery {
     ActiveSide,
     Winner,
     Ruleset,
+    PublicMatch {
+        viewer_side: Side,
+    },
     CommandAvailability {
         side: Side,
         command: GameCommand,
@@ -35,6 +38,7 @@ pub enum GameQueryResult {
     ActiveSide { side: Side },
     Winner { winner: Option<Side> },
     Ruleset { ruleset: RuneLanesRuleset },
+    PublicMatch { match_state: serde_json::Value },
     CommandAvailability { availability: CommandAvailability },
 }
 
@@ -75,6 +79,9 @@ impl MatchState {
             },
             GameQuery::Ruleset => GameQueryResult::Ruleset {
                 ruleset: queries.ruleset(),
+            },
+            GameQuery::PublicMatch { viewer_side } => GameQueryResult::PublicMatch {
+                match_state: queries.public_match(viewer_side),
             },
             GameQuery::CommandAvailability { side, command } => {
                 GameQueryResult::CommandAvailability {
@@ -131,6 +138,11 @@ impl MatchQueries<'_> {
     }
 
     #[must_use]
+    pub fn public_match(&self, viewer_side: Side) -> serde_json::Value {
+        self.state.public_value_for_side(viewer_side)
+    }
+
+    #[must_use]
     pub fn command_availability(
         &self,
         side: Side,
@@ -180,6 +192,10 @@ mod tests {
 
         assert_eq!(state.queries().round(), 1);
         assert_eq!(state.queries().ruleset(), CURRENT_RULESET);
+        assert_eq!(
+            state.queries().public_match(Side::Player)["activeSide"],
+            "player"
+        );
         assert_eq!(state.to_snapshot_json().unwrap(), before);
     }
 
