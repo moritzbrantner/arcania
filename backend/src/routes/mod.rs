@@ -1097,12 +1097,11 @@ async fn handle_shared_client_text(
 
     match message {
         SharedClientMessage::Action { request_id, action } => {
-            let Some(result) = state.with_shared_seat_connection(
-                match_id,
-                seat_token,
-                lease,
-                || apply_shared_socket_action(state, match_id, seat_token, action),
-            ) else {
+            let Some(result) =
+                state.with_shared_seat_connection(match_id, seat_token, lease, || {
+                    apply_shared_socket_action(state, match_id, seat_token, action)
+                })
+            else {
                 return false;
             };
             match result {
@@ -1130,12 +1129,11 @@ async fn handle_shared_client_text(
             }
         }
         SharedClientMessage::ClaimForfeit { request_id } => {
-            let Some(result) = state.with_shared_seat_connection(
-                match_id,
-                seat_token,
-                lease,
-                || claim_shared_forfeit(state, match_id, seat_token),
-            ) else {
+            let Some(result) =
+                state.with_shared_seat_connection(match_id, seat_token, lease, || {
+                    claim_shared_forfeit(state, match_id, seat_token)
+                })
+            else {
                 return false;
             };
             match result {
@@ -1163,18 +1161,15 @@ async fn handle_shared_client_text(
             }
         }
         SharedClientMessage::Heartbeat => {
-            let Some(result) = state.with_shared_seat_connection(
-                match_id,
-                seat_token,
-                lease,
-                || {
+            let Some(result) =
+                state.with_shared_seat_connection(match_id, seat_token, lease, || {
                     let mut store = state
                         .store
                         .lock()
                         .expect("store lock should not be poisoned");
                     store.mark_shared_seat_seen(match_id, seat_token)
-                },
-            ) else {
+                })
+            else {
                 return false;
             };
             if let Err(error) = result {
