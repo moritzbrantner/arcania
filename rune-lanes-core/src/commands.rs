@@ -62,11 +62,7 @@ impl GameCommand {
     /// Runs the authoritative command rules against a clone and discards the
     /// resulting mutation. Query-side legality checks use this exact path so
     /// presentation code never grows a competing rule implementation.
-    pub fn check(
-        &self,
-        state: &MatchState,
-        context: CommandContext,
-    ) -> Result<(), MatchError> {
+    pub fn check(&self, state: &MatchState, context: CommandContext) -> Result<(), MatchError> {
         let mut candidate = state.clone();
         self.clone()
             .execute_compatibility(&mut candidate, context)
