@@ -633,7 +633,7 @@ impl From<serde_json::Error> for EventSourcingError {
 mod tests {
     use super::*;
     use crate::HexCoord;
-    use crate::cqrs::GameCommand;
+    use crate::commands::GameCommand;
 
     fn metadata(
         id: &str,
