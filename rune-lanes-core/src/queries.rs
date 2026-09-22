@@ -17,13 +17,8 @@ pub enum GameQuery {
     ActiveSide,
     Winner,
     Ruleset,
-    PublicMatch {
-        viewer_side: Side,
-    },
-    CommandAvailability {
-        side: Side,
-        command: GameCommand,
-    },
+    PublicMatch { viewer_side: Side },
+    CommandAvailability { side: Side, command: GameCommand },
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -143,11 +138,7 @@ impl MatchQueries<'_> {
     }
 
     #[must_use]
-    pub fn command_availability(
-        &self,
-        side: Side,
-        command: &GameCommand,
-    ) -> CommandAvailability {
+    pub fn command_availability(&self, side: Side, command: &GameCommand) -> CommandAvailability {
         match command.check(
             self.state,
             CommandContext {
@@ -206,10 +197,9 @@ mod tests {
         let legal = state
             .queries()
             .command_availability(Side::Player, &GameCommand::StartAttackPhase);
-        let illegal = state.queries().command_availability(
-            Side::Opponent,
-            &GameCommand::StartAttackPhase,
-        );
+        let illegal = state
+            .queries()
+            .command_availability(Side::Opponent, &GameCommand::StartAttackPhase);
 
         assert_eq!(
             legal,
@@ -241,9 +231,6 @@ mod tests {
         assert_eq!(rules["ruleset"]["arena"]["duelRadius"], 3);
         assert_eq!(availability["kind"], "commandAvailability");
         assert_eq!(availability["availability"]["allowed"], false);
-        assert_eq!(
-            availability["availability"]["rejection"],
-            "notActiveSide"
-        );
+        assert_eq!(availability["availability"]["rejection"], "notActiveSide");
     }
 }
