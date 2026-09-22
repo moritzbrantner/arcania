@@ -66,6 +66,23 @@ impl AppState {
             .owns_connection(match_id, seat_token, lease)
     }
 
+    pub(crate) fn with_shared_seat_connection<T>(
+        &self,
+        match_id: &str,
+        seat_token: &str,
+        lease: SessionLease,
+        action: impl FnOnce() -> T,
+    ) -> Option<T> {
+        let sessions = self
+            .multiplayer_sessions
+            .lock()
+            .expect("multiplayer session lock should not be poisoned");
+        if !sessions.owns_connection(match_id, seat_token, lease) {
+            return None;
+        }
+        Some(action())
+    }
+
     pub(crate) fn disconnect_shared_seat(
         &self,
         match_id: &str,
