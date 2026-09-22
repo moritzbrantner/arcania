@@ -988,11 +988,11 @@ async fn handle_shared_socket(
     let mut receiver = sender.subscribe();
     let mut heartbeat_timeout = time::interval(Duration::from_secs(5));
     let mut last_client_message = Instant::now();
-    if let Some(message) = shared_snapshot_message(&state, &match_id, &seat_token, false) {
-        if send_shared_message(&mut socket, message).await.is_err() {
-            finish_shared_socket(&state, &match_id, &seat_token, lease);
-            return;
-        }
+    if let Some(message) = shared_snapshot_message(&state, &match_id, &seat_token, false)
+        && send_shared_message(&mut socket, message).await.is_err()
+    {
+        finish_shared_socket(&state, &match_id, &seat_token, lease);
+        return;
     }
     state.notify_match(&match_id);
 
@@ -1041,10 +1041,10 @@ async fn handle_shared_socket(
                 {
                     break;
                 }
-                if let Some(message) = shared_snapshot_message(&state, &match_id, &seat_token, false) {
-                    if send_shared_message(&mut socket, message).await.is_err() {
-                        break;
-                    }
+                if let Some(message) = shared_snapshot_message(&state, &match_id, &seat_token, false)
+                    && send_shared_message(&mut socket, message).await.is_err()
+                {
+                    break;
                 }
             }
         }
