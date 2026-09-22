@@ -147,7 +147,7 @@ impl SqliteMatchStore {
             progression::award_completed_match_in_transaction(&transaction, id)?;
         }
 
-        if event.aggregate_version.0 % SNAPSHOT_INTERVAL == 0 || state.winner.is_some() {
+        if event.aggregate_version.0.is_multiple_of(SNAPSHOT_INTERVAL) || state.winner.is_some() {
             upsert_snapshot(&transaction, id, aggregate_snapshot)?;
         }
 

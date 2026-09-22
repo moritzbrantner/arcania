@@ -2551,18 +2551,16 @@ impl MatchState {
             },
         );
         self.refresh_unit_armor_for_turn(side, frames, action_index);
-        if should_draw {
-            if let Some(card) = self.player_mut(side).draw() {
-                self.record_replay_frame(
-                    frames,
-                    action_index,
-                    ReplayEvent::CardDrawn {
-                        side,
-                        card: Some(CardSummary::from(&card)),
-                        hidden: side.team() == Team::Opponent,
-                    },
-                );
-            }
+        if should_draw && let Some(card) = self.player_mut(side).draw() {
+            self.record_replay_frame(
+                frames,
+                action_index,
+                ReplayEvent::CardDrawn {
+                    side,
+                    card: Some(CardSummary::from(&card)),
+                    hidden: side.team() == Team::Opponent,
+                },
+            );
         }
     }
 

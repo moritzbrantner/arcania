@@ -22,6 +22,7 @@ pub(crate) mod loadout_resolution;
 pub(crate) mod match_access;
 pub(crate) mod match_commands;
 pub(crate) mod match_session;
+pub(crate) mod multiplayer_sessions;
 pub(crate) mod preferences;
 #[allow(
     dead_code,
