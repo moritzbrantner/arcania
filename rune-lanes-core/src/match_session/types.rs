@@ -28,7 +28,7 @@ pub struct MatchState {
     pub(super) next_building_id: u32,
 }
 
-pub const MAX_CARRIED_ITEMS: usize = 3;
+pub const MAX_CARRIED_ITEMS: usize = crate::rules::CURRENT_RULESET.turn.max_carried_items as usize;
 
 impl Serialize for MatchState {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -233,68 +233,6 @@ pub enum HeroType {
     Barbarian,
     Archer,
     Builder,
-}
-
-pub(super) struct HeroProfile {
-    pub(super) max_hp: i32,
-    pub(crate) attack: i32,
-    pub(crate) max_ap: u8,
-    pub(crate) attack_range: u8,
-}
-
-impl HeroType {
-    pub(super) fn profile(self) -> HeroProfile {
-        match self {
-            Self::Runekeeper => HeroProfile {
-                max_hp: 20,
-                attack: 1,
-                max_ap: 3,
-                attack_range: default_attack_range(),
-            },
-            Self::Pyromancer => HeroProfile {
-                max_hp: 18,
-                attack: 2,
-                max_ap: 3,
-                attack_range: default_attack_range(),
-            },
-            Self::Chronomancer => HeroProfile {
-                max_hp: 16,
-                attack: 1,
-                max_ap: 4,
-                attack_range: default_attack_range(),
-            },
-            Self::Warden => HeroProfile {
-                max_hp: 24,
-                attack: 1,
-                max_ap: 2,
-                attack_range: default_attack_range(),
-            },
-            Self::Battlemage => HeroProfile {
-                max_hp: 20,
-                attack: 2,
-                max_ap: 2,
-                attack_range: default_attack_range(),
-            },
-            Self::Barbarian => HeroProfile {
-                max_hp: 22,
-                attack: 3,
-                max_ap: 2,
-                attack_range: default_attack_range(),
-            },
-            Self::Archer => HeroProfile {
-                max_hp: 16,
-                attack: 2,
-                max_ap: 4,
-                attack_range: 2,
-            },
-            Self::Builder => HeroProfile {
-                max_hp: 24,
-                attack: 1,
-                max_ap: 2,
-                attack_range: default_attack_range(),
-            },
-        }
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -609,7 +547,8 @@ pub enum ActionTarget {
     Piece { piece_id: String },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub enum MatchError {
     MatchOver,
     NotActiveSide,
