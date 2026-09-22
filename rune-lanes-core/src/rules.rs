@@ -219,6 +219,22 @@ mod tests {
     }
 
     #[test]
+    fn default_match_construction_consumes_the_current_ruleset() {
+        let state = crate::MatchState::new_with_seed(7);
+        let hero_rule = CURRENT_RULESET.hero(state.player.hero.hero_type);
+
+        assert_eq!(state.board.radius, CURRENT_RULESET.arena.duel_radius);
+        assert_eq!(
+            state.player.hand.len(),
+            usize::from(CURRENT_RULESET.turn.opening_hand_size)
+        );
+        assert_eq!(state.player.hero.max_hp, hero_rule.max_hp);
+        assert_eq!(state.player.hero.attack, hero_rule.attack);
+        assert_eq!(state.player.hero.max_ap, hero_rule.max_ap);
+        assert_eq!(state.player.hero.attack_range, hero_rule.attack_range);
+    }
+
+    #[test]
     fn invalid_typed_rule_configuration_fails_closed() {
         let mut ruleset = CURRENT_RULESET;
         ruleset.turn.opening_hand_size = 0;
