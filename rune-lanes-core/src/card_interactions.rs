@@ -455,7 +455,7 @@ pub(crate) fn summon_unit_from_card(
         name: card.name.clone(),
         template_id: Some(card.template_id.clone()),
         attack: *attack,
-        attack_range: 1,
+        attack_range: crate::rules::CURRENT_RULESET.turn.default_attack_range,
         armor,
         max_armor: armor,
         position: coord,

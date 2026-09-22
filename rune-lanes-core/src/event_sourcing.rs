@@ -9,7 +9,7 @@ use crate::{MatchError, MatchState, RecordedReplayFrame, Side};
 
 pub const CURRENT_EVENT_SCHEMA_VERSION: EventSchemaVersion = EventSchemaVersion(1);
 pub const CURRENT_SNAPSHOT_SCHEMA_VERSION: SnapshotSchemaVersion = SnapshotSchemaVersion(1);
-pub use crate::rules::CURRENT_RULESET_VERSION;
+pub use crate::rules::current_ruleset_version;
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 pub struct AggregateVersion(pub u64);
@@ -50,7 +50,7 @@ pub struct RulesetVersion(String);
 
 impl RulesetVersion {
     pub fn current() -> Self {
-        Self(CURRENT_RULESET_VERSION.to_string())
+        Self(current_ruleset_version())
     }
 
     pub fn new(value: impl Into<String>) -> Result<Self, EventSourcingError> {

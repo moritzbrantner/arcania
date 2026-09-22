@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::HeroType;
 
 pub const RULESET_SCHEMA_VERSION: u32 = 1;
-pub const CURRENT_RULESET_VERSION: &str = "rune-lanes-rules-v1";
+const RULESET_VERSION_PREFIX: &str = "rune-lanes-rules";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -124,6 +124,20 @@ impl Default for RuneLanesRuleset {
     }
 }
 
+#[must_use]
+pub fn current_ruleset_version() -> String {
+    ruleset_version(&CURRENT_RULESET)
+}
+
+fn ruleset_version(ruleset: &RuneLanesRuleset) -> String {
+    let encoded = serde_json::to_vec(ruleset)
+        .expect("the statically defined current ruleset must serialize");
+    let fingerprint = encoded.iter().fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
+        (hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
+    });
+    format!("{RULESET_VERSION_PREFIX}-v{RULESET_SCHEMA_VERSION}-{fingerprint:016x}")
+}
+
 impl RuneLanesRuleset {
     #[must_use]
     pub fn hero(&self, hero_type: HeroType) -> HeroRule {
@@ -240,5 +254,14 @@ mod tests {
         let mut ruleset = CURRENT_RULESET;
         ruleset.turn.opening_hand_size = 0;
         assert_eq!(ruleset.validate(), Err(RulesetError::InvalidTurnRules));
+    }
+
+    #[test]
+    fn persisted_version_is_derived_from_every_replay_relevant_rule() {
+        let current = current_ruleset_version();
+        let mut changed = CURRENT_RULESET;
+        changed.turn.default_attack_range += 1;
+
+        assert_ne!(current, ruleset_version(&changed));
     }
 }
