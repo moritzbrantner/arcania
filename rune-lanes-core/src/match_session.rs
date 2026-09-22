@@ -3,6 +3,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::json;
 
+use crate::rules::CURRENT_RULESET;
+
 mod actions;
 mod board;
 #[path = "card_interactions.rs"]
@@ -10,7 +12,6 @@ mod card_interactions;
 mod construction;
 mod effects;
 mod ids;
-mod queries;
 mod replay;
 #[cfg(any(test, debug_assertions))]
 pub mod scenarios;
@@ -30,11 +31,6 @@ pub use solo_ai_policy::{
     default_policy_config_path,
 };
 use solo_ai_policy::{SoloAiActionIntent, SoloAiCarriedItem, SoloAiDecision, SoloAiView};
-
-const BOARD_RADIUS: i32 = 3;
-const TWO_V_TWO_BOARD_RADIUS: i32 = 4;
-const HERO_MANA: u8 = 3;
-const OPENING_HAND_SIZE: usize = 7;
 
 enum AiDecisionApplication {
     Applied,
@@ -202,7 +198,7 @@ impl MatchState {
             player_hero_type,
             opponent_hero_type,
             MatchMode::Shared,
-            TWO_V_TWO_BOARD_RADIUS,
+            CURRENT_RULESET.arena.two_v_two_radius,
             player_deck,
             opponent_deck,
             player_progression,
@@ -335,7 +331,7 @@ impl MatchState {
             player_hero_type,
             opponent_hero_type,
             mode,
-            BOARD_RADIUS,
+            CURRENT_RULESET.arena.duel_radius,
             player_deck,
             opponent_deck,
             player_progression,
@@ -840,7 +836,7 @@ impl MatchState {
 
     fn refresh_mana_from_sources(&mut self, side: Side) {
         let mana = mana_with_progression(
-            HERO_MANA.saturating_add(self.occupied_mana_sources(side)),
+            CURRENT_RULESET.turn.base_hero_mana.saturating_add(self.occupied_mana_sources(side)),
             self.player_ref(side).progression.effects.mana_delta,
         );
         let player = self.player_mut(side);
@@ -1007,7 +1003,7 @@ impl MatchState {
                 )?;
                 if self
                     .carrier_item_count(&planned_item_play.carrier_id)
-                    .is_some_and(|count| count >= MAX_CARRIED_ITEMS)
+                    .is_some_and(|count| count >= usize::from(CURRENT_RULESET.turn.max_carried_items))
                 {
                     return Err(MatchError::InvalidTarget);
                 }
@@ -3187,9 +3183,9 @@ impl MatchState {
         }
 
         let mut picked_up = Vec::new();
-        let mut remaining_capacity = MAX_CARRIED_ITEMS.saturating_sub(
+        let mut remaining_capacity = usize::from(CURRENT_RULESET.turn.max_carried_items).saturating_sub(
             self.carrier_item_count(carrier_id)
-                .unwrap_or(MAX_CARRIED_ITEMS),
+                .unwrap_or(usize::from(CURRENT_RULESET.turn.max_carried_items)),
         );
         self.board.dropped_items.retain(|dropped_item| {
             if dropped_item.position == position && remaining_capacity > 0 {
@@ -3270,7 +3266,7 @@ impl MatchState {
         for side in self.participant_sides() {
             if self.player_ref(side).hero.id == carrier_id {
                 let hero = &mut self.player_mut(side).hero;
-                if hero.items.len() >= MAX_CARRIED_ITEMS {
+                if hero.items.len() >= usize::from(CURRENT_RULESET.turn.max_carried_items) {
                     return false;
                 }
                 card_interactions::apply_item_passive_to_hero(hero, &item.passive);
@@ -3284,7 +3280,7 @@ impl MatchState {
             .iter_mut()
             .find(|unit| unit.id == carrier_id)
         {
-            if unit.items.len() >= MAX_CARRIED_ITEMS {
+            if unit.items.len() >= usize::from(CURRENT_RULESET.turn.max_carried_items) {
                 return false;
             }
             card_interactions::apply_item_passive(unit, &item.passive);
@@ -3505,7 +3501,7 @@ impl MatchState {
 }
 
 fn default_attack_range() -> u8 {
-    1
+    CURRENT_RULESET.turn.default_attack_range
 }
 
 impl PlayerState {
@@ -3532,7 +3528,8 @@ impl PlayerState {
 }
 
 fn opening_hand_size(progression: &MatchProgressionLoadout) -> usize {
-    OPENING_HAND_SIZE + usize::from(progression.effects.opening_hand_delta)
+    usize::from(CURRENT_RULESET.turn.opening_hand_size)
+        + usize::from(progression.effects.opening_hand_delta)
 }
 
 fn mana_with_progression(base: u8, delta: i8) -> u8 {
