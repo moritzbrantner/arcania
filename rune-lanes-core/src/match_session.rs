@@ -453,12 +453,12 @@ impl MatchState {
     }
 
     #[allow(dead_code, reason = "kept as the non-recording rules-engine API")]
-    pub fn apply_action(&mut self, request: MatchActionRequest) -> Result<(), MatchError> {
+    pub(crate) fn apply_action(&mut self, request: MatchActionRequest) -> Result<(), MatchError> {
         self.apply_action_internal(Side::Player, request, None)
             .map(|_| ())
     }
 
-    pub fn apply_action_recording(
+    pub(crate) fn apply_action_recording(
         &mut self,
         request: MatchActionRequest,
         action_index: u32,
@@ -466,7 +466,7 @@ impl MatchState {
         self.apply_action_recording_for_side(Side::Player, request, action_index)
     }
 
-    pub fn apply_action_recording_for_side(
+    pub(crate) fn apply_action_recording_for_side(
         &mut self,
         side: Side,
         request: MatchActionRequest,
@@ -475,7 +475,7 @@ impl MatchState {
         self.apply_action_internal(side, request, Some(action_index))
     }
 
-    pub fn forfeit_recording(
+    pub(crate) fn forfeit_recording(
         &mut self,
         winner: Side,
         action_index: u32,
