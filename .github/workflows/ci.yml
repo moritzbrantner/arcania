@@ -31,3 +31,10 @@ jobs:
 
       - name: Run local CI
         run: bun run ci:local
+
+      - name: Upload resolved Cargo lock
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resolved-cargo-lock
+          path: Cargo.lock
