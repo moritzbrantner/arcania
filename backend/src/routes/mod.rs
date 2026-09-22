@@ -24,6 +24,7 @@ use axum::response::IntoResponse;
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use futures_util::StreamExt;
+use game_server::SessionLease;
 use std::sync::Arc;
 use tokio::time::{self, Duration, Instant};
 use tower_http::cors::{Any, CorsLayer};
@@ -961,6 +962,20 @@ async fn handle_shared_socket(
     match_id: String,
     seat_token: String,
 ) {
+    let lease = match state.connect_shared_seat(&match_id, &seat_token) {
+        Ok(lease) => lease,
+        Err(error) => {
+            let _ = send_shared_message(
+                &mut socket,
+                SharedServerMessage::Error {
+                    message: format!("Could not establish shared match session: {error}"),
+                },
+            )
+            .await;
+            return;
+        }
+    };
+
     {
         let mut store = state
             .store
@@ -975,6 +990,7 @@ async fn handle_shared_socket(
     let mut last_client_message = Instant::now();
     if let Some(message) = shared_snapshot_message(&state, &match_id, &seat_token, false) {
         if send_shared_message(&mut socket, message).await.is_err() {
+            finish_shared_socket(&state, &match_id, &seat_token, lease);
             return;
         }
     }
@@ -989,22 +1005,40 @@ async fn handle_shared_socket(
                 let Ok(message) = received else {
                     break;
                 };
+                if !state.owns_shared_seat_connection(&match_id, &seat_token, lease) {
+                    break;
+                }
                 last_client_message = Instant::now();
                 match message {
                     Message::Text(text) => {
-                        handle_shared_client_text(&mut socket, &state, &match_id, &seat_token, &text).await;
+                        if !handle_shared_client_text(
+                            &mut socket,
+                            &state,
+                            &match_id,
+                            &seat_token,
+                            lease,
+                            &text,
+                        )
+                        .await
+                        {
+                            break;
+                        }
                     }
                     Message::Close(_) => break,
                     _ => {}
                 }
             }
             _ = heartbeat_timeout.tick() => {
-                if last_client_message.elapsed() > Duration::from_secs(45) {
+                if !state.owns_shared_seat_connection(&match_id, &seat_token, lease)
+                    || last_client_message.elapsed() > Duration::from_secs(45)
+                {
                     break;
                 }
             }
             broadcast = receiver.recv() => {
-                if broadcast.is_err() {
+                if broadcast.is_err()
+                    || !state.owns_shared_seat_connection(&match_id, &seat_token, lease)
+                {
                     break;
                 }
                 if let Some(message) = shared_snapshot_message(&state, &match_id, &seat_token, false) {
@@ -1016,14 +1050,27 @@ async fn handle_shared_socket(
         }
     }
 
+    finish_shared_socket(&state, &match_id, &seat_token, lease);
+}
+
+fn finish_shared_socket(
+    state: &SharedState,
+    match_id: &str,
+    seat_token: &str,
+    lease: SessionLease,
+) {
+    if !state.disconnect_shared_seat(match_id, seat_token, lease) {
+        return;
+    }
+
     {
         let mut store = state
             .store
             .lock()
             .expect("store lock should not be poisoned");
-        let _ = store.mark_shared_seat_disconnected(&match_id, &seat_token);
+        let _ = store.mark_shared_seat_disconnected(match_id, seat_token);
     }
-    state.notify_match(&match_id);
+    state.notify_match(match_id);
 }
 
 async fn handle_shared_client_text(
@@ -1031,8 +1078,9 @@ async fn handle_shared_client_text(
     state: &SharedState,
     match_id: &str,
     seat_token: &str,
+    lease: SessionLease,
     text: &str,
-) {
+) -> bool {
     let message = match serde_json::from_str::<SharedClientMessage>(text) {
         Ok(message) => message,
         Err(error) => {
@@ -1043,13 +1091,21 @@ async fn handle_shared_client_text(
                 },
             )
             .await;
-            return;
+            return true;
         }
     };
 
     match message {
         SharedClientMessage::Action { request_id, action } => {
-            match apply_shared_socket_action(state, match_id, seat_token, action) {
+            let Some(result) = state.with_shared_seat_connection(
+                match_id,
+                seat_token,
+                lease,
+                || apply_shared_socket_action(state, match_id, seat_token, action),
+            ) else {
+                return false;
+            };
+            match result {
                 Ok(payload) => {
                     let _ = send_shared_message(
                         socket,
@@ -1074,7 +1130,15 @@ async fn handle_shared_client_text(
             }
         }
         SharedClientMessage::ClaimForfeit { request_id } => {
-            match claim_shared_forfeit(state, match_id, seat_token) {
+            let Some(result) = state.with_shared_seat_connection(
+                match_id,
+                seat_token,
+                lease,
+                || claim_shared_forfeit(state, match_id, seat_token),
+            ) else {
+                return false;
+            };
+            match result {
                 Ok(payload) => {
                     let _ = send_shared_message(
                         socket,
@@ -1099,13 +1163,33 @@ async fn handle_shared_client_text(
             }
         }
         SharedClientMessage::Heartbeat => {
-            let mut store = state
-                .store
-                .lock()
-                .expect("store lock should not be poisoned");
-            let _ = store.mark_shared_seat_seen(match_id, seat_token);
+            let Some(result) = state.with_shared_seat_connection(
+                match_id,
+                seat_token,
+                lease,
+                || {
+                    let mut store = state
+                        .store
+                        .lock()
+                        .expect("store lock should not be poisoned");
+                    store.mark_shared_seat_seen(match_id, seat_token)
+                },
+            ) else {
+                return false;
+            };
+            if let Err(error) = result {
+                let _ = send_shared_message(
+                    socket,
+                    SharedServerMessage::Error {
+                        message: error.to_string(),
+                    },
+                )
+                .await;
+            }
         }
     }
+
+    true
 }
 
 fn apply_shared_socket_action(
