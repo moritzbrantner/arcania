@@ -836,7 +836,10 @@ impl MatchState {
 
     fn refresh_mana_from_sources(&mut self, side: Side) {
         let mana = mana_with_progression(
-            CURRENT_RULESET.turn.base_hero_mana.saturating_add(self.occupied_mana_sources(side)),
+            CURRENT_RULESET
+                .turn
+                .base_hero_mana
+                .saturating_add(self.occupied_mana_sources(side)),
             self.player_ref(side).progression.effects.mana_delta,
         );
         let player = self.player_mut(side);
@@ -1003,7 +1006,9 @@ impl MatchState {
                 )?;
                 if self
                     .carrier_item_count(&planned_item_play.carrier_id)
-                    .is_some_and(|count| count >= usize::from(CURRENT_RULESET.turn.max_carried_items))
+                    .is_some_and(|count| {
+                        count >= usize::from(CURRENT_RULESET.turn.max_carried_items)
+                    })
                 {
                     return Err(MatchError::InvalidTarget);
                 }
@@ -3183,10 +3188,11 @@ impl MatchState {
         }
 
         let mut picked_up = Vec::new();
-        let mut remaining_capacity = usize::from(CURRENT_RULESET.turn.max_carried_items).saturating_sub(
-            self.carrier_item_count(carrier_id)
-                .unwrap_or(usize::from(CURRENT_RULESET.turn.max_carried_items)),
-        );
+        let mut remaining_capacity = usize::from(CURRENT_RULESET.turn.max_carried_items)
+            .saturating_sub(
+                self.carrier_item_count(carrier_id)
+                    .unwrap_or(usize::from(CURRENT_RULESET.turn.max_carried_items)),
+            );
         self.board.dropped_items.retain(|dropped_item| {
             if dropped_item.position == position && remaining_capacity > 0 {
                 picked_up.push(dropped_item.item.clone());
