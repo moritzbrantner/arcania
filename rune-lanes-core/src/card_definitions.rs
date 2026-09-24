@@ -77,7 +77,11 @@ impl CardDefinition {
                 passive,
                 active,
             } => {
-                if *range == 0 && matches!(targets, BuffTargetPolicy::UnitsOnly) {
+                if *range == 0
+                    && (matches!(targets, BuffTargetPolicy::UnitsOnly)
+                        || (matches!(targets, BuffTargetPolicy::UnitsAndHeroes)
+                            && !item_has_effect_on_hero(passive, active.as_ref())))
+                {
                     errors.push(CardDefinitionValidationError::ZeroValue {
                         field: "kind.range".to_string(),
                     });
@@ -446,6 +450,12 @@ fn spell_requires_positive_range(effect: &SpellEffect) -> bool {
             targets: BuffTargetPolicy::UnitsOnly,
             ..
         } => true,
+        SpellEffect::StatBuff {
+            targets: BuffTargetPolicy::UnitsAndHeroes,
+            attack,
+            armor,
+            max_ap,
+        } => !stat_change_has_effect_on_hero(*attack, *armor, *max_ap),
         SpellEffect::Heal { .. } | SpellEffect::Draw { .. } | SpellEffect::StatBuff { .. } => false,
     }
 }
@@ -458,6 +468,31 @@ fn item_passive_is_noop(passive: &ItemPassiveEffect, targets: BuffTargetPolicy) 
             max_ap,
         } => !stat_change_has_effect(*attack, *armor, *max_ap, targets),
     }
+}
+
+fn item_has_effect_on_hero(
+    passive: &ItemPassiveEffect,
+    active: Option<&ItemActiveEffect>,
+) -> bool {
+    let passive_has_effect = match passive {
+        ItemPassiveEffect::StatBonus {
+            attack,
+            armor,
+            max_ap,
+        } => stat_change_has_effect_on_hero(*attack, *armor, *max_ap),
+    };
+    passive_has_effect
+        || active.is_some_and(|active| match active {
+            ItemActiveEffect::HealCarrier { .. }
+            | ItemActiveEffect::DamageTarget { .. }
+            | ItemActiveEffect::Draw { .. } => true,
+            ItemActiveEffect::StatMarker {
+                attack,
+                armor,
+                max_ap,
+                ..
+            } => stat_change_has_effect_on_hero(*attack, *armor, *max_ap),
+        })
 }
 
 fn validate_item_active_effect(
@@ -572,6 +607,10 @@ fn stat_change_has_effect(attack: i32, armor: i32, max_ap: i8, targets: BuffTarg
         || max_ap != 0
         || armor > 0
         || (armor < 0 && !matches!(targets, BuffTargetPolicy::HeroesOnly))
+}
+
+fn stat_change_has_effect_on_hero(attack: i32, armor: i32, max_ap: i8) -> bool {
+    attack != 0 || max_ap != 0 || armor > 0
 }
 
 #[cfg(test)]
@@ -723,6 +762,64 @@ mod tests {
             vec![CardDefinitionValidationError::EmptyStatChange {
                 field: "kind.effect".to_string(),
             }]
+        );
+    }
+
+    #[test]
+    fn zero_range_mixed_target_penalties_require_a_reachable_effect() {
+        let mut definition = unit_definition();
+        definition.kind = CardKind::Spell {
+            range: 0,
+            priority: 1,
+            effect: SpellEffect::StatBuff {
+                attack: 0,
+                armor: -1,
+                max_ap: 0,
+                targets: BuffTargetPolicy::UnitsAndHeroes,
+            },
+        };
+        assert!(definition.validation_errors().iter().any(|error| {
+            error
+                == &CardDefinitionValidationError::ZeroValue {
+                    field: "kind.range".to_string(),
+                }
+        }));
+
+        definition.kind = CardKind::Item {
+            range: 0,
+            targets: BuffTargetPolicy::UnitsAndHeroes,
+            passive: ItemPassiveEffect::StatBonus {
+                attack: 0,
+                armor: -1,
+                max_ap: 0,
+            },
+            active: None,
+        };
+        assert!(definition.validation_errors().iter().any(|error| {
+            error
+                == &CardDefinitionValidationError::ZeroValue {
+                    field: "kind.range".to_string(),
+                }
+        }));
+
+        definition.kind = CardKind::Spell {
+            range: 0,
+            priority: 1,
+            effect: SpellEffect::StatBuff {
+                attack: -1,
+                armor: 0,
+                max_ap: 0,
+                targets: BuffTargetPolicy::UnitsAndHeroes,
+            },
+        };
+        assert!(
+            !definition.validation_errors().iter().any(|error| {
+                error
+                    == &CardDefinitionValidationError::ZeroValue {
+                        field: "kind.range".to_string(),
+                    }
+            }),
+            "attack penalties affect the caster and are reachable at range zero"
         );
     }
 
