@@ -568,6 +568,59 @@ fn extreme_authored_effects_saturate_match_state_arithmetic() {
 }
 
 #[test]
+fn authored_stat_penalties_cannot_create_negative_attack_or_dead_live_units() {
+    let mut game = MatchState::new_with_seed(7);
+    game.board.units.push(board_unit(
+        "debuffed",
+        Side::Player,
+        hex(0, 2),
+        1,
+        1,
+        1,
+    ));
+    let mut frames = Vec::new();
+
+    assert!(game.apply_stat_bonus_to_piece(
+        "debuffed",
+        StatBonus {
+            attack: -10,
+            armor: -10,
+            max_ap: 0,
+            targets: BuffTargetPolicy::UnitsOnly,
+        },
+        &mut frames,
+        None,
+    ));
+
+    let unit = game
+        .board
+        .units
+        .iter()
+        .find(|unit| unit.id == "debuffed")
+        .expect("stat penalties must not leave a dead unit in live state");
+    assert_eq!(unit.attack, 0);
+    assert_eq!(unit.armor, 1);
+    assert_eq!(unit.max_armor, 1);
+}
+
+#[test]
+fn negative_damage_never_heals_a_piece() {
+    let mut game = MatchState::new_with_seed(7);
+    game.board.units.push(board_unit(
+        "target",
+        Side::Opponent,
+        hex(0, 2),
+        1,
+        1,
+        2,
+    ));
+
+    game.damage_piece("target", -5);
+
+    assert_eq!(unit_armor(&game, "target"), Some(2));
+}
+
+#[test]
 fn draw_spells_target_the_caster_and_draw_cards() {
     let mut game = MatchState::new_with_seed(7);
     game.player.mana = 8;
