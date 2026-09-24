@@ -38,6 +38,12 @@ enum AiDecisionApplication {
     Illegal(MatchError),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct AppliedStatDelta {
+    attack_delta: i32,
+    armor_delta: i32,
+}
+
 impl Default for MatchState {
     fn default() -> Self {
         Self::new()
@@ -890,9 +896,9 @@ impl MatchState {
         let mut board = self.board.clone();
         for unit in &mut board.units {
             let bonus = self.aura_stat_bonus_for(unit.side, unit.position, false);
-            unit.attack += bonus.attack;
-            unit.armor += bonus.armor;
-            unit.max_armor += bonus.armor;
+            unit.attack = unit.attack.saturating_add(bonus.attack).max(0);
+            unit.armor = unit.armor.saturating_add(bonus.armor).max(1);
+            unit.max_armor = unit.max_armor.saturating_add(bonus.armor).max(1);
             apply_ap_delta(&mut unit.ap_remaining, &mut unit.max_ap, bonus.max_ap);
         }
         board
@@ -1211,7 +1217,7 @@ impl MatchState {
                 max_ap,
                 targets,
             } => {
-                if self.apply_stat_bonus_to_piece(
+                if let Some(applied) = self.apply_stat_bonus_to_piece(
                     &piece_id,
                     StatBonus {
                         attack,
@@ -1232,8 +1238,8 @@ impl MatchState {
                         ReplayEvent::PieceBuffed {
                             side,
                             piece_id,
-                            attack_delta: attack,
-                            armor_delta: armor,
+                            attack_delta: applied.attack_delta,
+                            armor_delta: applied.armor_delta,
                         },
                     );
                 }
@@ -1706,17 +1712,15 @@ impl MatchState {
                 mut marker,
             } => {
                 marker.id = self.next_stat_marker_id(&carrier_id, &marker.source_item_id);
-                let attack = marker.attack;
-                let armor = marker.armor;
-                if self.add_stat_marker_to_carrier(&carrier_id, marker) {
+                if let Some(applied) = self.add_stat_marker_to_carrier(&carrier_id, marker) {
                     self.record_replay_frame(
                         frames,
                         action_index,
                         ReplayEvent::PieceBuffed {
                             side,
                             piece_id: carrier_id,
-                            attack_delta: attack,
-                            armor_delta: armor,
+                            attack_delta: applied.attack_delta,
+                            armor_delta: applied.armor_delta,
                         },
                     );
                 }
@@ -1807,7 +1811,7 @@ impl MatchState {
                 max_ap,
                 ..
             } => {
-                self.apply_stat_bonus_to_piece(
+                let _ = self.apply_stat_bonus_to_piece(
                     occupant_id,
                     StatBonus {
                         attack,
@@ -2828,7 +2832,7 @@ impl MatchState {
 
     fn apply_aura_to_piece_view(&self, mut piece: PieceView) -> PieceView {
         let bonus = self.aura_stat_bonus_for(piece.side, piece.position, piece.is_hero);
-        piece.attack += bonus.attack;
+        piece.attack = piece.attack.saturating_add(bonus.attack).max(0);
         piece
     }
 
@@ -2860,9 +2864,9 @@ impl MatchState {
             if !card_interactions::target_policy_allows(targets, is_hero) {
                 continue;
             }
-            bonus.attack += attack;
-            bonus.armor += armor;
-            bonus.max_ap += max_ap;
+            bonus.attack = bonus.attack.saturating_add(attack);
+            bonus.armor = bonus.armor.saturating_add(armor);
+            bonus.max_ap = bonus.max_ap.saturating_add(max_ap);
         }
         bonus
     }
@@ -2929,6 +2933,7 @@ impl MatchState {
     }
 
     fn damage_piece(&mut self, piece_id: &str, amount: i32) {
+        let amount = amount.max(0);
         for side in self.participant_sides() {
             if self.player_ref(side).hero.id == piece_id {
                 damage_hero(&mut self.player_mut(side).hero, amount);
@@ -2936,7 +2941,7 @@ impl MatchState {
             }
         }
         if let Some(unit) = self.board.units.iter_mut().find(|unit| unit.id == piece_id) {
-            unit.armor -= amount;
+            unit.armor = unit.armor.saturating_sub(amount);
         }
     }
 
@@ -2972,12 +2977,12 @@ impl MatchState {
         for side in self.participant_sides() {
             if self.player_ref(side).hero.id == piece_id {
                 let hero = &mut self.player_mut(side).hero;
-                hero.hp = (hero.hp + amount).min(hero.max_hp);
+                hero.hp = hero.hp.saturating_add(amount).min(hero.max_hp);
                 return;
             }
         }
         if let Some(unit) = self.board.units.iter_mut().find(|unit| unit.id == piece_id) {
-            unit.armor = (unit.armor + amount).min(unit.max_armor);
+            unit.armor = unit.armor.saturating_add(amount).min(unit.max_armor);
         }
     }
 
@@ -2987,23 +2992,28 @@ impl MatchState {
         bonus: StatBonus,
         frames: &mut Vec<RecordedReplayFrame>,
         action_index: Option<u32>,
-    ) -> bool {
+    ) -> Option<AppliedStatDelta> {
         for side in self.participant_sides() {
             if self.player_ref(side).hero.id == piece_id {
                 return self.apply_stat_bonus_to_hero(side, bonus, frames, action_index);
             }
         }
         if !card_interactions::target_policy_allows(bonus.targets, false) {
-            return false;
+            return None;
         }
         if let Some(unit) = self.board.units.iter_mut().find(|unit| unit.id == piece_id) {
-            unit.attack += bonus.attack;
-            unit.armor += bonus.armor;
-            unit.max_armor += bonus.armor;
+            let previous_attack = unit.attack;
+            let previous_armor = unit.armor;
+            unit.attack = unit.attack.saturating_add(bonus.attack).max(0);
+            unit.armor = unit.armor.saturating_add(bonus.armor).max(1);
+            unit.max_armor = unit.max_armor.saturating_add(bonus.armor).max(1);
             apply_ap_delta(&mut unit.ap_remaining, &mut unit.max_ap, bonus.max_ap);
-            return true;
+            return Some(AppliedStatDelta {
+                attack_delta: unit.attack.saturating_sub(previous_attack),
+                armor_delta: unit.armor.saturating_sub(previous_armor),
+            });
         }
-        false
+        None
     }
 
     fn apply_stat_bonus_to_hero(
@@ -3012,32 +3022,41 @@ impl MatchState {
         bonus: StatBonus,
         frames: &mut Vec<RecordedReplayFrame>,
         action_index: Option<u32>,
-    ) -> bool {
-        if !card_interactions::target_policy_allows(bonus.targets, true) {
-            return false;
-        }
-        let mut shielded_hero_id = None;
+    ) -> Option<AppliedStatDelta> {
+        if !card_interactions::target_policy_allows(bonus.targets, true)
+            || (bonus.attack == 0 && bonus.max_ap == 0 && bonus.armor <= 0)
         {
+            return None;
+        }
+        let (hero_id, applied) = {
             let hero = &mut self.player_mut(side).hero;
-            hero.attack += bonus.attack;
+            let previous_attack = hero.attack;
+            let previous_shield = hero.shield;
+            hero.attack = hero.attack.saturating_add(bonus.attack).max(0);
             apply_ap_delta(&mut hero.ap_remaining, &mut hero.max_ap, bonus.max_ap);
             if bonus.armor > 0 {
                 hero.shield = hero.shield.saturating_add(bonus.armor);
-                shielded_hero_id = Some(hero.id.clone());
             }
-        }
-        if let Some(hero_id) = shielded_hero_id {
+            (
+                hero.id.clone(),
+                AppliedStatDelta {
+                    attack_delta: hero.attack.saturating_sub(previous_attack),
+                    armor_delta: hero.shield.saturating_sub(previous_shield),
+                },
+            )
+        };
+        if applied.armor_delta > 0 {
             self.record_replay_frame(
                 frames,
                 action_index,
                 ReplayEvent::HeroShielded {
                     side,
                     hero_id,
-                    amount: bonus.armor,
+                    amount: applied.armor_delta,
                 },
             );
         }
-        true
+        Some(applied)
     }
 
     fn piece_is_damaged(&self, piece_id: &str) -> bool {
@@ -3326,17 +3345,26 @@ impl MatchState {
         false
     }
 
-    fn add_stat_marker_to_carrier(&mut self, carrier_id: &str, marker: StatMarker) -> bool {
+    fn add_stat_marker_to_carrier(
+        &mut self,
+        carrier_id: &str,
+        marker: StatMarker,
+    ) -> Option<AppliedStatDelta> {
         for side in self.participant_sides() {
             if self.player_ref(side).hero.id == carrier_id {
                 let hero = &mut self.player_mut(side).hero;
-                hero.attack += marker.attack;
+                let previous_attack = hero.attack;
+                let previous_shield = hero.shield;
+                hero.attack = hero.attack.saturating_add(marker.attack).max(0);
                 if marker.armor > 0 {
                     hero.shield = hero.shield.saturating_add(marker.armor);
                 }
                 apply_ap_delta(&mut hero.ap_remaining, &mut hero.max_ap, marker.max_ap);
                 hero.stat_markers.push(marker);
-                return true;
+                return Some(AppliedStatDelta {
+                    attack_delta: hero.attack.saturating_sub(previous_attack),
+                    armor_delta: hero.shield.saturating_sub(previous_shield),
+                });
             }
         }
         if let Some(unit) = self
@@ -3345,14 +3373,19 @@ impl MatchState {
             .iter_mut()
             .find(|unit| unit.id == carrier_id)
         {
-            unit.attack += marker.attack;
-            unit.armor += marker.armor;
-            unit.max_armor += marker.armor;
+            let previous_attack = unit.attack;
+            let previous_armor = unit.armor;
+            unit.attack = unit.attack.saturating_add(marker.attack).max(0);
+            unit.armor = unit.armor.saturating_add(marker.armor).max(1);
+            unit.max_armor = unit.max_armor.saturating_add(marker.armor).max(1);
             apply_ap_delta(&mut unit.ap_remaining, &mut unit.max_ap, marker.max_ap);
             unit.stat_markers.push(marker);
-            return true;
+            return Some(AppliedStatDelta {
+                attack_delta: unit.attack.saturating_sub(previous_attack),
+                armor_delta: unit.armor.saturating_sub(previous_armor),
+            });
         }
-        false
+        None
     }
 
     fn next_stat_marker_id(&self, carrier_id: &str, source_item_id: &str) -> String {
@@ -3546,8 +3579,8 @@ fn mana_with_progression(base: u8, delta: i8) -> u8 {
 
 fn damage_hero(hero: &mut Hero, amount: i32) {
     let shield_damage = hero.shield.min(amount);
-    hero.shield -= shield_damage;
-    hero.hp -= amount - shield_damage;
+    hero.shield = hero.shield.saturating_sub(shield_damage);
+    hero.hp = hero.hp.saturating_sub(amount.saturating_sub(shield_damage));
 }
 
 fn apply_ap_delta(ap_remaining: &mut u8, max_ap: &mut u8, delta: i8) {

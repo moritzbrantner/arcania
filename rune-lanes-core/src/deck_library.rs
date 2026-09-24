@@ -1,4 +1,4 @@
-use crate::card_catalog::card_template_by_id;
+use crate::card_catalog::starter_card_catalog;
 use crate::match_session::{Card, Side};
 
 const BALANCED_STARTER_COUNTS: &[(&str, u16)] = &[
@@ -73,13 +73,15 @@ pub(crate) fn deck_from_snapshot(
 ) -> Result<Vec<Card>, DeckLibraryError> {
     let mut cards = Vec::new();
     for count in &snapshot.cards {
-        let Some(template) = card_template_by_id(&count.template_id) else {
+        let Some(revision) = starter_card_catalog().latest(&count.template_id) else {
             return Err(DeckLibraryError::UnknownTemplate(count.template_id.clone()));
         };
         for copy in 0..count.count {
-            let mut card = template.clone();
-            card.id = format!("{}-{copy}-{}", side.card_prefix(), card.template_id);
-            cards.push(card);
+            cards.push(revision.definition().instantiate(format!(
+                "{}-{copy}-{}",
+                side.card_prefix(),
+                count.template_id
+            )));
         }
     }
     Ok(cards)
@@ -104,7 +106,7 @@ mod tests {
     fn balanced_starter_references_known_templates() {
         for (template_id, _) in BALANCED_STARTER_COUNTS {
             assert!(
-                card_template_by_id(template_id).is_some(),
+                starter_card_catalog().latest(template_id).is_some(),
                 "starter deck references unknown template {template_id}"
             );
         }
