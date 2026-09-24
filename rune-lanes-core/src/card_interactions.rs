@@ -444,9 +444,9 @@ pub(crate) fn summon_unit_from_card(
         return None;
     };
 
-    let mut armor = *armor + progression.effects.summoned_unit_armor_delta;
+    let mut armor = armor.saturating_add(progression.effects.summoned_unit_armor_delta);
     if is_first_summoned_unit {
-        armor += progression.effects.first_summoned_unit_armor_delta;
+        armor = armor.saturating_add(progression.effects.first_summoned_unit_armor_delta);
     }
 
     Some(Unit {
@@ -474,9 +474,9 @@ pub(crate) fn apply_item_passive(unit: &mut Unit, passive: &ItemPassiveEffect) {
             armor,
             max_ap,
         } => {
-            unit.attack += *attack;
-            unit.armor += *armor;
-            unit.max_armor += *armor;
+            unit.attack = unit.attack.saturating_add(*attack);
+            unit.armor = unit.armor.saturating_add(*armor);
+            unit.max_armor = unit.max_armor.saturating_add(*armor);
             if *max_ap >= 0 {
                 let amount = *max_ap as u8;
                 unit.ap_remaining = unit.ap_remaining.saturating_add(amount);
@@ -497,7 +497,7 @@ pub(crate) fn apply_item_passive_to_hero(hero: &mut Hero, passive: &ItemPassiveE
             armor,
             max_ap,
         } => {
-            hero.attack += *attack;
+            hero.attack = hero.attack.saturating_add(*attack);
             if *armor > 0 {
                 hero.shield = hero.shield.saturating_add(*armor);
             }
@@ -543,7 +543,9 @@ fn validate_unit_target(
 }
 
 fn damage_with_progression(amount: i32, progression: &MatchProgressionLoadout) -> i32 {
-    (amount + progression.effects.spell_damage_delta).max(0)
+    amount
+        .saturating_add(progression.effects.spell_damage_delta)
+        .max(0)
 }
 
 fn enemy_piece_ids_in_area(
