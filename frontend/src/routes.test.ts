@@ -11,16 +11,16 @@ import {
 
 describe("route parsers", () => {
   it("maps GitHub Pages browser URLs back to application routes", () => {
-    expect(routePathFromBrowserLocation("/card-board-hybrid/", "", "/card-board-hybrid/")).toBe("/");
-    expect(routePathFromBrowserLocation("/card-board-hybrid/tutorial", "?step=2", "/card-board-hybrid/")).toBe("/tutorial?step=2");
-    expect(routePathFromBrowserLocation("/card-board-hybridized/tutorial", "", "/card-board-hybrid/")).toBe("/card-board-hybridized/tutorial");
+    expect(routePathFromBrowserLocation("/arcania/", "", "/arcania/")).toBe("/");
+    expect(routePathFromBrowserLocation("/arcania/tutorial", "?step=2", "/arcania/")).toBe("/tutorial?step=2");
+    expect(routePathFromBrowserLocation("/arcaniaized/tutorial", "", "/arcania/")).toBe("/arcaniaized/tutorial");
   });
 
   it("maps application routes into the deployment subpath", () => {
-    expect(browserRoutePath("/", "/card-board-hybrid/")).toBe("/card-board-hybrid/");
-    expect(browserRoutePath("/tutorial?step=2#board", "/card-board-hybrid/")).toBe("/card-board-hybrid/tutorial?step=2#board");
-    expect(browserRoutePath("/card-board-hybrid/wiki", "/card-board-hybrid/")).toBe("/card-board-hybrid/wiki");
-    expect(browserRoutePath("//example.test/wiki", "/card-board-hybrid/")).toBe("//example.test/wiki");
+    expect(browserRoutePath("/", "/arcania/")).toBe("/arcania/");
+    expect(browserRoutePath("/tutorial?step=2#board", "/arcania/")).toBe("/arcania/tutorial?step=2#board");
+    expect(browserRoutePath("/arcania/wiki", "/arcania/")).toBe("/arcania/wiki");
+    expect(browserRoutePath("//example.test/wiki", "/arcania/")).toBe("//example.test/wiki");
   });
 
   it("parses match summary routes", () => {
