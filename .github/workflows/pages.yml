@@ -26,6 +26,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      PAGES_BASE_PATH: /${{ github.event.repository.name }}/
     steps:
       - name: Check out repository
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
@@ -45,7 +47,7 @@ jobs:
 
       - name: Build Pages site
         env:
-          VITE_BASE_PATH: /card-board-hybrid/
+          VITE_BASE_PATH: ${{ env.PAGES_BASE_PATH }}
           VITE_DISABLE_BACKEND_PROXY: "1"
         run: |
           bun run --cwd frontend build
@@ -55,7 +57,7 @@ jobs:
         run: |
           test -s frontend/dist/index.html
           test -s frontend/dist/404.html
-          grep -F '/card-board-hybrid/assets/' frontend/dist/index.html
+          grep -F "${PAGES_BASE_PATH}assets/" frontend/dist/index.html
           cmp frontend/dist/index.html frontend/dist/404.html
 
       - name: Upload Pages artifact
