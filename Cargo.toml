@@ -7,7 +7,7 @@ edition = "2024"
 rust-version = "1.98"
 
 [workspace.dependencies]
-argon2 = "0.5"
+argon2 = "0.6"
 axum = { version = "0.8", features = ["ws"] }
 futures-util = "0.3"
 game-server = { git = "https://github.com/moritzbrantner/game-server.git", rev = "5d62ddd7d612535a3e7fc5761af20330837c87b4" }
