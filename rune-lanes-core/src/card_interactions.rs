@@ -365,10 +365,7 @@ fn stat_change_has_effect_on_hero(attack: i32, armor: i32, max_ap: i8) -> bool {
     attack != 0 || armor > 0 || max_ap != 0
 }
 
-fn item_has_effect_on_hero(
-    passive: &ItemPassiveEffect,
-    active: Option<&ItemActiveEffect>,
-) -> bool {
+fn item_has_effect_on_hero(passive: &ItemPassiveEffect, active: Option<&ItemActiveEffect>) -> bool {
     let passive_has_effect = match passive {
         ItemPassiveEffect::StatBonus {
             attack,
