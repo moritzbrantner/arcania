@@ -82,14 +82,14 @@ impl CardDefinition {
                         field: "kind.range".to_string(),
                     });
                 }
-                let passive_is_noop = item_passive_is_noop(passive);
+                let passive_is_noop = item_passive_is_noop(passive, *targets);
                 if passive_is_noop && active.is_none() {
                     errors.push(CardDefinitionValidationError::EmptyStatChange {
                         field: "kind.passive".to_string(),
                     });
                 }
                 if let Some(active) = active {
-                    validate_item_active_effect(active, &mut errors);
+                    validate_item_active_effect(active, *targets, &mut errors);
                 }
             }
             CardKind::Building { effect } => validate_building_effect(effect, &mut errors),
@@ -419,9 +419,16 @@ fn validate_spell_effect(
             attack,
             armor,
             max_ap,
-            ..
+            targets,
         } => {
-            require_nonzero_stats(errors, "kind.effect", *attack, *armor, *max_ap);
+            require_effective_stats(
+                errors,
+                "kind.effect",
+                *attack,
+                *armor,
+                *max_ap,
+                *targets,
+            );
         }
         SpellEffect::Draw { amount } => {
             require_positive_u8(errors, "kind.effect.amount", *amount);
@@ -450,18 +457,19 @@ fn spell_requires_positive_range(effect: &SpellEffect) -> bool {
     }
 }
 
-fn item_passive_is_noop(passive: &ItemPassiveEffect) -> bool {
+fn item_passive_is_noop(passive: &ItemPassiveEffect, targets: BuffTargetPolicy) -> bool {
     match passive {
         ItemPassiveEffect::StatBonus {
             attack,
             armor,
             max_ap,
-        } => *attack == 0 && *armor == 0 && *max_ap == 0,
+        } => !stat_change_has_effect(*attack, *armor, *max_ap, targets),
     }
 }
 
 fn validate_item_active_effect(
     active: &ItemActiveEffect,
+    targets: BuffTargetPolicy,
     errors: &mut Vec<CardDefinitionValidationError>,
 ) {
     match active {
@@ -481,7 +489,7 @@ fn validate_item_active_effect(
             max_ap,
             ..
         } => {
-            require_nonzero_stats(errors, "kind.active", *attack, *armor, *max_ap);
+            require_effective_stats(errors, "kind.active", *attack, *armor, *max_ap, targets);
         }
     }
 }
@@ -495,18 +503,27 @@ fn validate_building_effect(
             require_positive_u8(errors, "kind.effect.amount", *amount);
         }
         BuildingEffect::AuraStatBonus {
+            targets,
             attack,
             armor,
             max_ap,
             ..
         }
         | BuildingEffect::ActivatedStatBonus {
+            targets,
             attack,
             armor,
             max_ap,
             ..
         } => {
-            require_nonzero_stats(errors, "kind.effect", *attack, *armor, *max_ap);
+            require_effective_stats(
+                errors,
+                "kind.effect",
+                *attack,
+                *armor,
+                *max_ap,
+                *targets,
+            );
         }
         BuildingEffect::ActivatedDamageLine { range, amount } => {
             require_positive_u8(errors, "kind.effect.range", *range);
@@ -547,6 +564,33 @@ fn require_nonzero_stats(
             field: field.to_string(),
         });
     }
+}
+
+fn require_effective_stats(
+    errors: &mut Vec<CardDefinitionValidationError>,
+    field: &str,
+    attack: i32,
+    armor: i32,
+    max_ap: i8,
+    targets: BuffTargetPolicy,
+) {
+    if !stat_change_has_effect(attack, armor, max_ap, targets) {
+        errors.push(CardDefinitionValidationError::EmptyStatChange {
+            field: field.to_string(),
+        });
+    }
+}
+
+fn stat_change_has_effect(
+    attack: i32,
+    armor: i32,
+    max_ap: i8,
+    targets: BuffTargetPolicy,
+) -> bool {
+    attack != 0
+        || max_ap != 0
+        || armor > 0
+        || (armor < 0 && !matches!(targets, BuffTargetPolicy::HeroesOnly))
 }
 
 #[cfg(test)]
@@ -645,6 +689,77 @@ mod tests {
                 field: "kind.passive".to_string(),
             }]
         );
+    }
+
+    #[test]
+    fn validation_rejects_hero_only_negative_armor_noops() {
+        let mut definition = unit_definition();
+        definition.kind = CardKind::Spell {
+            range: 0,
+            priority: 1,
+            effect: SpellEffect::StatBuff {
+                attack: 0,
+                armor: -1,
+                max_ap: 0,
+                targets: BuffTargetPolicy::HeroesOnly,
+            },
+        };
+        assert_eq!(
+            definition.validation_errors(),
+            vec![CardDefinitionValidationError::EmptyStatChange {
+                field: "kind.effect".to_string(),
+            }]
+        );
+
+        definition.kind = CardKind::Item {
+            range: 0,
+            targets: BuffTargetPolicy::HeroesOnly,
+            passive: ItemPassiveEffect::StatBonus {
+                attack: 0,
+                armor: -1,
+                max_ap: 0,
+            },
+            active: None,
+        };
+        assert_eq!(
+            definition.validation_errors(),
+            vec![CardDefinitionValidationError::EmptyStatChange {
+                field: "kind.passive".to_string(),
+            }]
+        );
+
+        definition.kind = CardKind::Building {
+            effect: BuildingEffect::ActivatedStatBonus {
+                range: 0,
+                targets: BuffTargetPolicy::HeroesOnly,
+                attack: 0,
+                armor: -1,
+                max_ap: 0,
+            },
+        };
+        assert_eq!(
+            definition.validation_errors(),
+            vec![CardDefinitionValidationError::EmptyStatChange {
+                field: "kind.effect".to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn validation_accepts_negative_armor_when_units_can_be_targeted() {
+        let mut definition = unit_definition();
+        definition.kind = CardKind::Spell {
+            range: 1,
+            priority: 1,
+            effect: SpellEffect::StatBuff {
+                attack: 0,
+                armor: -1,
+                max_ap: 0,
+                targets: BuffTargetPolicy::UnitsAndHeroes,
+            },
+        };
+
+        assert!(definition.validation_errors().is_empty());
     }
 
     #[test]
