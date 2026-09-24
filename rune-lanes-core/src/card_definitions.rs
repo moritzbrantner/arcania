@@ -4,7 +4,8 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::match_session::{
-    BuildingEffect, Card, CardKind, ItemActiveEffect, ItemPassiveEffect, Rarity, SpellEffect,
+    BuffTargetPolicy, BuildingEffect, Card, CardKind, ItemActiveEffect, ItemPassiveEffect, Rarity,
+    SpellEffect,
 };
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -67,7 +68,9 @@ impl CardDefinition {
                     });
                 }
             }
-            CardKind::Spell { effect, .. } => validate_spell_effect(effect, &mut errors),
+            CardKind::Spell { range, effect, .. } => {
+                validate_spell_effect(*range, effect, &mut errors);
+            }
             CardKind::Item {
                 passive, active, ..
             } => {
@@ -134,11 +137,35 @@ impl fmt::Display for CardRevisionId {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PublishedCardRevision {
     id: CardRevisionId,
     definition: CardDefinition,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UncheckedPublishedCardRevision {
+    id: CardRevisionId,
+    definition: CardDefinition,
+}
+
+impl<'de> Deserialize<'de> for PublishedCardRevision {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let unchecked = UncheckedPublishedCardRevision::deserialize(deserializer)?;
+        let published = Self {
+            id: unchecked.id,
+            definition: unchecked.definition,
+        };
+        published
+            .validate()
+            .map_err(|error| serde::de::Error::custom(error.to_string()))?;
+        Ok(published)
+    }
 }
 
 impl PublishedCardRevision {
@@ -335,7 +362,15 @@ fn valid_card_id(id: &str) -> bool {
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
 }
 
-fn validate_spell_effect(effect: &SpellEffect, errors: &mut Vec<CardDefinitionValidationError>) {
+fn validate_spell_effect(
+    range: u8,
+    effect: &SpellEffect,
+    errors: &mut Vec<CardDefinitionValidationError>,
+) {
+    if spell_requires_positive_range(effect) {
+        require_positive_u8(errors, "kind.range", range);
+    }
+
     match effect {
         SpellEffect::Heal { amount } | SpellEffect::Damage { amount } => {
             require_positive_i32(errors, "kind.effect.amount", *amount);
@@ -361,6 +396,22 @@ fn validate_spell_effect(effect: &SpellEffect, errors: &mut Vec<CardDefinitionVa
         SpellEffect::LineDamage { amount } => {
             require_positive_i32(errors, "kind.effect.amount", *amount);
         }
+    }
+}
+
+fn spell_requires_positive_range(effect: &SpellEffect) -> bool {
+    match effect {
+        SpellEffect::Damage { .. }
+        | SpellEffect::AreaDamage { .. }
+        | SpellEffect::LineDamage { .. }
+        | SpellEffect::Buff { .. } => true,
+        SpellEffect::StatBuff {
+            targets: BuffTargetPolicy::UnitsOnly,
+            ..
+        } => true,
+        SpellEffect::Heal { .. }
+        | SpellEffect::Draw { .. }
+        | SpellEffect::StatBuff { .. } => false,
     }
 }
 
@@ -466,7 +517,6 @@ fn require_nonzero_stats(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::match_session::BuffTargetPolicy;
 
     fn unit_definition() -> CardDefinition {
         CardDefinition {
@@ -563,6 +613,88 @@ mod tests {
     }
 
     #[test]
+    fn validation_rejects_zero_range_for_spells_that_need_another_piece() {
+        let effects = [
+            SpellEffect::Damage { amount: 1 },
+            SpellEffect::AreaDamage {
+                amount: 1,
+                radius: 1,
+            },
+            SpellEffect::LineDamage { amount: 1 },
+            SpellEffect::Buff {
+                attack: 1,
+                armor: 0,
+            },
+            SpellEffect::StatBuff {
+                attack: 1,
+                armor: 0,
+                max_ap: 0,
+                targets: BuffTargetPolicy::UnitsOnly,
+            },
+        ];
+
+        for effect in effects {
+            let mut definition = unit_definition();
+            definition.kind = CardKind::Spell {
+                range: 0,
+                priority: 2,
+                effect,
+            };
+
+            assert!(
+                definition.validation_errors().iter().any(|error| {
+                    error
+                        == &CardDefinitionValidationError::ZeroValue {
+                            field: "kind.range".to_string(),
+                        }
+                }),
+                "{} should require positive range",
+                definition.id
+            );
+        }
+    }
+
+    #[test]
+    fn validation_allows_zero_range_for_self_targetable_spells() {
+        let effects = [
+            SpellEffect::Heal { amount: 1 },
+            SpellEffect::Draw { amount: 1 },
+            SpellEffect::StatBuff {
+                attack: 1,
+                armor: 0,
+                max_ap: 0,
+                targets: BuffTargetPolicy::HeroesOnly,
+            },
+            SpellEffect::StatBuff {
+                attack: 1,
+                armor: 0,
+                max_ap: 0,
+                targets: BuffTargetPolicy::UnitsAndHeroes,
+            },
+        ];
+
+        for effect in effects {
+            let mut definition = unit_definition();
+            definition.kind = CardKind::Spell {
+                range: 0,
+                priority: 2,
+                effect,
+            };
+
+            assert!(
+                !definition.validation_errors().iter().any(|error| {
+                    error
+                        == &CardDefinitionValidationError::ZeroValue {
+                            field: "kind.range".to_string(),
+                        }
+                }),
+                "{} should allow self-targeting at range zero",
+                definition.id
+            );
+        }
+    }
+
+    #[test]
     fn published_revision_identity_is_stable_and_serializable() {
         let revision = PublishedCardRevision::new(unit_definition(), 3).expect("valid revision");
         let json = serde_json::to_string(revision.id()).expect("revision id should serialize");
@@ -579,6 +711,42 @@ mod tests {
             .expect_err("published revisions must start at one");
 
         assert_eq!(error, PublishedCardRevisionError::ZeroRevision);
+    }
+
+    #[test]
+    fn published_revision_deserialization_preserves_invariants() {
+        let revision = PublishedCardRevision::new(unit_definition(), 2).expect("valid revision");
+        let mut json = serde_json::to_value(&revision).expect("published revision should serialize");
+
+        json["id"]["revision"] = serde_json::json!(0);
+        let error = serde_json::from_value::<PublishedCardRevision>(json)
+            .expect_err("zero revision must fail while deserializing");
+        assert!(error.to_string().contains("card revisions start at 1"));
+
+        let revision = PublishedCardRevision::new(unit_definition(), 2).expect("valid revision");
+        let mut json = serde_json::to_value(&revision).expect("published revision should serialize");
+        json["id"]["cardId"] = serde_json::json!("different-card");
+        let error = serde_json::from_value::<PublishedCardRevision>(json)
+            .expect_err("mismatched card ids must fail while deserializing");
+        assert!(error.to_string().contains("does not match definition id"));
+
+        let revision = PublishedCardRevision::new(unit_definition(), 2).expect("valid revision");
+        let mut json = serde_json::to_value(&revision).expect("published revision should serialize");
+        json["definition"]["name"] = serde_json::json!(" ");
+        let error = serde_json::from_value::<PublishedCardRevision>(json)
+            .expect_err("invalid definitions must fail while deserializing");
+        assert!(error.to_string().contains("validation error"));
+    }
+
+    #[test]
+    fn valid_published_revision_round_trips_through_json() {
+        let revision = PublishedCardRevision::new(unit_definition(), 4).expect("valid revision");
+        let json = serde_json::to_string(&revision).expect("published revision should serialize");
+        let restored: PublishedCardRevision =
+            serde_json::from_str(&json).expect("valid published revision should deserialize");
+
+        assert_eq!(restored.id().to_string(), "ash-duelist@4");
+        assert_eq!(restored.definition().name, "Ash Duelist");
     }
 
     #[test]
