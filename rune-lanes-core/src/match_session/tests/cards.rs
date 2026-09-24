@@ -607,14 +607,9 @@ fn published_extreme_stat_effects_saturate_and_emit_effective_deltas() {
         "player-limit-break",
     );
     let mut game = MatchState::new_with_seed(7);
-    game.board.units.push(board_unit(
-        "bounded",
-        Side::Player,
-        hex(0, 2),
-        1,
-        1,
-        1,
-    ));
+    game.board
+        .units
+        .push(board_unit("bounded", Side::Player, hex(0, 2), 1, 1, 1));
     let card_id = put_card_in_hand(&mut game, extreme);
 
     let frames = game
@@ -676,22 +671,12 @@ fn authored_stat_penalties_clamp_live_state_emit_effective_deltas_and_cannot_hea
         "player-withering-edict",
     );
     let mut game = MatchState::new_with_seed(7);
-    game.board.units.push(board_unit(
-        "debuffed",
-        Side::Player,
-        hex(0, 2),
-        1,
-        1,
-        1,
-    ));
-    game.board.units.push(board_unit(
-        "target",
-        Side::Opponent,
-        hex(-1, 2),
-        0,
-        1,
-        2,
-    ));
+    game.board
+        .units
+        .push(board_unit("debuffed", Side::Player, hex(0, 2), 1, 1, 1));
+    game.board
+        .units
+        .push(board_unit("target", Side::Opponent, hex(-1, 2), 0, 1, 2));
     let card_id = put_card_in_hand(&mut game, penalty);
 
     let frames = game
@@ -780,14 +765,9 @@ fn published_item_stat_markers_emit_effective_clamped_deltas() {
         "player-draining-signet",
     );
     let mut game = MatchState::new_with_seed(7);
-    game.board.units.push(board_unit(
-        "carrier",
-        Side::Player,
-        hex(0, 2),
-        1,
-        1,
-        1,
-    ));
+    game.board
+        .units
+        .push(board_unit("carrier", Side::Player, hex(0, 2), 1, 1, 1));
     let card_id = put_card_in_hand(&mut game, item);
 
     game.apply_action(MatchActionRequest::PlayCard {
@@ -845,14 +825,9 @@ fn published_item_stat_markers_emit_effective_clamped_deltas() {
 #[test]
 fn negative_damage_never_heals_a_piece() {
     let mut game = MatchState::new_with_seed(7);
-    game.board.units.push(board_unit(
-        "target",
-        Side::Opponent,
-        hex(0, 2),
-        1,
-        1,
-        2,
-    ));
+    game.board
+        .units
+        .push(board_unit("target", Side::Opponent, hex(0, 2), 1, 1, 2));
 
     game.damage_piece("target", -5);
 
