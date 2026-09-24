@@ -15,7 +15,7 @@
     "test:stories": "bun run --cwd frontend test:stories",
     "test:e2e": "playwright test --workers=1"
   },
-  "packageManager": "bun@1.3.14",
+  "packageManager": "bun@1.4.2",
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "@types/node": "^26.1.0",
