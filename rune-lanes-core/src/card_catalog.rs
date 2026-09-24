@@ -1230,7 +1230,6 @@ fn building_card(
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
