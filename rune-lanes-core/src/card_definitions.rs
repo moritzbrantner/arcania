@@ -146,7 +146,9 @@ impl<'de> Deserialize<'de> for CardRevisionId {
             return Err(serde::de::Error::custom("card revisions start at 1"));
         }
         if !valid_card_id(&unchecked.card_id) {
-            return Err(serde::de::Error::custom("card revision has an invalid card id"));
+            return Err(serde::de::Error::custom(
+                "card revision has an invalid card id",
+            ));
         }
 
         Ok(Self {
@@ -444,9 +446,7 @@ fn spell_requires_positive_range(effect: &SpellEffect) -> bool {
             targets: BuffTargetPolicy::UnitsOnly,
             ..
         } => true,
-        SpellEffect::Heal { .. }
-        | SpellEffect::Draw { .. }
-        | SpellEffect::StatBuff { .. } => false,
+        SpellEffect::Heal { .. } | SpellEffect::Draw { .. } | SpellEffect::StatBuff { .. } => false,
     }
 }
 
@@ -818,7 +818,8 @@ mod tests {
     #[test]
     fn published_revision_deserialization_preserves_invariants() {
         let revision = PublishedCardRevision::new(unit_definition(), 2).expect("valid revision");
-        let mut json = serde_json::to_value(&revision).expect("published revision should serialize");
+        let mut json =
+            serde_json::to_value(&revision).expect("published revision should serialize");
 
         json["id"]["revision"] = serde_json::json!(0);
         let error = serde_json::from_value::<PublishedCardRevision>(json)
@@ -826,14 +827,16 @@ mod tests {
         assert!(error.to_string().contains("card revisions start at 1"));
 
         let revision = PublishedCardRevision::new(unit_definition(), 2).expect("valid revision");
-        let mut json = serde_json::to_value(&revision).expect("published revision should serialize");
+        let mut json =
+            serde_json::to_value(&revision).expect("published revision should serialize");
         json["id"]["cardId"] = serde_json::json!("different-card");
         let error = serde_json::from_value::<PublishedCardRevision>(json)
             .expect_err("mismatched card ids must fail while deserializing");
         assert!(error.to_string().contains("does not match definition id"));
 
         let revision = PublishedCardRevision::new(unit_definition(), 2).expect("valid revision");
-        let mut json = serde_json::to_value(&revision).expect("published revision should serialize");
+        let mut json =
+            serde_json::to_value(&revision).expect("published revision should serialize");
         json["definition"]["name"] = serde_json::json!(" ");
         let error = serde_json::from_value::<PublishedCardRevision>(json)
             .expect_err("invalid definitions must fail while deserializing");
