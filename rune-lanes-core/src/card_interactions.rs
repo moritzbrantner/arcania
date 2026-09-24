@@ -574,7 +574,6 @@ fn enemy_piece_ids_on_line(
         .collect()
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
