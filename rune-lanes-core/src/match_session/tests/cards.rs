@@ -535,19 +535,20 @@ fn extreme_authored_effects_saturate_match_state_arithmetic() {
 
     game.player.hero.attack = i32::MAX;
     let mut frames = Vec::new();
-    assert!(game
-        .apply_stat_bonus_to_piece(
-        "player-hero",
-        StatBonus {
-            attack: 1,
-            armor: 0,
-            max_ap: 0,
-            targets: BuffTargetPolicy::HeroesOnly,
-        },
-        &mut frames,
-        None,
-    )
-    .is_some());
+    assert!(
+        game.apply_stat_bonus_to_piece(
+            "player-hero",
+            StatBonus {
+                attack: 1,
+                armor: 0,
+                max_ap: 0,
+                targets: BuffTargetPolicy::HeroesOnly,
+            },
+            &mut frames,
+            None,
+        )
+        .is_some()
+    );
     assert_eq!(game.player.hero.attack, i32::MAX);
 
     game.board.units.push(board_unit(
@@ -558,19 +559,20 @@ fn extreme_authored_effects_saturate_match_state_arithmetic() {
         1,
         i32::MAX,
     ));
-    assert!(game
-        .apply_stat_bonus_to_piece(
-        "saturated-unit",
-        StatBonus {
-            attack: 1,
-            armor: 1,
-            max_ap: 0,
-            targets: BuffTargetPolicy::UnitsOnly,
-        },
-        &mut frames,
-        None,
-    )
-    .is_some());
+    assert!(
+        game.apply_stat_bonus_to_piece(
+            "saturated-unit",
+            StatBonus {
+                attack: 1,
+                armor: 1,
+                max_ap: 0,
+                targets: BuffTargetPolicy::UnitsOnly,
+            },
+            &mut frames,
+            None,
+        )
+        .is_some()
+    );
     let unit = game
         .board
         .units
