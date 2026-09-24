@@ -210,7 +210,10 @@ impl CardCatalog {
                 return Err(CardCatalogError::DuplicateRevision(id));
             }
 
-            let latest = catalog.latest.entry(id.card_id.clone()).or_insert_with(|| id.clone());
+            let latest = catalog
+                .latest
+                .entry(id.card_id.clone())
+                .or_insert_with(|| id.clone());
             if id.revision > latest.revision {
                 *latest = id.clone();
             }
@@ -249,7 +252,11 @@ impl CardCatalog {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "code", rename_all = "camelCase", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "code",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum CardDefinitionValidationError {
     InvalidId { value: String },
     BlankName,
@@ -260,7 +267,11 @@ pub enum CardDefinitionValidationError {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "code", rename_all = "camelCase", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "code",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum PublishedCardRevisionError {
     ZeroRevision,
     CardIdMismatch {
@@ -285,7 +296,11 @@ impl fmt::Display for PublishedCardRevisionError {
                 "revision card id {revision_card_id} does not match definition id {definition_card_id}"
             ),
             Self::InvalidDefinition { card_id, errors } => {
-                write!(formatter, "card {card_id} has {} validation error(s)", errors.len())
+                write!(
+                    formatter,
+                    "card {card_id} has {} validation error(s)",
+                    errors.len()
+                )
             }
         }
     }
@@ -320,10 +335,7 @@ fn valid_card_id(id: &str) -> bool {
             .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
 }
 
-fn validate_spell_effect(
-    effect: &SpellEffect,
-    errors: &mut Vec<CardDefinitionValidationError>,
-) {
+fn validate_spell_effect(effect: &SpellEffect, errors: &mut Vec<CardDefinitionValidationError>) {
     match effect {
         SpellEffect::Heal { amount } | SpellEffect::Damage { amount } => {
             require_positive_i32(errors, "kind.effect.amount", *amount);
@@ -420,11 +432,7 @@ fn validate_building_effect(
     }
 }
 
-fn require_positive_i32(
-    errors: &mut Vec<CardDefinitionValidationError>,
-    field: &str,
-    value: i32,
-) {
+fn require_positive_i32(errors: &mut Vec<CardDefinitionValidationError>, field: &str, value: i32) {
     if value <= 0 {
         errors.push(CardDefinitionValidationError::NonPositiveValue {
             field: field.to_string(),
@@ -433,11 +441,7 @@ fn require_positive_i32(
     }
 }
 
-fn require_positive_u8(
-    errors: &mut Vec<CardDefinitionValidationError>,
-    field: &str,
-    value: u8,
-) {
+fn require_positive_u8(errors: &mut Vec<CardDefinitionValidationError>, field: &str, value: u8) {
     if value == 0 {
         errors.push(CardDefinitionValidationError::ZeroValue {
             field: field.to_string(),
