@@ -72,8 +72,16 @@ impl CardDefinition {
                 validate_spell_effect(*range, effect, &mut errors);
             }
             CardKind::Item {
-                passive, active, ..
+                range,
+                targets,
+                passive,
+                active,
             } => {
+                if *range == 0 && matches!(targets, BuffTargetPolicy::UnitsOnly) {
+                    errors.push(CardDefinitionValidationError::ZeroValue {
+                        field: "kind.range".to_string(),
+                    });
+                }
                 let passive_is_noop = item_passive_is_noop(passive);
                 if passive_is_noop && active.is_none() {
                     errors.push(CardDefinitionValidationError::EmptyStatChange {
@@ -114,11 +122,38 @@ impl From<Card> for CardDefinition {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CardRevisionId {
     card_id: String,
     revision: u32,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UncheckedCardRevisionId {
+    card_id: String,
+    revision: u32,
+}
+
+impl<'de> Deserialize<'de> for CardRevisionId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let unchecked = UncheckedCardRevisionId::deserialize(deserializer)?;
+        if unchecked.revision == 0 {
+            return Err(serde::de::Error::custom("card revisions start at 1"));
+        }
+        if !valid_card_id(&unchecked.card_id) {
+            return Err(serde::de::Error::custom("card revision has an invalid card id"));
+        }
+
+        Ok(Self {
+            card_id: unchecked.card_id,
+            revision: unchecked.revision,
+        })
+    }
 }
 
 impl CardRevisionId {
@@ -613,6 +648,48 @@ mod tests {
     }
 
     #[test]
+    fn validation_rejects_zero_range_for_unit_only_items() {
+        let mut definition = unit_definition();
+        definition.kind = CardKind::Item {
+            range: 0,
+            targets: BuffTargetPolicy::UnitsOnly,
+            passive: ItemPassiveEffect::StatBonus {
+                attack: 1,
+                armor: 0,
+                max_ap: 0,
+            },
+            active: None,
+        };
+
+        assert!(definition.validation_errors().iter().any(|error| {
+            error
+                == &CardDefinitionValidationError::ZeroValue {
+                    field: "kind.range".to_string(),
+                }
+        }));
+
+        definition.kind = CardKind::Item {
+            range: 0,
+            targets: BuffTargetPolicy::UnitsAndHeroes,
+            passive: ItemPassiveEffect::StatBonus {
+                attack: 1,
+                armor: 0,
+                max_ap: 0,
+            },
+            active: None,
+        };
+        assert!(
+            !definition.validation_errors().iter().any(|error| {
+                error
+                    == &CardDefinitionValidationError::ZeroValue {
+                        field: "kind.range".to_string(),
+                    }
+            }),
+            "hero-targetable items may target the caster at range zero"
+        );
+    }
+
+    #[test]
     fn validation_rejects_zero_range_for_spells_that_need_another_piece() {
         let effects = [
             SpellEffect::Damage { amount: 1 },
@@ -692,6 +769,31 @@ mod tests {
                 definition.id
             );
         }
+    }
+
+    #[test]
+    fn revision_id_deserialization_rejects_invalid_identity() {
+        let zero_revision = serde_json::json!({
+            "cardId": "ash-duelist",
+            "revision": 0
+        });
+        assert!(
+            serde_json::from_value::<CardRevisionId>(zero_revision)
+                .expect_err("zero revision id must fail")
+                .to_string()
+                .contains("start at 1")
+        );
+
+        let invalid_card_id = serde_json::json!({
+            "cardId": "Ash Duelist",
+            "revision": 1
+        });
+        assert!(
+            serde_json::from_value::<CardRevisionId>(invalid_card_id)
+                .expect_err("invalid card id must fail")
+                .to_string()
+                .contains("invalid card id")
+        );
     }
 
     #[test]
