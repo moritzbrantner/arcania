@@ -470,10 +470,7 @@ fn item_passive_is_noop(passive: &ItemPassiveEffect, targets: BuffTargetPolicy) 
     }
 }
 
-fn item_has_effect_on_hero(
-    passive: &ItemPassiveEffect,
-    active: Option<&ItemActiveEffect>,
-) -> bool {
+fn item_has_effect_on_hero(passive: &ItemPassiveEffect, active: Option<&ItemActiveEffect>) -> bool {
     let passive_has_effect = match passive {
         ItemPassiveEffect::StatBonus {
             attack,
