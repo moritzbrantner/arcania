@@ -573,3 +573,45 @@ fn enemy_piece_ids_on_line(
         .map(|piece| piece.id.clone())
         .collect()
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extreme_authored_effect_arithmetic_saturates() {
+        let mut progression = MatchProgressionLoadout::default();
+        progression.effects.spell_damage_delta = 1;
+        assert_eq!(damage_with_progression(i32::MAX, &progression), i32::MAX);
+
+        let mut unit = Unit {
+            id: "overflow-unit".to_string(),
+            side: Side::Player,
+            name: "Overflow Unit".to_string(),
+            template_id: Some("overflow-unit".to_string()),
+            attack: i32::MAX,
+            attack_range: 1,
+            armor: i32::MAX,
+            max_armor: i32::MAX,
+            position: HexCoord { q: 0, r: 0 },
+            ap_remaining: 1,
+            max_ap: 1,
+            has_attacked: false,
+            items: Vec::new(),
+            stat_markers: Vec::new(),
+        };
+        apply_item_passive(
+            &mut unit,
+            &ItemPassiveEffect::StatBonus {
+                attack: 1,
+                armor: 1,
+                max_ap: 0,
+            },
+        );
+
+        assert_eq!(unit.attack, i32::MAX);
+        assert_eq!(unit.armor, i32::MAX);
+        assert_eq!(unit.max_armor, i32::MAX);
+    }
+}
