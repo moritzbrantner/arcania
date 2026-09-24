@@ -132,7 +132,13 @@ pub(crate) fn plan_item_play(
     caster_position: HexCoord,
     target_carrier: &PieceView,
 ) -> Result<PlannedItemPlay, MatchError> {
-    let CardKind::Item { range, targets, .. } = &card.kind else {
+    let CardKind::Item {
+        range,
+        targets,
+        passive,
+        active,
+    } = &card.kind
+    else {
         return Err(MatchError::InvalidTarget);
     };
 
@@ -145,6 +151,9 @@ pub(crate) fn plan_item_play(
     }
 
     validate_item_target(side, caster_position, *range, *targets, target_carrier)?;
+    if target_carrier.is_hero && !item_has_effect_on_hero(passive, active.as_ref()) {
+        return Err(MatchError::InvalidTarget);
+    }
 
     Ok(PlannedItemPlay {
         carrier_id: target_carrier.id.clone(),
@@ -186,6 +195,21 @@ pub(crate) fn validate_spell_target(
     caster_hero_id: &str,
     target: &PieceView,
 ) -> Result<(), MatchError> {
+    if target.is_hero {
+        match effect {
+            SpellEffect::Buff { .. } => return Err(MatchError::InvalidTarget),
+            SpellEffect::StatBuff {
+                attack,
+                armor,
+                max_ap,
+                ..
+            } if !stat_change_has_effect_on_hero(*attack, *armor, *max_ap) => {
+                return Err(MatchError::InvalidTarget);
+            }
+            _ => {}
+        }
+    }
+
     match effect {
         SpellEffect::Heal { .. } | SpellEffect::Buff { .. } | SpellEffect::StatBuff { .. }
             if target.side.team() != side.team() =>
@@ -337,6 +361,35 @@ pub(crate) fn resolve_spell(
     Ok(resolved)
 }
 
+fn stat_change_has_effect_on_hero(attack: i32, armor: i32, max_ap: i8) -> bool {
+    attack != 0 || armor > 0 || max_ap != 0
+}
+
+fn item_has_effect_on_hero(
+    passive: &ItemPassiveEffect,
+    active: Option<&ItemActiveEffect>,
+) -> bool {
+    let passive_has_effect = match passive {
+        ItemPassiveEffect::StatBonus {
+            attack,
+            armor,
+            max_ap,
+        } => stat_change_has_effect_on_hero(*attack, *armor, *max_ap),
+    };
+    passive_has_effect
+        || active.is_some_and(|active| match active {
+            ItemActiveEffect::HealCarrier { .. }
+            | ItemActiveEffect::DamageTarget { .. }
+            | ItemActiveEffect::Draw { .. } => true,
+            ItemActiveEffect::StatMarker {
+                attack,
+                armor,
+                max_ap,
+                ..
+            } => stat_change_has_effect_on_hero(*attack, *armor, *max_ap),
+        })
+}
+
 pub(crate) fn target_policy_allows(targets: BuffTargetPolicy, is_hero: bool) -> bool {
     match targets {
         BuffTargetPolicy::UnitsOnly => !is_hero,
@@ -400,16 +453,21 @@ pub(crate) fn resolve_item_activation(
             armor,
             max_ap,
             ..
-        } => ResolvedItemActiveEffect::StatMarker {
-            carrier_id: carrier.id.clone(),
-            marker: StatMarker {
-                id: String::new(),
-                source_item_id: item.id.clone(),
-                attack,
-                armor,
-                max_ap,
-            },
-        },
+        } => {
+            if carrier.is_hero && !stat_change_has_effect_on_hero(attack, armor, max_ap) {
+                return Err(MatchError::InvalidTarget);
+            }
+            ResolvedItemActiveEffect::StatMarker {
+                carrier_id: carrier.id.clone(),
+                marker: StatMarker {
+                    id: String::new(),
+                    source_item_id: item.id.clone(),
+                    attack,
+                    armor,
+                    max_ap,
+                },
+            }
+        }
     };
 
     Ok(ResolvedItemActivation {
@@ -444,9 +502,13 @@ pub(crate) fn summon_unit_from_card(
         return None;
     };
 
-    let mut armor = armor.saturating_add(progression.effects.summoned_unit_armor_delta);
+    let mut armor = armor
+        .saturating_add(progression.effects.summoned_unit_armor_delta)
+        .max(1);
     if is_first_summoned_unit {
-        armor = armor.saturating_add(progression.effects.first_summoned_unit_armor_delta);
+        armor = armor
+            .saturating_add(progression.effects.first_summoned_unit_armor_delta)
+            .max(1);
     }
 
     Some(Unit {
@@ -474,9 +536,9 @@ pub(crate) fn apply_item_passive(unit: &mut Unit, passive: &ItemPassiveEffect) {
             armor,
             max_ap,
         } => {
-            unit.attack = unit.attack.saturating_add(*attack);
-            unit.armor = unit.armor.saturating_add(*armor);
-            unit.max_armor = unit.max_armor.saturating_add(*armor);
+            unit.attack = unit.attack.saturating_add(*attack).max(0);
+            unit.armor = unit.armor.saturating_add(*armor).max(1);
+            unit.max_armor = unit.max_armor.saturating_add(*armor).max(1);
             if *max_ap >= 0 {
                 let amount = *max_ap as u8;
                 unit.ap_remaining = unit.ap_remaining.saturating_add(amount);
@@ -497,7 +559,7 @@ pub(crate) fn apply_item_passive_to_hero(hero: &mut Hero, passive: &ItemPassiveE
             armor,
             max_ap,
         } => {
-            hero.attack = hero.attack.saturating_add(*attack);
+            hero.attack = hero.attack.saturating_add(*attack).max(0);
             if *armor > 0 {
                 hero.shield = hero.shield.saturating_add(*armor);
             }
