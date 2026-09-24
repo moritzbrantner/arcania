@@ -515,6 +515,59 @@ fn units_pick_up_dropped_items_by_moving_onto_their_hex() {
 }
 
 #[test]
+fn extreme_authored_effects_saturate_match_state_arithmetic() {
+    let mut game = MatchState::new_with_seed(7);
+    game.player.hero.hp = 1;
+    game.player.hero.max_hp = i32::MAX;
+    game.heal_piece("player-hero", i32::MAX);
+    assert_eq!(game.player.hero.hp, i32::MAX);
+
+    game.player.hero.attack = i32::MAX;
+    let mut frames = Vec::new();
+    assert!(game.apply_stat_bonus_to_piece(
+        "player-hero",
+        StatBonus {
+            attack: 1,
+            armor: 0,
+            max_ap: 0,
+            targets: BuffTargetPolicy::HeroesOnly,
+        },
+        &mut frames,
+        None,
+    ));
+    assert_eq!(game.player.hero.attack, i32::MAX);
+
+    game.board.units.push(board_unit(
+        "saturated-unit",
+        Side::Player,
+        hex(0, 2),
+        i32::MAX,
+        1,
+        i32::MAX,
+    ));
+    assert!(game.apply_stat_bonus_to_piece(
+        "saturated-unit",
+        StatBonus {
+            attack: 1,
+            armor: 1,
+            max_ap: 0,
+            targets: BuffTargetPolicy::UnitsOnly,
+        },
+        &mut frames,
+        None,
+    ));
+    let unit = game
+        .board
+        .units
+        .iter()
+        .find(|unit| unit.id == "saturated-unit")
+        .expect("unit should remain present");
+    assert_eq!(unit.attack, i32::MAX);
+    assert_eq!(unit.armor, i32::MAX);
+    assert_eq!(unit.max_armor, i32::MAX);
+}
+
+#[test]
 fn draw_spells_target_the_caster_and_draw_cards() {
     let mut game = MatchState::new_with_seed(7);
     game.player.mana = 8;
