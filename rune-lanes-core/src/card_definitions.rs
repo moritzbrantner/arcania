@@ -421,14 +421,7 @@ fn validate_spell_effect(
             max_ap,
             targets,
         } => {
-            require_effective_stats(
-                errors,
-                "kind.effect",
-                *attack,
-                *armor,
-                *max_ap,
-                *targets,
-            );
+            require_effective_stats(errors, "kind.effect", *attack, *armor, *max_ap, *targets);
         }
         SpellEffect::Draw { amount } => {
             require_positive_u8(errors, "kind.effect.amount", *amount);
@@ -516,14 +509,7 @@ fn validate_building_effect(
             max_ap,
             ..
         } => {
-            require_effective_stats(
-                errors,
-                "kind.effect",
-                *attack,
-                *armor,
-                *max_ap,
-                *targets,
-            );
+            require_effective_stats(errors, "kind.effect", *attack, *armor, *max_ap, *targets);
         }
         BuildingEffect::ActivatedDamageLine { range, amount } => {
             require_positive_u8(errors, "kind.effect.range", *range);
@@ -581,12 +567,7 @@ fn require_effective_stats(
     }
 }
 
-fn stat_change_has_effect(
-    attack: i32,
-    armor: i32,
-    max_ap: i8,
-    targets: BuffTargetPolicy,
-) -> bool {
+fn stat_change_has_effect(attack: i32, armor: i32, max_ap: i8, targets: BuffTargetPolicy) -> bool {
     attack != 0
         || max_ap != 0
         || armor > 0
