@@ -1,3 +1,6 @@
+use std::sync::OnceLock;
+
+use crate::card_definitions::{CardCatalog, CardDefinition, PublishedCardRevision};
 use crate::match_session::{
     BuffTargetPolicy, BuildingEffect, Card, CardKind, ItemActiveEffect, ItemPassiveEffect, Rarity,
     SpellEffect,
@@ -1068,10 +1071,28 @@ pub fn starter_card_templates() -> Vec<Card> {
     ]
 }
 
-pub fn card_template_by_id(template_id: &str) -> Option<Card> {
+static STARTER_CARD_CATALOG: OnceLock<CardCatalog> = OnceLock::new();
+
+pub fn starter_card_definitions() -> Vec<CardDefinition> {
     starter_card_templates()
         .into_iter()
-        .find(|card| card.template_id == template_id)
+        .map(CardDefinition::from)
+        .collect()
+}
+
+pub fn starter_card_catalog() -> &'static CardCatalog {
+    STARTER_CARD_CATALOG.get_or_init(|| {
+        let revisions = starter_card_definitions().into_iter().map(|definition| {
+            PublishedCardRevision::new(definition, 1)
+                .expect("starter card definitions must be valid")
+        });
+        CardCatalog::new(revisions)
+            .expect("starter card catalog must not contain duplicate revisions")
+    })
+}
+
+pub fn card_template_by_id(template_id: &str) -> Option<Card> {
+    starter_card_catalog().instantiate_latest(template_id, template_id)
 }
 
 struct UnitStats {
@@ -1206,5 +1227,39 @@ fn building_card(
         cost,
         text: text.to_string(),
         kind: CardKind::Building { effect },
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn starter_catalog_contains_valid_revision_one_definitions() {
+        let definitions = starter_card_definitions();
+        let catalog = starter_card_catalog();
+
+        assert_eq!(catalog.len(), definitions.len());
+        for definition in definitions {
+            assert!(
+                definition.validation_errors().is_empty(),
+                "starter definition {} should be valid",
+                definition.id
+            );
+            let revision = catalog
+                .latest(&definition.id)
+                .expect("starter definition should resolve");
+            assert_eq!(revision.id().revision(), 1);
+        }
+    }
+
+    #[test]
+    fn compatibility_template_lookup_instantiates_stable_template_identity() {
+        let card = card_template_by_id("ember-squire").expect("starter card should resolve");
+
+        assert_eq!(card.id, "ember-squire");
+        assert_eq!(card.template_id, "ember-squire");
+        assert_eq!(card.name, "Ember Squire");
     }
 }
