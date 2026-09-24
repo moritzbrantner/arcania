@@ -890,9 +890,9 @@ impl MatchState {
         let mut board = self.board.clone();
         for unit in &mut board.units {
             let bonus = self.aura_stat_bonus_for(unit.side, unit.position, false);
-            unit.attack = unit.attack.saturating_add(bonus.attack);
-            unit.armor = unit.armor.saturating_add(bonus.armor);
-            unit.max_armor = unit.max_armor.saturating_add(bonus.armor);
+            unit.attack = unit.attack.saturating_add(bonus.attack).max(0);
+            unit.armor = unit.armor.saturating_add(bonus.armor).max(1);
+            unit.max_armor = unit.max_armor.saturating_add(bonus.armor).max(1);
             apply_ap_delta(&mut unit.ap_remaining, &mut unit.max_ap, bonus.max_ap);
         }
         board
@@ -2828,7 +2828,7 @@ impl MatchState {
 
     fn apply_aura_to_piece_view(&self, mut piece: PieceView) -> PieceView {
         let bonus = self.aura_stat_bonus_for(piece.side, piece.position, piece.is_hero);
-        piece.attack = piece.attack.saturating_add(bonus.attack);
+        piece.attack = piece.attack.saturating_add(bonus.attack).max(0);
         piece
     }
 
@@ -2929,6 +2929,7 @@ impl MatchState {
     }
 
     fn damage_piece(&mut self, piece_id: &str, amount: i32) {
+        let amount = amount.max(0);
         for side in self.participant_sides() {
             if self.player_ref(side).hero.id == piece_id {
                 damage_hero(&mut self.player_mut(side).hero, amount);
@@ -2997,9 +2998,9 @@ impl MatchState {
             return false;
         }
         if let Some(unit) = self.board.units.iter_mut().find(|unit| unit.id == piece_id) {
-            unit.attack = unit.attack.saturating_add(bonus.attack);
-            unit.armor = unit.armor.saturating_add(bonus.armor);
-            unit.max_armor = unit.max_armor.saturating_add(bonus.armor);
+            unit.attack = unit.attack.saturating_add(bonus.attack).max(0);
+            unit.armor = unit.armor.saturating_add(bonus.armor).max(1);
+            unit.max_armor = unit.max_armor.saturating_add(bonus.armor).max(1);
             apply_ap_delta(&mut unit.ap_remaining, &mut unit.max_ap, bonus.max_ap);
             return true;
         }
@@ -3013,13 +3014,15 @@ impl MatchState {
         frames: &mut Vec<RecordedReplayFrame>,
         action_index: Option<u32>,
     ) -> bool {
-        if !card_interactions::target_policy_allows(bonus.targets, true) {
+        if !card_interactions::target_policy_allows(bonus.targets, true)
+            || (bonus.attack == 0 && bonus.max_ap == 0 && bonus.armor <= 0)
+        {
             return false;
         }
         let mut shielded_hero_id = None;
         {
             let hero = &mut self.player_mut(side).hero;
-            hero.attack = hero.attack.saturating_add(bonus.attack);
+            hero.attack = hero.attack.saturating_add(bonus.attack).max(0);
             apply_ap_delta(&mut hero.ap_remaining, &mut hero.max_ap, bonus.max_ap);
             if bonus.armor > 0 {
                 hero.shield = hero.shield.saturating_add(bonus.armor);
@@ -3330,7 +3333,7 @@ impl MatchState {
         for side in self.participant_sides() {
             if self.player_ref(side).hero.id == carrier_id {
                 let hero = &mut self.player_mut(side).hero;
-                hero.attack = hero.attack.saturating_add(marker.attack);
+                hero.attack = hero.attack.saturating_add(marker.attack).max(0);
                 if marker.armor > 0 {
                     hero.shield = hero.shield.saturating_add(marker.armor);
                 }
@@ -3345,9 +3348,9 @@ impl MatchState {
             .iter_mut()
             .find(|unit| unit.id == carrier_id)
         {
-            unit.attack = unit.attack.saturating_add(marker.attack);
-            unit.armor = unit.armor.saturating_add(marker.armor);
-            unit.max_armor = unit.max_armor.saturating_add(marker.armor);
+            unit.attack = unit.attack.saturating_add(marker.attack).max(0);
+            unit.armor = unit.armor.saturating_add(marker.armor).max(1);
+            unit.max_armor = unit.max_armor.saturating_add(marker.armor).max(1);
             apply_ap_delta(&mut unit.ap_remaining, &mut unit.max_ap, marker.max_ap);
             unit.stat_markers.push(marker);
             return true;
