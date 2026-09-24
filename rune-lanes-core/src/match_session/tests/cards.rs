@@ -1,4 +1,15 @@
 use super::*;
+use crate::{CardCatalog, CardDefinition, PublishedCardRevision};
+
+fn authored_card(definition: CardDefinition, instance_id: &str) -> Card {
+    let card_id = definition.id.clone();
+    let revision =
+        PublishedCardRevision::new(definition, 1).expect("authored definition should publish");
+    let catalog = CardCatalog::new([revision]).expect("authored catalog should be valid");
+    catalog
+        .instantiate_latest(&card_id, instance_id)
+        .expect("published authored card should instantiate")
+}
 
 #[test]
 fn starter_deck_has_the_expected_rarity_counts() {
@@ -524,7 +535,8 @@ fn extreme_authored_effects_saturate_match_state_arithmetic() {
 
     game.player.hero.attack = i32::MAX;
     let mut frames = Vec::new();
-    assert!(game.apply_stat_bonus_to_piece(
+    assert!(game
+        .apply_stat_bonus_to_piece(
         "player-hero",
         StatBonus {
             attack: 1,
@@ -534,7 +546,8 @@ fn extreme_authored_effects_saturate_match_state_arithmetic() {
         },
         &mut frames,
         None,
-    ));
+    )
+    .is_some());
     assert_eq!(game.player.hero.attack, i32::MAX);
 
     game.board.units.push(board_unit(
@@ -545,7 +558,8 @@ fn extreme_authored_effects_saturate_match_state_arithmetic() {
         1,
         i32::MAX,
     ));
-    assert!(game.apply_stat_bonus_to_piece(
+    assert!(game
+        .apply_stat_bonus_to_piece(
         "saturated-unit",
         StatBonus {
             attack: 1,
@@ -555,7 +569,8 @@ fn extreme_authored_effects_saturate_match_state_arithmetic() {
         },
         &mut frames,
         None,
-    ));
+    )
+    .is_some());
     let unit = game
         .board
         .units
@@ -568,7 +583,96 @@ fn extreme_authored_effects_saturate_match_state_arithmetic() {
 }
 
 #[test]
-fn authored_stat_penalties_cannot_create_negative_attack_or_dead_live_units() {
+fn published_extreme_stat_effects_saturate_and_emit_effective_deltas() {
+    let extreme = authored_card(
+        CardDefinition {
+            id: "limit-break".to_string(),
+            name: "Limit Break".to_string(),
+            rarity: Rarity::Basic,
+            cost: 0,
+            text: "Apply an extreme authored stat increase.".to_string(),
+            kind: CardKind::Spell {
+                range: 2,
+                priority: 1,
+                effect: SpellEffect::StatBuff {
+                    attack: i32::MAX,
+                    armor: i32::MAX,
+                    max_ap: 0,
+                    targets: BuffTargetPolicy::UnitsOnly,
+                },
+            },
+        },
+        "player-limit-break",
+    );
+    let mut game = MatchState::new_with_seed(7);
+    game.board.units.push(board_unit(
+        "bounded",
+        Side::Player,
+        hex(0, 2),
+        1,
+        1,
+        1,
+    ));
+    let card_id = put_card_in_hand(&mut game, extreme);
+
+    let frames = game
+        .apply_action_recording(
+            MatchActionRequest::PlayCard {
+                card_id,
+                target: ActionTarget::Piece {
+                    piece_id: "bounded".to_string(),
+                },
+            },
+            40,
+        )
+        .expect("published extreme effect should saturate instead of overflowing");
+
+    let unit = game
+        .board
+        .units
+        .iter()
+        .find(|unit| unit.id == "bounded")
+        .expect("target unit should survive");
+    assert_eq!(unit.attack, i32::MAX);
+    assert_eq!(unit.armor, i32::MAX);
+    assert_eq!(unit.max_armor, i32::MAX);
+    assert!(frames.iter().any(|frame| {
+        matches!(
+            &frame.event,
+            ReplayEvent::PieceBuffed {
+                piece_id,
+                attack_delta,
+                armor_delta,
+                ..
+            } if piece_id == "bounded"
+                && *attack_delta == i32::MAX - 1
+                && *armor_delta == i32::MAX - 1
+        )
+    }));
+}
+
+#[test]
+fn authored_stat_penalties_clamp_live_state_emit_effective_deltas_and_cannot_heal() {
+    let penalty = authored_card(
+        CardDefinition {
+            id: "withering-edict".to_string(),
+            name: "Withering Edict".to_string(),
+            rarity: Rarity::Basic,
+            cost: 0,
+            text: "Reduce an allied unit's combat stats.".to_string(),
+            kind: CardKind::Spell {
+                range: 2,
+                priority: 1,
+                effect: SpellEffect::StatBuff {
+                    attack: -10,
+                    armor: -10,
+                    max_ap: 0,
+                    targets: BuffTargetPolicy::UnitsOnly,
+                },
+            },
+        },
+        "player-withering-edict",
+    );
     let mut game = MatchState::new_with_seed(7);
     game.board.units.push(board_unit(
         "debuffed",
@@ -578,19 +682,27 @@ fn authored_stat_penalties_cannot_create_negative_attack_or_dead_live_units() {
         1,
         1,
     ));
-    let mut frames = Vec::new();
-
-    assert!(game.apply_stat_bonus_to_piece(
-        "debuffed",
-        StatBonus {
-            attack: -10,
-            armor: -10,
-            max_ap: 0,
-            targets: BuffTargetPolicy::UnitsOnly,
-        },
-        &mut frames,
-        None,
+    game.board.units.push(board_unit(
+        "target",
+        Side::Opponent,
+        hex(-1, 2),
+        0,
+        1,
+        2,
     ));
+    let card_id = put_card_in_hand(&mut game, penalty);
+
+    let frames = game
+        .apply_action_recording(
+            MatchActionRequest::PlayCard {
+                card_id,
+                target: ActionTarget::Piece {
+                    piece_id: "debuffed".to_string(),
+                },
+            },
+            41,
+        )
+        .expect("published authored penalty should resolve deterministically");
 
     let unit = game
         .board
@@ -601,6 +713,131 @@ fn authored_stat_penalties_cannot_create_negative_attack_or_dead_live_units() {
     assert_eq!(unit.attack, 0);
     assert_eq!(unit.armor, 1);
     assert_eq!(unit.max_armor, 1);
+    assert!(frames.iter().any(|frame| {
+        matches!(
+            &frame.event,
+            ReplayEvent::PieceBuffed {
+                piece_id,
+                attack_delta: -1,
+                armor_delta: 0,
+                ..
+            } if piece_id == "debuffed"
+        )
+    }));
+
+    enter_attack_phase(&mut game);
+    let attack_frames = game
+        .apply_action_recording(
+            MatchActionRequest::Attack {
+                attacker_id: "debuffed".to_string(),
+                target_id: "target".to_string(),
+            },
+            42,
+        )
+        .expect("zero-attack units should resolve attacks without negative damage");
+
+    assert_eq!(unit_armor(&game, "target"), Some(2));
+    assert!(attack_frames.iter().any(|frame| {
+        matches!(
+            &frame.event,
+            ReplayEvent::PieceAttacked {
+                attacker_id,
+                target_id,
+                damage_to_target: 0,
+                ..
+            } if attacker_id == "debuffed" && target_id == "target"
+        )
+    }));
+}
+
+#[test]
+fn published_item_stat_markers_emit_effective_clamped_deltas() {
+    let item = authored_card(
+        CardDefinition {
+            id: "draining-signet".to_string(),
+            name: "Draining Signet".to_string(),
+            rarity: Rarity::Basic,
+            cost: 0,
+            text: "Equip and apply an authored negative stat marker.".to_string(),
+            kind: CardKind::Item {
+                range: 2,
+                targets: BuffTargetPolicy::UnitsOnly,
+                passive: ItemPassiveEffect::StatBonus {
+                    attack: 0,
+                    armor: 0,
+                    max_ap: 0,
+                },
+                active: Some(ItemActiveEffect::StatMarker {
+                    attack: -10,
+                    armor: -10,
+                    max_ap: 0,
+                    priority: 1,
+                }),
+            },
+        },
+        "player-draining-signet",
+    );
+    let mut game = MatchState::new_with_seed(7);
+    game.board.units.push(board_unit(
+        "carrier",
+        Side::Player,
+        hex(0, 2),
+        1,
+        1,
+        1,
+    ));
+    let card_id = put_card_in_hand(&mut game, item);
+
+    game.apply_action(MatchActionRequest::PlayCard {
+        card_id,
+        target: ActionTarget::Piece {
+            piece_id: "carrier".to_string(),
+        },
+    })
+    .expect("published authored item should equip");
+    let item_id = game
+        .board
+        .units
+        .iter()
+        .find(|unit| unit.id == "carrier")
+        .and_then(|unit| unit.items.first())
+        .map(|item| item.id.clone())
+        .expect("equipped item should have an instance id");
+
+    let frames = game
+        .apply_action_recording(
+            MatchActionRequest::ActivateItem {
+                carrier_id: "carrier".to_string(),
+                item_id,
+                target: None,
+            },
+            43,
+        )
+        .expect("published authored stat marker should activate");
+
+    let unit = game
+        .board
+        .units
+        .iter()
+        .find(|unit| unit.id == "carrier")
+        .expect("carrier should remain live");
+    assert_eq!(unit.attack, 0);
+    assert_eq!(unit.armor, 1);
+    assert_eq!(unit.max_armor, 1);
+    assert_eq!(unit.stat_markers.len(), 1);
+    assert_eq!(unit.stat_markers[0].attack, -10);
+    assert_eq!(unit.stat_markers[0].armor, -10);
+    assert!(frames.iter().any(|frame| {
+        matches!(
+            &frame.event,
+            ReplayEvent::PieceBuffed {
+                piece_id,
+                attack_delta: -1,
+                armor_delta: 0,
+                ..
+            } if piece_id == "carrier"
+        )
+    }));
 }
 
 #[test]
