@@ -228,6 +228,24 @@ impl<'a> CardWorkshop<'a> {
         }
 
         let transaction = self.connection.transaction()?;
+        let existing: Option<(String, i64)> = transaction
+            .query_row(
+                "
+                SELECT revision_json, created_at
+                FROM card_revisions
+                WHERE user_id = ?1 AND source_draft_id = ?2 AND source_draft_version = ?3
+                ",
+                params![user_id, draft_id, draft.version],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        if let Some((revision_json, created_at)) = existing {
+            return Ok(PublishedCardRevisionRecord {
+                revision: serde_json::from_str(&revision_json)?,
+                created_at,
+            });
+        }
+
         let latest_revision: Option<u32> = transaction.query_row(
             "
             SELECT MAX(revision)
@@ -242,14 +260,24 @@ impl<'a> CardWorkshop<'a> {
         let revision_json = serde_json::to_string(&revision)?;
         transaction.execute(
             "
-            INSERT INTO card_revisions (user_id, card_id, revision, revision_json, created_at)
-            VALUES (?1, ?2, ?3, ?4, unixepoch())
+            INSERT INTO card_revisions (
+                user_id,
+                card_id,
+                revision,
+                revision_json,
+                source_draft_id,
+                source_draft_version,
+                created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, unixepoch())
             ",
             params![
                 user_id,
                 revision.id().card_id(),
                 revision.id().revision(),
-                revision_json
+                revision_json,
+                draft_id,
+                draft.version
             ],
         )?;
         let created_at = transaction.query_row(
@@ -385,7 +413,7 @@ fn read_draft_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CardDraft> {
     let definition_json: String = row.get(2)?;
     let definition = serde_json::from_str(&definition_json).map_err(|error| {
         rusqlite::Error::FromSqlConversionFailure(
-            definition_json.len(),
+            2,
             rusqlite::types::Type::Text,
             Box::new(error),
         )
@@ -423,8 +451,11 @@ pub fn migrate(connection: &Connection) -> rusqlite::Result<()> {
             card_id TEXT NOT NULL,
             revision INTEGER NOT NULL,
             revision_json TEXT NOT NULL,
+            source_draft_id INTEGER NOT NULL,
+            source_draft_version INTEGER NOT NULL,
             created_at INTEGER NOT NULL DEFAULT (unixepoch()),
             PRIMARY KEY (user_id, card_id, revision),
+            UNIQUE (user_id, source_draft_id, source_draft_version),
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS card_revisions_user_card_idx
