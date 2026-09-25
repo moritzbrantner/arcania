@@ -65,7 +65,10 @@ pub enum CardWorkshopError {
     Sqlite(rusqlite::Error),
     Snapshot(serde_json::Error),
     NotFound,
-    VersionConflict { expected: u64, current: u64 },
+    VersionConflict {
+        expected: u64,
+        current: u64,
+    },
     InvalidDefinition {
         errors: Vec<CardDefinitionValidationError>,
     },
@@ -75,8 +78,13 @@ pub enum CardWorkshopError {
 impl fmt::Display for CardWorkshopError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Sqlite(error) => write!(formatter, "could not access card workshop database: {error}"),
-            Self::Snapshot(error) => write!(formatter, "could not read card workshop content: {error}"),
+            Self::Sqlite(error) => write!(
+                formatter,
+                "could not access card workshop database: {error}"
+            ),
+            Self::Snapshot(error) => {
+                write!(formatter, "could not read card workshop content: {error}")
+            }
             Self::NotFound => formatter.write_str("Card workshop content was not found."),
             Self::VersionConflict { expected, current } => write!(
                 formatter,
@@ -286,11 +294,7 @@ impl<'a> CardWorkshop<'a> {
             FROM card_revisions
             WHERE user_id = ?1 AND card_id = ?2 AND revision = ?3
             ",
-            params![
-                user_id,
-                revision.id().card_id(),
-                revision.id().revision()
-            ],
+            params![user_id, revision.id().card_id(), revision.id().revision()],
             |row| row.get(0),
         )?;
         transaction.commit()?;
@@ -412,11 +416,7 @@ impl<'a> CardWorkshop<'a> {
 fn read_draft_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CardDraft> {
     let definition_json: String = row.get(2)?;
     let definition: CardDefinition = serde_json::from_str(&definition_json).map_err(|error| {
-        rusqlite::Error::FromSqlConversionFailure(
-            2,
-            rusqlite::types::Type::Text,
-            Box::new(error),
-        )
+        rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Text, Box::new(error))
     })?;
     let validation_errors = definition.validation_errors();
     Ok(CardDraft {
