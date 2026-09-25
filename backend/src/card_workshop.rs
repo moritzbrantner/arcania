@@ -1,7 +1,9 @@
 use std::error::Error;
 use std::fmt;
 
-use rusqlite::{Connection, OptionalExtension, params};
+use rand::RngCore;
+use rand::rngs::OsRng;
+use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
 
 use rune_lanes_core::{
@@ -19,6 +21,7 @@ pub struct CreateCardDraftRequest {
 #[serde(rename_all = "camelCase")]
 pub struct UpdateCardDraftRequest {
     pub version: u64,
+    pub catalog_id: String,
     pub definition: CardDefinition,
 }
 
@@ -72,6 +75,7 @@ pub enum CardWorkshopError {
     InvalidDefinition {
         errors: Vec<CardDefinitionValidationError>,
     },
+    CardIdConflict(String),
     InvalidPublishedRevision(PublishedCardRevisionError),
 }
 
@@ -95,6 +99,9 @@ impl fmt::Display for CardWorkshopError {
                 "Card definition has {} validation error(s).",
                 errors.len()
             ),
+            Self::CardIdConflict(card_id) => {
+                write!(formatter, "Card id {card_id} is already used by another custom card.")
+            }
             Self::InvalidPublishedRevision(error) => error.fmt(formatter),
         }
     }
@@ -135,7 +142,7 @@ impl<'a> CardWorkshop<'a> {
     ) -> Result<CardDraftListResponse, CardWorkshopError> {
         let mut statement = self.connection.prepare(
             "
-            SELECT id, version, definition_json, source_revision, created_at, updated_at
+            SELECT id, version, catalog_id, definition_json, source_revision, created_at, updated_at
             FROM card_drafts
             WHERE user_id = ?1
             ORDER BY updated_at DESC, id DESC
@@ -154,18 +161,7 @@ impl<'a> CardWorkshop<'a> {
         user_id: i64,
         draft_id: i64,
     ) -> Result<Option<CardDraft>, CardWorkshopError> {
-        self.connection
-            .query_row(
-                "
-                SELECT id, version, definition_json, source_revision, created_at, updated_at
-                FROM card_drafts
-                WHERE id = ?1 AND user_id = ?2
-                ",
-                params![draft_id, user_id],
-                read_draft_row,
-            )
-            .optional()
-            .map_err(CardWorkshopError::from)
+        load_draft_for_user(self.connection, user_id, draft_id)
     }
 
     pub fn create_draft_for_user(
@@ -173,7 +169,12 @@ impl<'a> CardWorkshop<'a> {
         user_id: i64,
         request: CreateCardDraftRequest,
     ) -> Result<CardDraft, CardWorkshopError> {
-        self.insert_draft(user_id, request.definition, None)
+        self.insert_draft(
+            user_id,
+            request.definition,
+            new_custom_catalog_id(),
+            None,
+        )
     }
 
     pub fn update_draft_for_user(
@@ -218,8 +219,18 @@ impl<'a> CardWorkshop<'a> {
         draft_id: i64,
         request: PublishCardDraftRequest,
     ) -> Result<PublishedCardRevisionRecord, CardWorkshopError> {
-        let draft = self
-            .load_draft_for_user(user_id, draft_id)?
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+
+        if let Some(existing) =
+            published_for_source_version(&transaction, user_id, draft_id, request.version)?
+        {
+            transaction.commit()?;
+            return Ok(existing);
+        }
+
+        let draft = load_draft_for_user(&transaction, user_id, draft_id)?
             .ok_or(CardWorkshopError::NotFound)?;
         if draft.version != request.version {
             return Err(CardWorkshopError::VersionConflict {
@@ -235,52 +246,60 @@ impl<'a> CardWorkshop<'a> {
             });
         }
 
-        let transaction = self.connection.transaction()?;
-        let existing: Option<(String, i64)> = transaction
+        let existing_catalog_id: Option<String> = transaction
             .query_row(
                 "
-                SELECT revision_json, created_at
+                SELECT core_card_id
                 FROM card_revisions
-                WHERE user_id = ?1 AND source_draft_id = ?2 AND source_draft_version = ?3
+                WHERE user_id = ?1 AND card_id = ?2
+                LIMIT 1
                 ",
-                params![user_id, draft_id, draft.version],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                params![user_id, draft.definition.id],
+                |row| row.get(0),
             )
             .optional()?;
-        if let Some((revision_json, created_at)) = existing {
-            return Ok(PublishedCardRevisionRecord {
-                revision: serde_json::from_str(&revision_json)?,
-                created_at,
-            });
+        if existing_catalog_id
+            .as_deref()
+            .is_some_and(|catalog_id| catalog_id != draft.catalog_id)
+        {
+            return Err(CardWorkshopError::CardIdConflict(
+                draft.definition.id.clone(),
+            ));
         }
 
         let latest_revision: Option<u32> = transaction.query_row(
             "
             SELECT MAX(revision)
             FROM card_revisions
-            WHERE user_id = ?1 AND card_id = ?2
+            WHERE core_card_id = ?1
             ",
-            params![user_id, draft.definition.id],
+            params![draft.catalog_id],
             |row| row.get(0),
         )?;
         let revision_number = latest_revision.unwrap_or(0).saturating_add(1);
-        let revision = PublishedCardRevision::new(draft.definition, revision_number)?;
+
+        let local_card_id = draft.definition.id.clone();
+        let mut published_definition = draft.definition;
+        published_definition.id = draft.catalog_id.clone();
+        let revision = PublishedCardRevision::new(published_definition, revision_number)?;
         let revision_json = serde_json::to_string(&revision)?;
         transaction.execute(
             "
             INSERT INTO card_revisions (
                 user_id,
                 card_id,
+                core_card_id,
                 revision,
                 revision_json,
                 source_draft_id,
                 source_draft_version,
                 created_at
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, unixepoch())
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, unixepoch())
             ",
             params![
                 user_id,
+                local_card_id,
                 revision.id().card_id(),
                 revision.id().revision(),
                 revision_json,
@@ -292,9 +311,9 @@ impl<'a> CardWorkshop<'a> {
             "
             SELECT created_at
             FROM card_revisions
-            WHERE user_id = ?1 AND card_id = ?2 AND revision = ?3
+            WHERE core_card_id = ?1 AND revision = ?2
             ",
-            params![user_id, revision.id().card_id(), revision.id().revision()],
+            params![revision.id().card_id(), revision.id().revision()],
             |row| row.get(0),
         )?;
         transaction.commit()?;
@@ -359,9 +378,12 @@ impl<'a> CardWorkshop<'a> {
             .optional()?;
         let revision_json = revision_json.ok_or(CardWorkshopError::NotFound)?;
         let published: PublishedCardRevision = serde_json::from_str(&revision_json)?;
+        let mut definition = published.definition().clone();
+        definition.id = card_id.to_string();
         self.insert_draft(
             user_id,
-            published.definition().clone(),
+            definition,
+            published.id().card_id().to_string(),
             Some(published.id().revision()),
         )
     }
@@ -370,6 +392,7 @@ impl<'a> CardWorkshop<'a> {
         &mut self,
         user_id: i64,
         definition: CardDefinition,
+        catalog_id: String,
         source_revision: Option<u32>,
     ) -> Result<CardDraft, CardWorkshopError> {
         let definition_json = serde_json::to_string(&definition)?;
@@ -378,14 +401,15 @@ impl<'a> CardWorkshop<'a> {
             INSERT INTO card_drafts (
                 user_id,
                 version,
+                catalog_id,
                 definition_json,
                 source_revision,
                 created_at,
                 updated_at
             )
-            VALUES (?1, 1, ?2, ?3, unixepoch(), unixepoch())
+            VALUES (?1, 1, ?2, ?3, ?4, unixepoch(), unixepoch())
             ",
-            params![user_id, definition_json, source_revision],
+            params![user_id, catalog_id, definition_json, source_revision],
         )?;
         let draft_id = self.connection.last_insert_rowid();
         self.load_draft_for_user(user_id, draft_id)?
@@ -413,21 +437,79 @@ impl<'a> CardWorkshop<'a> {
     }
 }
 
+fn load_draft_for_user(
+    connection: &Connection,
+    user_id: i64,
+    draft_id: i64,
+) -> Result<Option<CardDraft>, CardWorkshopError> {
+    connection
+        .query_row(
+            "
+            SELECT id, version, catalog_id, definition_json, source_revision, created_at, updated_at
+            FROM card_drafts
+            WHERE id = ?1 AND user_id = ?2
+            ",
+            params![draft_id, user_id],
+            read_draft_row,
+        )
+        .optional()
+        .map_err(CardWorkshopError::from)
+}
+
+fn published_for_source_version(
+    connection: &Connection,
+    user_id: i64,
+    draft_id: i64,
+    draft_version: u64,
+) -> Result<Option<PublishedCardRevisionRecord>, CardWorkshopError> {
+    let row: Option<(String, i64)> = connection
+        .query_row(
+            "
+            SELECT revision_json, created_at
+            FROM card_revisions
+            WHERE user_id = ?1 AND source_draft_id = ?2 AND source_draft_version = ?3
+            ",
+            params![user_id, draft_id, draft_version],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+
+    row.map(|(revision_json, created_at)| {
+        Ok(PublishedCardRevisionRecord {
+            revision: serde_json::from_str(&revision_json)?,
+            created_at,
+        })
+    })
+    .transpose()
+}
+
 fn read_draft_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CardDraft> {
-    let definition_json: String = row.get(2)?;
+    let definition_json: String = row.get(3)?;
     let definition: CardDefinition = serde_json::from_str(&definition_json).map_err(|error| {
-        rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Text, Box::new(error))
+        rusqlite::Error::FromSqlConversionFailure(3, rusqlite::types::Type::Text, Box::new(error))
     })?;
     let validation_errors = definition.validation_errors();
     Ok(CardDraft {
         id: row.get(0)?,
         version: row.get(1)?,
+        catalog_id: row.get(2)?,
         definition,
         validation_errors,
-        source_revision: row.get(3)?,
-        created_at: row.get(4)?,
-        updated_at: row.get(5)?,
+        source_revision: row.get(4)?,
+        created_at: row.get(5)?,
+        updated_at: row.get(6)?,
     })
+}
+
+fn new_custom_catalog_id() -> String {
+    let mut bytes = [0_u8; 24];
+    OsRng.fill_bytes(&mut bytes);
+    let mut id = String::with_capacity("custom-".len() + bytes.len() * 2);
+    id.push_str("custom-");
+    for byte in bytes {
+        id.push_str(&format!("{byte:02x}"));
+    }
+    id
 }
 
 pub fn migrate(connection: &Connection) -> rusqlite::Result<()> {
@@ -437,6 +519,7 @@ pub fn migrate(connection: &Connection) -> rusqlite::Result<()> {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             version INTEGER NOT NULL DEFAULT 1,
+            catalog_id TEXT NOT NULL,
             definition_json TEXT NOT NULL,
             source_revision INTEGER,
             created_at INTEGER NOT NULL DEFAULT (unixepoch()),
@@ -449,17 +532,20 @@ pub fn migrate(connection: &Connection) -> rusqlite::Result<()> {
         CREATE TABLE IF NOT EXISTS card_revisions (
             user_id INTEGER NOT NULL,
             card_id TEXT NOT NULL,
+            core_card_id TEXT NOT NULL,
             revision INTEGER NOT NULL,
             revision_json TEXT NOT NULL,
             source_draft_id INTEGER NOT NULL,
             source_draft_version INTEGER NOT NULL,
             created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-            PRIMARY KEY (user_id, card_id, revision),
+            PRIMARY KEY (core_card_id, revision),
             UNIQUE (user_id, source_draft_id, source_draft_version),
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
         CREATE INDEX IF NOT EXISTS card_revisions_user_card_idx
             ON card_revisions(user_id, card_id, revision DESC);
+        CREATE INDEX IF NOT EXISTS card_revisions_core_card_idx
+            ON card_revisions(core_card_id, revision DESC);
         ",
     )?;
     Ok(())
