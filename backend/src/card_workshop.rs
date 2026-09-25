@@ -411,7 +411,7 @@ impl<'a> CardWorkshop<'a> {
 
 fn read_draft_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CardDraft> {
     let definition_json: String = row.get(2)?;
-    let definition = serde_json::from_str(&definition_json).map_err(|error| {
+    let definition: CardDefinition = serde_json::from_str(&definition_json).map_err(|error| {
         rusqlite::Error::FromSqlConversionFailure(
             2,
             rusqlite::types::Type::Text,
