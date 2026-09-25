@@ -402,7 +402,7 @@ fn read_draft_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CardDraft> {
     })
 }
 
-pub fn migrate(connection: &Connection) -> Result<(), CardWorkshopError> {
+pub fn migrate(connection: &Connection) -> rusqlite::Result<()> {
     connection.execute_batch(
         "
         CREATE TABLE IF NOT EXISTS card_drafts (
