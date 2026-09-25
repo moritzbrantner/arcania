@@ -593,7 +593,6 @@ async fn publish_rechecks_the_draft_version_from_an_independent_connection() {
     let _ = fs::remove_file(path);
 }
 
-
 #[tokio::test]
 async fn published_card_ids_cannot_be_renamed_between_revisions() {
     let path = test_db_path("card-workshop-published-id");
