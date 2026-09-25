@@ -462,26 +462,7 @@ impl<'a> CardWorkshop<'a> {
             .ok_or(CardWorkshopError::NotFound)
     }
 
-    fn missing_or_conflict(
-        &self,
-        user_id: i64,
-        draft_id: i64,
-        expected: u64,
-    ) -> Result<CardWorkshopError, CardWorkshopError> {
-        let current: Option<u64> = self
-            .connection
-            .query_row(
-                "SELECT version FROM card_drafts WHERE id = ?1 AND user_id = ?2",
-                params![draft_id, user_id],
-                |row| row.get(0),
-            )
-            .optional()?;
-        Ok(match current {
-            Some(current) => CardWorkshopError::VersionConflict { expected, current },
-            None => CardWorkshopError::NotFound,
-        })
-    }
-}
+}}
 
 fn load_draft_for_user(
     connection: &Connection,
