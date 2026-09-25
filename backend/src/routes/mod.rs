@@ -46,7 +46,10 @@ pub fn create_app(store: SqliteMatchStore) -> Router {
     let router = Router::new()
         .route("/api/health", get(health))
         .route("/api/catalog/cards", get(catalog_cards))
-        .route("/api/card-drafts", get(list_card_drafts).post(create_card_draft))
+        .route(
+            "/api/card-drafts",
+            get(list_card_drafts).post(create_card_draft),
+        )
         .route(
             "/api/card-drafts/{draft_id}",
             get(load_card_draft)
@@ -57,10 +60,7 @@ pub fn create_app(store: SqliteMatchStore) -> Router {
             "/api/card-drafts/{draft_id}/publish",
             post(publish_card_draft),
         )
-        .route(
-            "/api/card-revisions/{card_id}",
-            get(card_revision_history),
-        )
+        .route("/api/card-revisions/{card_id}", get(card_revision_history))
         .route(
             "/api/card-revisions/{card_id}/{revision}/fork",
             post(fork_card_revision),
@@ -149,7 +149,6 @@ async fn catalog_cards() -> impl IntoResponse {
     })
 }
 
-
 async fn list_card_drafts(
     State(state): State<SharedState>,
     headers: HeaderMap,
@@ -212,7 +211,11 @@ async fn load_card_draft(
         let workshop = CardWorkshop::new(store.connection_mut());
         match workshop.load_draft_for_user(profile.id, draft_id) {
             Ok(Some(draft)) => draft,
-            Ok(None) => return card_workshop_error_response(crate::card_workshop::CardWorkshopError::NotFound),
+            Ok(None) => {
+                return card_workshop_error_response(
+                    crate::card_workshop::CardWorkshopError::NotFound,
+                );
+            }
             Err(error) => return card_workshop_error_response(error),
         }
     };
