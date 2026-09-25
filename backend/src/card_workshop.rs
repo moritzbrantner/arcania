@@ -76,6 +76,10 @@ pub enum CardWorkshopError {
         errors: Vec<CardDefinitionValidationError>,
     },
     CardIdConflict(String),
+    PublishedCardIdImmutable {
+        current: String,
+        requested: String,
+    },
     InvalidPublishedRevision(PublishedCardRevisionError),
 }
 
@@ -105,6 +109,10 @@ impl fmt::Display for CardWorkshopError {
                     "Card id {card_id} is already used by another custom card."
                 )
             }
+            Self::PublishedCardIdImmutable { current, requested } => write!(
+                formatter,
+                "Published card id cannot change from {current} to {requested}."
+            ),
             Self::InvalidPublishedRevision(error) => error.fmt(formatter),
         }
     }
@@ -181,8 +189,41 @@ impl<'a> CardWorkshop<'a> {
         draft_id: i64,
         request: UpdateCardDraftRequest,
     ) -> Result<CardDraft, CardWorkshopError> {
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let current = load_draft_for_user(&transaction, user_id, draft_id)?
+            .ok_or(CardWorkshopError::NotFound)?;
+        if current.version != request.version {
+            return Err(CardWorkshopError::VersionConflict {
+                expected: request.version,
+                current: current.version,
+            });
+        }
+
+        if current.definition.id != request.definition.id {
+            let has_publication = transaction.query_row(
+                "
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM card_revisions
+                    WHERE core_card_id = ?1
+                    LIMIT 1
+                )
+                ",
+                params![current.catalog_id],
+                |row| row.get::<_, i64>(0),
+            )? == 1;
+            if has_publication {
+                return Err(CardWorkshopError::PublishedCardIdImmutable {
+                    current: current.definition.id,
+                    requested: request.definition.id,
+                });
+            }
+        }
+
         let definition_json = serde_json::to_string(&request.definition)?;
-        let changed = self.connection.execute(
+        let changed = transaction.execute(
             "
             UPDATE card_drafts
             SET definition_json = ?4,
@@ -193,11 +234,18 @@ impl<'a> CardWorkshop<'a> {
             params![draft_id, user_id, request.version, definition_json],
         )?;
         if changed == 0 {
-            return Err(self.missing_or_conflict(user_id, draft_id, request.version)?);
+            let current = load_draft_for_user(&transaction, user_id, draft_id)?
+                .ok_or(CardWorkshopError::NotFound)?;
+            return Err(CardWorkshopError::VersionConflict {
+                expected: request.version,
+                current: current.version,
+            });
         }
 
-        self.load_draft_for_user(user_id, draft_id)?
-            .ok_or(CardWorkshopError::NotFound)
+        let updated = load_draft_for_user(&transaction, user_id, draft_id)?
+            .ok_or(CardWorkshopError::NotFound)?;
+        transaction.commit()?;
+        Ok(updated)
     }
 
     pub fn delete_draft_for_user(
