@@ -21,7 +21,6 @@ pub struct CreateCardDraftRequest {
 #[serde(rename_all = "camelCase")]
 pub struct UpdateCardDraftRequest {
     pub version: u64,
-    pub catalog_id: String,
     pub definition: CardDefinition,
 }
 
@@ -36,6 +35,7 @@ pub struct PublishCardDraftRequest {
 pub struct CardDraft {
     pub id: i64,
     pub version: u64,
+    pub catalog_id: String,
     pub definition: CardDefinition,
     pub validation_errors: Vec<CardDefinitionValidationError>,
     pub source_revision: Option<u32>,
