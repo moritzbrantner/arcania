@@ -462,7 +462,7 @@ impl<'a> CardWorkshop<'a> {
             .ok_or(CardWorkshopError::NotFound)
     }
 
-}}
+}
 
 fn load_draft_for_user(
     connection: &Connection,
