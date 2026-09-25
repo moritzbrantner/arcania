@@ -36,11 +36,21 @@ fn draft_request_json_with_id(id: &str, name: &str, attack: i32, armor: i32) -> 
     )
 }
 
-fn update_request_json(version: u64, name: &str, attack: i32, armor: i32) -> String {
+fn update_request_json_with_id(
+    version: u64,
+    id: &str,
+    name: &str,
+    attack: i32,
+    armor: i32,
+) -> String {
     format!(
         r#"{{"version":{version},"definition":{}}}"#,
-        unit_definition_json(name, attack, armor)
+        unit_definition_json_with_id(id, name, attack, armor)
     )
+}
+
+fn update_request_json(version: u64, name: &str, attack: i32, armor: i32) -> String {
+    update_request_json_with_id(version, "ash-duelist", name, attack, armor)
 }
 
 #[tokio::test]
@@ -579,6 +589,87 @@ async fn publish_rechecks_the_draft_version_from_an_independent_connection() {
             .expect("message should be a string")
             .contains("current version is 2")
     );
+
+    let _ = fs::remove_file(path);
+}
+
+
+#[tokio::test]
+async fn published_card_ids_cannot_be_renamed_between_revisions() {
+    let path = test_db_path("card-workshop-published-id");
+    let app = create_app(SqliteMatchStore::new(&path).expect("store should open"));
+    let token = register_test_account(app.clone(), "workshop-published-id@example.com").await;
+
+    let (_, draft) = json_request(
+        app.clone(),
+        Request::builder()
+            .method("POST")
+            .uri("/api/card-drafts")
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json")
+            .body(Body::from(draft_request_json("Ash Duelist", 2, 3)))
+            .expect("request should build"),
+    )
+    .await;
+    let draft_id = draft["id"].as_i64().expect("draft id should exist");
+
+    let (status, _) = json_request(
+        app.clone(),
+        Request::builder()
+            .method("POST")
+            .uri(format!("/api/card-drafts/{draft_id}/publish"))
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"version":1}"#))
+            .expect("request should build"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let (status, rejected) = json_request(
+        app.clone(),
+        Request::builder()
+            .method("PATCH")
+            .uri(format!("/api/card-drafts/{draft_id}"))
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json")
+            .body(Body::from(update_request_json_with_id(
+                1,
+                "renamed-duelist",
+                "Renamed Duelist",
+                3,
+                3,
+            )))
+            .expect("request should build"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert!(
+        rejected["message"]
+            .as_str()
+            .expect("message should be a string")
+            .contains("cannot change from ash-duelist to renamed-duelist")
+    );
+
+    let (status, updated) = json_request(
+        app,
+        Request::builder()
+            .method("PATCH")
+            .uri(format!("/api/card-drafts/{draft_id}"))
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json")
+            .body(Body::from(update_request_json(
+                1,
+                "Ash Duelist Revised",
+                3,
+                3,
+            )))
+            .expect("request should build"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(updated["version"], 2);
+    assert_eq!(updated["definition"]["id"], "ash-duelist");
 
     let _ = fs::remove_file(path);
 }
