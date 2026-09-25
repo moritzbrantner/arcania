@@ -461,7 +461,6 @@ impl<'a> CardWorkshop<'a> {
         self.load_draft_for_user(user_id, draft_id)?
             .ok_or(CardWorkshopError::NotFound)
     }
-
 }
 
 fn load_draft_for_user(
