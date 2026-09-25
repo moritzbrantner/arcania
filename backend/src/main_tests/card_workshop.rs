@@ -414,7 +414,6 @@ async fn workshop_content_is_scoped_to_the_owning_account() {
     let _ = fs::remove_file(path);
 }
 
-
 #[tokio::test]
 async fn published_core_ids_are_unique_across_accounts_and_starter_ids() {
     let path = test_db_path("card-workshop-global-identity");
