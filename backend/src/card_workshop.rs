@@ -100,7 +100,10 @@ impl fmt::Display for CardWorkshopError {
                 errors.len()
             ),
             Self::CardIdConflict(card_id) => {
-                write!(formatter, "Card id {card_id} is already used by another custom card.")
+                write!(
+                    formatter,
+                    "Card id {card_id} is already used by another custom card."
+                )
             }
             Self::InvalidPublishedRevision(error) => error.fmt(formatter),
         }
@@ -169,12 +172,7 @@ impl<'a> CardWorkshop<'a> {
         user_id: i64,
         request: CreateCardDraftRequest,
     ) -> Result<CardDraft, CardWorkshopError> {
-        self.insert_draft(
-            user_id,
-            request.definition,
-            new_custom_catalog_id(),
-            None,
-        )
+        self.insert_draft(user_id, request.definition, new_custom_catalog_id(), None)
     }
 
     pub fn update_draft_for_user(
