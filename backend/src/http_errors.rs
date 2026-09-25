@@ -51,7 +51,6 @@ pub(crate) fn match_command_error_response(
     }
 }
 
-
 pub(crate) fn card_workshop_error_response(error: CardWorkshopError) -> axum::response::Response {
     let status = match error {
         CardWorkshopError::NotFound => StatusCode::NOT_FOUND,
