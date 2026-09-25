@@ -1,6 +1,9 @@
 use crate::app_state::{AppState, SharedState};
 use crate::auth_context::*;
 use crate::card_catalog::{CatalogResponse, starter_catalog};
+use crate::card_workshop::{
+    CardWorkshop, CreateCardDraftRequest, PublishCardDraftRequest, UpdateCardDraftRequest,
+};
 use crate::deck_library::{DeckLibrary, SaveDeckRequest, system_deck_response};
 use crate::deck_recipe_legality::DeckLegalityPreviewRequest;
 use crate::http_errors::*;
@@ -43,6 +46,25 @@ pub fn create_app(store: SqliteMatchStore) -> Router {
     let router = Router::new()
         .route("/api/health", get(health))
         .route("/api/catalog/cards", get(catalog_cards))
+        .route(
+            "/api/card-drafts",
+            get(list_card_drafts).post(create_card_draft),
+        )
+        .route(
+            "/api/card-drafts/{draft_id}",
+            get(load_card_draft)
+                .patch(update_card_draft)
+                .delete(delete_card_draft),
+        )
+        .route(
+            "/api/card-drafts/{draft_id}/publish",
+            post(publish_card_draft),
+        )
+        .route("/api/card-revisions/{card_id}", get(card_revision_history))
+        .route(
+            "/api/card-revisions/{card_id}/{revision}/fork",
+            post(fork_card_revision),
+        )
         .route("/api/system-decks", get(system_decks))
         .route("/api/users/{handle}/decks/{deck_id}", get(load_public_deck))
         .route("/api/decks", get(list_decks).post(create_deck))
@@ -125,6 +147,202 @@ async fn catalog_cards() -> impl IntoResponse {
     Json(CatalogResponse {
         cards: starter_catalog(),
     })
+}
+
+async fn list_card_drafts(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let response = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.list_drafts_for_user(profile.id) {
+            Ok(response) => response,
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    Json(response).into_response()
+}
+
+async fn create_card_draft(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Json(request): Json<CreateCardDraftRequest>,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let draft = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let mut workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.create_draft_for_user(profile.id, request) {
+            Ok(draft) => draft,
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    Json(draft).into_response()
+}
+
+async fn load_card_draft(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Path(draft_id): Path<i64>,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let draft = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.load_draft_for_user(profile.id, draft_id) {
+            Ok(Some(draft)) => draft,
+            Ok(None) => {
+                return card_workshop_error_response(
+                    crate::card_workshop::CardWorkshopError::NotFound,
+                );
+            }
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    Json(draft).into_response()
+}
+
+async fn update_card_draft(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Path(draft_id): Path<i64>,
+    Json(request): Json<UpdateCardDraftRequest>,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let draft = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let mut workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.update_draft_for_user(profile.id, draft_id, request) {
+            Ok(draft) => draft,
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    Json(draft).into_response()
+}
+
+async fn delete_card_draft(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Path(draft_id): Path<i64>,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let deleted = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let mut workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.delete_draft_for_user(profile.id, draft_id) {
+            Ok(deleted) => deleted,
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    if !deleted {
+        return card_workshop_error_response(crate::card_workshop::CardWorkshopError::NotFound);
+    }
+    Json(AuthMessageResponse {
+        message: "Card draft deleted",
+    })
+    .into_response()
+}
+
+async fn publish_card_draft(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Path(draft_id): Path<i64>,
+    Json(request): Json<PublishCardDraftRequest>,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let revision = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let mut workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.publish_draft_for_user(profile.id, draft_id, request) {
+            Ok(revision) => revision,
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    Json(revision).into_response()
+}
+
+async fn card_revision_history(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Path(card_id): Path<String>,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let history = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.revision_history_for_user(profile.id, &card_id) {
+            Ok(history) => history,
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    Json(history).into_response()
+}
+
+async fn fork_card_revision(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Path((card_id, revision)): Path<(String, u32)>,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let draft = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let mut workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.fork_revision_for_user(profile.id, &card_id, revision) {
+            Ok(draft) => draft,
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    Json(draft).into_response()
 }
 
 async fn system_decks() -> impl IntoResponse {

@@ -1,6 +1,6 @@
 use rusqlite::Connection;
 
-use crate::{deck_library, identity, progression};
+use crate::{card_workshop, deck_library, identity, progression};
 
 use super::MatchStoreError;
 
@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS match_event_snapshots (
         ",
     )?;
     identity::migrate(connection)?;
+    card_workshop::migrate(connection)?;
     deck_library::migrate(connection)?;
     progression::migrate(connection)?;
     #[cfg(debug_assertions)]
