@@ -216,6 +216,20 @@ async fn published_revisions_are_immutable_and_forkable() {
     assert_eq!(first["revision"]["id"]["revision"], 1);
     assert_eq!(first["revision"]["definition"]["name"], "Ash Duelist");
 
+    let (status, retry) = json_request(
+        app.clone(),
+        Request::builder()
+            .method("POST")
+            .uri(format!("/api/card-drafts/{draft_id}/publish"))
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"version":1}"#))
+            .expect("request should build"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(retry["revision"]["id"]["revision"], 1);
+
     let (_, updated) = json_request(
         app.clone(),
         Request::builder()
