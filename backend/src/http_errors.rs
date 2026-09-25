@@ -54,7 +54,9 @@ pub(crate) fn match_command_error_response(
 pub(crate) fn card_workshop_error_response(error: CardWorkshopError) -> axum::response::Response {
     let status = match error {
         CardWorkshopError::NotFound => StatusCode::NOT_FOUND,
-        CardWorkshopError::VersionConflict { .. } => StatusCode::CONFLICT,
+        CardWorkshopError::VersionConflict { .. } | CardWorkshopError::CardIdConflict(_) => {
+            StatusCode::CONFLICT
+        }
         CardWorkshopError::InvalidDefinition { .. }
         | CardWorkshopError::InvalidPublishedRevision(_) => StatusCode::BAD_REQUEST,
         CardWorkshopError::Sqlite(_) | CardWorkshopError::Snapshot(_) => {
