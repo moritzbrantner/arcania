@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { loadPreferences, updatePreferences } from "./api";
 import { effectiveBoardVisualMode, saveLocalBoardVisualMode } from "./boardVisualMode";
-import { dispatchHotkeyEvent, type HotkeyHandlers } from "./hotkeyRuntime";
+import { attachHotkeyRuntime, type HotkeyHandlers } from "./hotkeyRuntime";
 import {
   DEFAULT_ACCOUNT_PREFERENCES,
   normalizeAccountPreferences,
@@ -151,14 +151,7 @@ function localAccountPreferences(): AccountPreferences {
 }
 
 export function useHotkeyHandlers(hotkeys: AccountPreferences["hotkeys"], handlers: HotkeyHandlers) {
-  useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) {
-      dispatchHotkeyEvent(event, hotkeys, handlers);
-    }
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [hotkeys, handlers]);
+  useEffect(() => attachHotkeyRuntime(hotkeys, handlers), [hotkeys, handlers]);
 }
 
 export function useAppliedVisualPreferences(preferences: AccountPreferences): AppliedVisualPreferences {

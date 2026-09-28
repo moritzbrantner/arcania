@@ -44,6 +44,7 @@ Before implementing a new subsystem locally, check whether an existing foundatio
 - AI policy may choose a legal command, but AI scheduling/advancement is application orchestration rather than a tabletop/domain command.
 - Hosted multiplayer lifecycle, seats, reconnect/recovery, and transport should converge on the shared `game-server` foundation. Rune Lanes remains authoritative for game rules.
 - Generic 3D/GPU/camera machinery should converge on the shared 3D/rendering foundation (`3d-lab`). This repository owns Rune Lanes-specific board presentation semantics and the 2D fallback, not a competing general renderer.
+- `input-bindings` owns normalized device input, binding resolution, repeat policy, text-entry exclusion and runtime lifecycle. Rune Lanes owns its semantic hotkey commands, default bindings, active surface handlers and Account preference storage. Do not add a second key-to-action runtime locally (ADR 0025).
 - Do not introduce ECS, physics, or Maps dependencies merely because those foundations exist; add them only when Rune Lanes has a real authority seam that needs them.
 
 ## Work tracking
@@ -57,6 +58,7 @@ General engineering rules (git and merging, commits, testing, ADRs, docs, depend
 ## Shared foundations
 
 - Shared foundations (`game-server`, `physics-engine`, `3d-lab`, …) are checked out beside this repo under `~/privat/`. Fix defects there and bump the pin here (DEP-003).
+- `input-bindings` packages are pinned in `frontend/package.json` to exact commits of its `dist/*` branches, never a branch name or the Pages bundle URL. To bump, take the commits from the `Package distribution` run summary on `input-bindings` `main` and `bun add` all three packages at matching commits.
 
 ## Done means
 
