@@ -1,87 +1,144 @@
+import type { ActionRegistry } from "@moritzbrantner/input-bindings";
 import {
-  HOTKEY_COMMANDS,
-  keyEventToHotkeyBinding,
-  normalizeHotkeysWithDefaults,
-} from "./hotkeys";
+  InputRuntimeController,
+  type RuntimeDispatch,
+} from "@moritzbrantner/input-bindings-runtime";
+import {
+  attachKeyboardRuntime,
+  normalizeLogicalKey,
+  type BrowserRuntimeAdapterOptions,
+} from "@moritzbrantner/input-bindings-web";
+import { HOTKEY_COMMANDS, normalizeHotkeysWithDefaults } from "./hotkeys";
 import type { HotkeyBinding, HotkeyCommandId } from "./types";
 
-export type HotkeyRuntimeEvent = Pick<
-  KeyboardEvent,
-  "key" | "target" | "defaultPrevented" | "ctrlKey" | "metaKey" | "altKey" | "preventDefault"
->;
-
+/**
+ * Rune Lanes owns its semantic hotkey commands and the handlers that execute them.
+ * A handler returns `true` when it actually handled the command; only then is the
+ * browser default for that key prevented.
+ */
 export type HotkeyHandlers = Partial<Record<HotkeyCommandId, () => boolean>>;
 
-export function dispatchHotkeyEvent(
-  event: HotkeyRuntimeEvent,
+export type HotkeyRuntimeTargets = Pick<
+  BrowserRuntimeAdapterOptions,
+  "keyTarget" | "focusTarget" | "visibilityTarget"
+>;
+
+const ACTION_PREFIX = "runeLanes.";
+const RUNE_LANES_CONTEXT = "runeLanes";
+const ACTIVE_CONTEXTS: ReadonlySet<string> = new Set([RUNE_LANES_CONTEXT]);
+
+/**
+ * Describes the current Rune Lanes hotkeys as an `input-bindings` action registry.
+ * Only commands with a handler on the current surface are registered.
+ */
+export function hotkeyActionRegistry(
   hotkeys: HotkeyBinding[],
   handlers: HotkeyHandlers,
-) {
-  const commandId = hotkeyCommandForEvent(event, hotkeys);
-  if (!commandId) {
-    return false;
-  }
-
-  const handler = handlers[commandId];
-  if (!handler?.()) {
-    return false;
-  }
-
-  event.preventDefault();
-  return true;
-}
-
-export function hotkeyCommandForEvent(
-  event: Omit<HotkeyRuntimeEvent, "preventDefault">,
-  hotkeys: HotkeyBinding[],
-): HotkeyCommandId | null {
-  if (
-    event.defaultPrevented ||
-    event.ctrlKey ||
-    event.metaKey ||
-    event.altKey ||
-    isEditableHotkeyTarget(event.target)
-  ) {
-    return null;
-  }
-
-  const binding = keyEventToHotkeyBinding(event);
-  if (!binding) {
-    return null;
-  }
-
-  const bindingsByCommand = normalizeHotkeysWithDefaults(hotkeys);
-  const normalizedBinding = binding.toLowerCase();
-  return (
-    HOTKEY_COMMANDS.find((command) => {
-      const saved = bindingsByCommand.find((hotkey) => hotkey.commandId === command.id);
-      return saved?.binding.toLowerCase() === normalizedBinding;
-    })?.id ?? null
+): ActionRegistry {
+  const effectiveBindings = new Map(
+    normalizeHotkeysWithDefaults(hotkeys).map((binding) => [binding.commandId, binding.binding]),
   );
+
+  return {
+    actions: HOTKEY_COMMANDS.filter((command) => Boolean(handlers[command.id])).map((command) => {
+      const action = actionId(command.id);
+      return {
+        id: action,
+        title: command.label,
+        categoryPath: ["Rune Lanes"],
+        repeatPolicy: command.id.startsWith("cursor") ? "allow" : "never",
+        allowedDevices: ["keyboard"],
+        defaults: [
+          {
+            id: `${action}.effective`,
+            action,
+            sequence: [
+              {
+                key: {
+                  kind: "logical",
+                  value: normalizeLogicalKey(effectiveBindings.get(command.id) ?? command.defaultBinding),
+                },
+                modifiers: {},
+              },
+            ],
+          },
+        ],
+        provenance: {
+          source: "arcania/rune-lanes",
+          version: "1",
+        },
+      };
+    }),
+  };
 }
 
-export function isEditableHotkeyTarget(target: EventTarget | null): boolean {
-  if (!target || !isElementLike(target)) {
-    return false;
-  }
-
-  const tagName = typeof target.tagName === "string" ? target.tagName.toLowerCase() : "";
-  if (["input", "select", "textarea"].includes(tagName)) {
-    return true;
-  }
-
-  if (target.isContentEditable) {
-    return true;
-  }
-
-  const closestEditable = target.closest?.("[contenteditable=true]");
-  return Boolean(closestEditable);
+/** Maps a shared runtime dispatch back to the Rune Lanes command it should execute. */
+export function hotkeyCommandForDispatch(
+  dispatch: Pick<RuntimeDispatch, "action" | "phase">,
+): HotkeyCommandId | null {
+  return dispatch.phase === "release" ? null : commandIdForAction(dispatch.action);
 }
 
-function isElementLike(value: EventTarget): value is EventTarget & {
-  tagName?: string;
-  isContentEditable?: boolean;
-  closest?: (selector: string) => Element | null;
-} {
-  return typeof value === "object" && value !== null;
+/**
+ * Attaches the shared `input-bindings` keyboard runtime for the given hotkeys and returns
+ * a function that detaches it.
+ */
+export function attachHotkeyRuntime(
+  hotkeys: HotkeyBinding[],
+  handlers: HotkeyHandlers,
+  targets: HotkeyRuntimeTargets = {},
+): () => void {
+  const keyTarget = targets.keyTarget ?? window;
+  let handledCurrentKeydown = false;
+  const controller = new InputRuntimeController({
+    registry: hotkeyActionRegistry(hotkeys, handlers),
+    getActiveContexts: () => ACTIVE_CONTEXTS,
+    // The shared runtime decides consumption before the handler can report whether
+    // it handled the command, so Rune Lanes applies preventDefault itself.
+    consumePolicy: "never",
+    onDispatch: (dispatch) => {
+      const commandId = hotkeyCommandForDispatch(dispatch);
+      if (commandId) {
+        handledCurrentKeydown = handlers[commandId]?.() ?? false;
+      }
+    },
+  });
+
+  const detachRuntime = attachKeyboardRuntime(controller, {
+    ...targets,
+    keyTarget,
+    ignoreTextEntry: true,
+    mode: "logical",
+    resetOnBlur: true,
+    resetOnHidden: true,
+    resetOnDetach: true,
+  });
+
+  const consumeHandledKeydown = (event: KeyboardEvent) => {
+    if (handledCurrentKeydown) {
+      event.preventDefault();
+    }
+    handledCurrentKeydown = false;
+  };
+  keyTarget.addEventListener("keydown", consumeHandledKeydown);
+
+  return () => {
+    detachRuntime();
+    keyTarget.removeEventListener("keydown", consumeHandledKeydown);
+  };
+}
+
+function actionId(commandId: HotkeyCommandId) {
+  return `${ACTION_PREFIX}${commandId}`;
+}
+
+function commandIdForAction(action: string): HotkeyCommandId | null {
+  if (!action.startsWith(ACTION_PREFIX)) {
+    return null;
+  }
+
+  const commandId = action.slice(ACTION_PREFIX.length);
+  return HOTKEY_COMMANDS.some((command) => command.id === commandId)
+    ? (commandId as HotkeyCommandId)
+    : null;
 }

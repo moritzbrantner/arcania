@@ -1,82 +1,126 @@
-import { describe, expect, it, vi } from "vitest";
+// @vitest-environment jsdom
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  dispatchHotkeyEvent,
-  hotkeyCommandForEvent,
-  isEditableHotkeyTarget,
-  type HotkeyRuntimeEvent,
+  attachHotkeyRuntime,
+  hotkeyActionRegistry,
+  hotkeyCommandForDispatch,
+  type HotkeyHandlers,
 } from "./hotkeyRuntime";
 import type { HotkeyBinding } from "./types";
 
-describe("hotkey runtime", () => {
-  it("matches saved hotkeys and falls back to defaults for missing commands", () => {
-    const hotkeys: HotkeyBinding[] = [{ commandId: "openCatalog", binding: "G" }];
+const detachers: Array<() => void> = [];
 
-    expect(hotkeyCommandForEvent(keyEvent("g"), hotkeys)).toBe("openCatalog");
-    expect(hotkeyCommandForEvent(keyEvent("m"), hotkeys)).toBe("openMatchArchive");
+afterEach(() => {
+  while (detachers.length > 0) {
+    detachers.pop()?.();
+  }
+});
+
+describe("hotkey action registry", () => {
+  it("keeps Rune Lanes actions consumer-owned while using shared binding semantics", () => {
+    const registry = hotkeyActionRegistry(
+      [
+        { commandId: "cursorNorthwest", binding: "Z" },
+        { commandId: "openSettings", binding: "," },
+      ],
+      { cursorNorthwest: () => true, openSettings: () => true },
+    );
+
+    expect(registry.actions.map((action) => action.id)).toEqual([
+      "runeLanes.cursorNorthwest",
+      "runeLanes.openSettings",
+    ]);
+    expect(registry.actions[0]?.repeatPolicy).toBe("allow");
+    expect(registry.actions[1]?.repeatPolicy).toBe("never");
+    expect(registry.actions[0]?.defaults?.[0]?.sequence[0]).toEqual({
+      key: { kind: "logical", value: "z" },
+      modifiers: {},
+    });
   });
 
-  it("ignores key events from editable controls", () => {
-    const editableTargets = [
-      { tagName: "INPUT" },
-      { tagName: "SELECT" },
-      { tagName: "TEXTAREA" },
-      { tagName: "DIV", isContentEditable: true },
-      { tagName: "SPAN", closest: vi.fn(() => ({ isContentEditable: true })) },
-    ];
+  it("registers only actions the current surface handles", () => {
+    const registry = hotkeyActionRegistry([], { openSettings: () => true });
 
-    for (const target of editableTargets) {
-      expect(isEditableHotkeyTarget(fakeTarget(target))).toBe(true);
-      expect(hotkeyCommandForEvent(keyEvent("c", { target: fakeTarget(target) }), [])).toBeNull();
-    }
+    expect(registry.actions.map((action) => action.id)).toEqual(["runeLanes.openSettings"]);
   });
 
-  it("preserves browser modifier shortcuts", () => {
-    expect(hotkeyCommandForEvent(keyEvent("c", { ctrlKey: true }), [])).toBeNull();
-    expect(hotkeyCommandForEvent(keyEvent("c", { metaKey: true }), [])).toBeNull();
-    expect(hotkeyCommandForEvent(keyEvent("c", { altKey: true }), [])).toBeNull();
-  });
-
-  it("dispatches only legal handled commands and prevents defaults after handling", () => {
-    const preventDefault = vi.fn();
-    const endTurn = vi.fn(() => false);
-    const openCatalog = vi.fn(() => true);
-
-    expect(
-      dispatchHotkeyEvent(keyEvent("t", { preventDefault }), [], {
-        endTurn,
-        openCatalog,
-      }),
-    ).toBe(false);
-    expect(endTurn).toHaveBeenCalledOnce();
-    expect(preventDefault).not.toHaveBeenCalled();
-
-    expect(
-      dispatchHotkeyEvent(keyEvent("c", { preventDefault }), [], {
-        endTurn,
-        openCatalog,
-      }),
-    ).toBe(true);
-    expect(openCatalog).toHaveBeenCalledOnce();
-    expect(preventDefault).toHaveBeenCalledOnce();
+  it("executes press and repeat dispatches but not releases", () => {
+    expect(hotkeyCommandForDispatch({ action: "runeLanes.cursorEast", phase: "press" })).toBe(
+      "cursorEast",
+    );
+    expect(hotkeyCommandForDispatch({ action: "runeLanes.cursorEast", phase: "repeat" })).toBe(
+      "cursorEast",
+    );
+    expect(hotkeyCommandForDispatch({ action: "runeLanes.cursorEast", phase: "release" })).toBeNull();
+    expect(hotkeyCommandForDispatch({ action: "other.cursorEast", phase: "press" })).toBeNull();
   });
 });
 
-function keyEvent(
-  key: string,
-  overrides: Partial<HotkeyRuntimeEvent> = {},
-): HotkeyRuntimeEvent {
-  return {
-    key,
-    target: null,
-    defaultPrevented: false,
-    ctrlKey: false,
-    metaKey: false,
-    altKey: false,
-    preventDefault: () => {},
-    ...overrides,
-  };
+describe("hotkey runtime", () => {
+  it("matches saved hotkeys and falls back to defaults for missing commands", () => {
+    const openCatalog = vi.fn(() => true);
+    const openMatchArchive = vi.fn(() => true);
+    attach([{ commandId: "openCatalog", binding: "G" }], { openCatalog, openMatchArchive });
+
+    press("g");
+    press("m");
+    press("c");
+
+    expect(openCatalog).toHaveBeenCalledOnce();
+    expect(openMatchArchive).toHaveBeenCalledOnce();
+  });
+
+  it("prevents the browser default only when a handler handled the command", () => {
+    attach([], { endTurn: () => false, openCatalog: () => true });
+
+    expect(press("t").defaultPrevented).toBe(false);
+    expect(press("c").defaultPrevented).toBe(true);
+    expect(press("x").defaultPrevented).toBe(false);
+  });
+
+  it("ignores key events from editable controls", () => {
+    const openCatalog = vi.fn(() => true);
+    attach([], { openCatalog });
+
+    for (const tagName of ["input", "select", "textarea"]) {
+      const element = document.createElement(tagName);
+      document.body.append(element);
+      press("c", {}, element);
+      element.remove();
+    }
+
+    expect(openCatalog).not.toHaveBeenCalled();
+  });
+
+  it("preserves browser modifier shortcuts", () => {
+    const openCatalog = vi.fn(() => true);
+    attach([], { openCatalog });
+
+    press("c", { ctrlKey: true });
+    press("c", { metaKey: true });
+    press("c", { altKey: true });
+
+    expect(openCatalog).not.toHaveBeenCalled();
+  });
+
+  it("stops dispatching after detach", () => {
+    const openCatalog = vi.fn(() => true);
+    attach([], { openCatalog });
+    detachers.pop()?.();
+
+    press("c");
+
+    expect(openCatalog).not.toHaveBeenCalled();
+  });
+});
+
+function attach(hotkeys: HotkeyBinding[], handlers: HotkeyHandlers) {
+  detachers.push(attachHotkeyRuntime(hotkeys, handlers));
 }
 
-function fakeTarget(target: object): EventTarget {
-  return target as EventTarget;
+function press(key: string, init: KeyboardEventInit = {}, target: EventTarget = window) {
+  const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init });
+  target.dispatchEvent(event);
+  window.dispatchEvent(new KeyboardEvent("keyup", { key, bubbles: true, cancelable: true, ...init }));
+  return event;
 }
