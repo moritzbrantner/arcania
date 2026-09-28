@@ -14,7 +14,7 @@
       "name": "card-board-hybrid-frontend",
       "dependencies": {
         "@moritzbrantner/input-bindings": "github:moritzbrantner/input-bindings#f3747579e462d9c6e65196912d1348afd5cf4b13",
-        "@moritzbrantner/input-bindings-runtime": "github:moritzbrantner/input-bindings#2f8c5e2caf435d9bdc284aae09246041680c67b6",
+        "@moritzbrantner/input-bindings-runtime": "github:moritzbrantner/input-bindings#e24c89e0c917ded25531fc1bd1b3c9a553e2c4ff",
         "@moritzbrantner/input-bindings-web": "github:moritzbrantner/input-bindings#3d514ab479915338f47bdc776ce2fd9d8e3e3f65",
         "@react-three/fiber": "^9.6.1",
         "@vitejs/plugin-react": "^5.1.2",
@@ -180,7 +180,7 @@
 
     "@moritzbrantner/input-bindings": ["@moritzbrantner/input-bindings@github:moritzbrantner/input-bindings#f374757", {}, "moritzbrantner-input-bindings-f374757", "sha512-oVKwLNF43EiyGqfhPLhT3unqHiftVA1bLpy1UyebmhL9WO5cllgMsEalI5fUefu1bhdIoGSPwOWAOStYcVzhXQ=="],
 
-    "@moritzbrantner/input-bindings-runtime": ["@moritzbrantner/input-bindings-runtime@github:moritzbrantner/input-bindings#2f8c5e2", { "dependencies": { "@moritzbrantner/input-bindings": "github:moritzbrantner/input-bindings#f3747579e462d9c6e65196912d1348afd5cf4b13" } }, "moritzbrantner-input-bindings-2f8c5e2", "sha512-wTs+WgKAFApiZzEMu5aHIZS3chE4B+hQE2UKWrFmqGC0NnU3VXA2Cq4DaFQCR6Bz+yFyhSjLNfb9TYJYMhoLQA=="],
+    "@moritzbrantner/input-bindings-runtime": ["input-bindings-workspace@github:moritzbrantner/input-bindings#e24c89e", {}, "moritzbrantner-input-bindings-e24c89e", "sha512-qebzspADZ3MJv69Kn0d1itFnxhLvLIW9SFYjqSyV9S7KjvIRovyxJBDPe6acImH2PkcxpMKS0tsv4Fh1RFQ2sw=="],
 
     "@moritzbrantner/input-bindings-web": ["@moritzbrantner/input-bindings-web@github:moritzbrantner/input-bindings#3d514ab", { "dependencies": { "@moritzbrantner/input-bindings": "github:moritzbrantner/input-bindings#f3747579e462d9c6e65196912d1348afd5cf4b13", "@moritzbrantner/input-bindings-runtime": "github:moritzbrantner/input-bindings#2f8c5e2caf435d9bdc284aae09246041680c67b6" } }, "moritzbrantner-input-bindings-3d514ab", "sha512-AW62evkI1RPNEVJvE1YRpoUGL8k8shaLvVyKULaek+/T1SHMi/yKhCYAlSNwM3tUk8fgZRwiPDF+bPrw8Z9mWA=="],
 
@@ -727,6 +727,8 @@
     "@babel/helper-compilation-targets/lru-cache": ["lru-cache@5.1.1", "", { "dependencies": { "yallist": "^3.0.2" } }, "sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w=="],
 
     "@babel/helper-compilation-targets/semver": ["semver@6.3.1", "", { "bin": { "semver": "bin/semver.js" } }, "sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA=="],
+
+    "@moritzbrantner/input-bindings-web/@moritzbrantner/input-bindings-runtime": ["@moritzbrantner/input-bindings-runtime@github:moritzbrantner/input-bindings#2f8c5e2", { "dependencies": { "@moritzbrantner/input-bindings": "github:moritzbrantner/input-bindings#f3747579e462d9c6e65196912d1348afd5cf4b13" } }, "moritzbrantner-input-bindings-2f8c5e2", "sha512-wTs+WgKAFApiZzEMu5aHIZS3chE4B+hQE2UKWrFmqGC0NnU3VXA2Cq4DaFQCR6Bz+yFyhSjLNfb9TYJYMhoLQA=="],
 
     "@oxc-resolver/binding-wasm32-wasi/@emnapi/core": ["@emnapi/core@1.11.1", "", { "dependencies": { "@emnapi/wasi-threads": "1.2.2", "tslib": "^2.4.0" } }, "sha512-RSvbQmHzdKzNsLYa/wHrbc3KN4sYLKAdPZxqiM2HATqv/SBk2/ENSHpvXGaLOMcsAyz0poEGqkmmKYG3OWiJEQ=="],
 
