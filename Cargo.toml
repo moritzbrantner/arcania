@@ -13,7 +13,7 @@ futures-util = "0.3"
 game-server = { git = "https://github.com/moritzbrantner/game-server.git", rev = "f7efa8fc6d61abffdbc55afaa05d6fde48c05da1" }
 rand = "0.10"
 rune-lanes-core = { path = "rune-lanes-core" }
-rusqlite = { version = "0.40", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled", "fallible_uint"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
