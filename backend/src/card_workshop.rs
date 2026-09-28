@@ -1,8 +1,9 @@
 use std::error::Error;
 use std::fmt;
 
-use rand::RngCore;
-use rand::rngs::OsRng;
+use rand::Rng;
+use rand::rand_core::UnwrapErr;
+use rand::rngs::SysRng;
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
 
@@ -529,7 +530,7 @@ fn read_draft_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CardDraft> {
 
 fn new_custom_catalog_id() -> String {
     let mut bytes = [0_u8; 24];
-    OsRng.fill_bytes(&mut bytes);
+    UnwrapErr(SysRng).fill_bytes(&mut bytes);
     let mut id = String::with_capacity("custom-".len() + bytes.len() * 2);
     id.push_str("custom-");
     for byte in bytes {

@@ -10,7 +10,6 @@ axum.workspace = true
 futures-util.workspace = true
 game-server.workspace = true
 rand.workspace = true
-rand_core.workspace = true
 rune-lanes-core.workspace = true
 rusqlite.workspace = true
 serde.workspace = true
