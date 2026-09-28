@@ -1182,6 +1182,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rune-lanes-cli"
+version = "0.1.0"
+dependencies = [
+ "rune-lanes-core",
+ "serde_json",
+]
+
+[[package]]
 name = "rune-lanes-core"
 version = "0.1.0"
 dependencies = [

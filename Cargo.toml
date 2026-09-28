@@ -1,5 +1,5 @@
 [workspace]
-members = ["backend", "rune-lanes-core"]
+members = ["backend", "rune-lanes-cli", "rune-lanes-core"]
 resolver = "2"
 
 [workspace.package]
