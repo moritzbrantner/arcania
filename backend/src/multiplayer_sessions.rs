@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use game_server::{
     RECONNECT_TOKEN_BYTES, ReconnectToken, SessionError, SessionLease, SessionRegistry,
 };
-use rand_core::{OsRng, RngCore};
+use rand::Rng;
+use rand::rand_core::UnwrapErr;
+use rand::rngs::SysRng;
 
 const MAX_SHARED_SEATS: usize = 4;
 const DURABLE_SEAT_RECONNECT_GRACE_TICKS: u64 = u64::MAX;
@@ -125,8 +127,7 @@ fn reconnect_with_fresh_token(
 
 fn fresh_reconnect_token() -> ReconnectToken {
     let mut bytes = [0_u8; RECONNECT_TOKEN_BYTES];
-    let mut rng = OsRng;
-    rng.fill_bytes(&mut bytes);
+    UnwrapErr(SysRng).fill_bytes(&mut bytes);
     ReconnectToken(bytes)
 }
 
