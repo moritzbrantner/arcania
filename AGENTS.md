@@ -15,6 +15,7 @@ Rust rules engine + Axum backend + React/Vite frontend.
 | `rune-lanes-core/` | Deterministic game rules: state, commands, queries, legality, events, rulesets |
 | `backend/` | Axum HTTP/WebSocket adapter, auth, SQLite persistence, projections |
 | `frontend/` | React/Vite client, 3D board with complete 2D fallback, Storybook |
+| `rune-lanes-cli/` | `rune-lanes` dev CLI: deterministic match script runner over the core command/query path |
 | `e2e/` | Playwright end-to-end tests |
 
 ## Commands
@@ -28,6 +29,7 @@ bun run test:stories  # Storybook story tests
 bun run test:e2e      # Playwright, single worker, slow
 scripts/ci-local.sh   # everything above, in order
 bun run dev:backend / bun run dev:frontend
+cargo run -q -p rune-lanes-cli --bin rune-lanes -- play move-unit script.jsonl  # check rules by script (README "Match scripts")
 ```
 
 ## Architecture authority boundaries
