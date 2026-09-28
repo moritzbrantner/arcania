@@ -72,6 +72,6 @@ Before implementing a new subsystem locally, check whether an existing foundatio
 
 ## Done means
 
-- CI is green. CI does not yet run `test:stories` and `test:e2e`; until it does, run them yourself when the frontend or backend API changed.
+- CI is green: the `ci` workflow runs `scripts/ci-local.sh` (format, Clippy, tests, build, story tests, Playwright e2e); `Validate` runs the fast subset.
 - Rule changes have a `rune-lanes-core` test; user-visible flows touched have their e2e/story coverage updated.
 - `CONTEXT.md` / ADRs are updated when vocabulary or a decision changed.
