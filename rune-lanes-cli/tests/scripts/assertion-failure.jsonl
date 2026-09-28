@@ -1,0 +1,7 @@
+# Deliberately wrong expectations: the run reports each failed check and exits 1.
+{"setup": "move-unit"}
+{"type": "movePiece", "pieceId": "player-unit", "to": {"q": -1, "r": 0}}
+{"expect": {"pieces": {"player-unit": {"position": {"q": -1, "r": 0}, "apRemaining": 3}}}}
+{"expect": {"phase": "attack", "pieces": {"player-unit": {"armor": 5}}, "illegal": [{"type": "startAttackPhase"}]}}
+{"side": "opponent", "type": "movePiece", "pieceId": "opponent-hero", "to": {"q": 1, "r": -2}}
+{"expect": {"lastResult": "accepted"}}

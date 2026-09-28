@@ -1,0 +1,67 @@
+setup adjacent-attack
+  state round=1 phase=movement active=player priority=-
+  player mana 8/8 hand 0 deck 0 discard 0 | player-hero (0,1) hp 20/20 atk 1 ap 3/3 | player-unit (0,0) atk 1 arm 1/1 ap 4/4
+  opponent mana 8/8 hand 0 deck 0 discard 0 | opponent-hero (1,-1) hp 20/20 atk 1 ap 3/3 | opponent-unit (1,0) atk 1 arm 2/2 ap 2/2
+  buildings natural-mana-2 (0,0)
+
+#3 expect ok (2 checks)
+
+#4 player {"type":"movePiece","pieceId":"player-hero","to":{"q":-1,"r":1}}
+  accepted: v2 commandAccepted
+  event actionQueued player stack-1 player p0 movePiece player-hero (0,1)->(-1,1)
+  event pieceMoved player player-hero (0,1)->(-1,1)
+  state round=1 phase=movement active=player priority=-
+  player mana 8/8 hand 0 deck 0 discard 0 | player-hero (-1,1) hp 20/20 atk 1 ap 2/3 | player-unit (0,0) atk 1 arm 1/1 ap 4/4
+  opponent mana 8/8 hand 0 deck 0 discard 0 | opponent-hero (1,-1) hp 20/20 atk 1 ap 3/3 | opponent-unit (1,0) atk 1 arm 2/2 ap 2/2
+  buildings natural-mana-2 (0,0)
+
+#5 player {"type":"startAttackPhase"}
+  accepted: v3 commandAccepted
+  event phaseChanged player attack
+  state round=1 phase=attack active=player priority=-
+  player mana 8/8 hand 0 deck 0 discard 0 | player-hero (-1,1) hp 20/20 atk 1 ap 2/3 | player-unit (0,0) atk 1 arm 1/1 ap 4/4
+  opponent mana 8/8 hand 0 deck 0 discard 0 | opponent-hero (1,-1) hp 20/20 atk 1 ap 3/3 | opponent-unit (1,0) atk 1 arm 2/2 ap 2/2
+  buildings natural-mana-2 (0,0)
+
+#6 expect ok (2 checks)
+
+#7 player {"type":"attack","attackerId":"player-unit","targetId":"opponent-unit"}
+  accepted: v4 commandAccepted
+  event actionQueued player stack-2 player p0 attack player-unit -> opponent-unit
+  event pieceAttacked player player-unit -> opponent-unit damage 1 counter 1
+  event unitDestroyed player player-unit "Rune Runner"
+  event phaseChanged player cardPlay
+  state round=1 phase=cardPlay active=player priority=-
+  player mana 8/8 hand 0 deck 0 discard 0 | player-hero (-1,1) hp 20/20 atk 1 ap 2/3
+  opponent mana 8/8 hand 0 deck 0 discard 0 | opponent-hero (1,-1) hp 20/20 atk 1 ap 3/3 | opponent-unit (1,0) atk 1 arm 1/2 ap 2/2
+  buildings natural-mana-2 (0,0)
+
+#9 expect ok (3 checks)
+
+#10 player {"type":"endTurn"}
+  accepted: v5 commandAccepted
+  event turnEnded player round 1
+  event turnStarted opponent round 1
+  event unitArmorRefreshed opponent opponent-unit +1
+  state round=1 phase=movement active=opponent priority=-
+  player mana 8/8 hand 0 deck 0 discard 0 | player-hero (-1,1) hp 20/20 atk 1 ap 2/3
+  opponent mana 3/3 hand 0 deck 0 discard 0 | opponent-hero (1,-1) hp 20/20 atk 1 ap 3/3 | opponent-unit (1,0) atk 1 arm 2/2 ap 2/2
+  buildings natural-mana-2 (0,0)
+
+#11 expect ok (2 checks)
+
+legal commands for opponent (12):
+  {"type":"movePiece","pieceId":"opponent-hero","to":{"q":1,"r":-2}}
+  {"type":"movePiece","pieceId":"opponent-hero","to":{"q":2,"r":-2}}
+  {"type":"movePiece","pieceId":"opponent-hero","to":{"q":0,"r":-1}}
+  {"type":"movePiece","pieceId":"opponent-hero","to":{"q":2,"r":-1}}
+  {"type":"movePiece","pieceId":"opponent-hero","to":{"q":0,"r":0}}
+  {"type":"movePiece","pieceId":"opponent-unit","to":{"q":2,"r":-1}}
+  {"type":"movePiece","pieceId":"opponent-unit","to":{"q":0,"r":0}}
+  {"type":"movePiece","pieceId":"opponent-unit","to":{"q":2,"r":0}}
+  {"type":"movePiece","pieceId":"opponent-unit","to":{"q":0,"r":1}}
+  {"type":"movePiece","pieceId":"opponent-unit","to":{"q":1,"r":1}}
+  {"type":"startAttackPhase"}
+  {"type":"startCardPlay"}
+
+result: ok (4 expectations passed)

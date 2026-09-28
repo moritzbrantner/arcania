@@ -1,0 +1,52 @@
+setup priority-response
+  state round=1 phase=movement active=opponent priority=player
+  player mana 8/8 hand 1 deck 0 discard 0 | player-hero (0,1) hp 20/20 atk 1 ap 3/3 | player-unit (0,0) atk 1 arm 2/2 ap 2/2
+  opponent mana 8/8 hand 0 deck 0 discard 0 | opponent-hero (1,-1) hp 20/20 atk 1 ap 3/3
+  buildings natural-mana-2 (0,0)
+  stack scenario-stack-1 opponent p0 attack opponent-hero -> player-unit
+
+#3 expect ok (3 checks)
+
+#4 player {"type":"playCard","cardId":"scenario-arcane-parry","target":{"type":"piece","pieceId":"player-unit"}}
+  accepted: v2 commandAccepted
+  event cardPlayed player arcane-parry (spell cost 2) -> piece player-unit
+  event actionQueued player stack-1 player p4 castSpell arcane-parry -> player-unit
+  state round=1 phase=movement active=opponent priority=opponent
+  player mana 6/8 hand 0 deck 0 discard 1 | player-hero (0,1) hp 20/20 atk 1 ap 3/3 | player-unit (0,0) atk 1 arm 2/2 ap 2/2
+  opponent mana 8/8 hand 0 deck 0 discard 0 | opponent-hero (1,-1) hp 20/20 atk 1 ap 3/3
+  buildings natural-mana-2 (0,0)
+  stack scenario-stack-1 opponent p0 attack opponent-hero -> player-unit | stack-1 player p4 castSpell arcane-parry -> player-unit
+
+#5 expect ok (2 checks)
+
+#6 opponent ai {"type":"passPriority"}
+  accepted: v3 commandAccepted
+  event pieceBuffed player player-unit atk +0 arm +2
+  state round=1 phase=movement active=opponent priority=player
+  player mana 6/8 hand 0 deck 0 discard 1 | player-hero (0,1) hp 20/20 atk 1 ap 3/3 | player-unit (0,0) atk 1 arm 4/4 ap 2/2
+  opponent mana 8/8 hand 0 deck 0 discard 0 | opponent-hero (1,-1) hp 20/20 atk 1 ap 3/3
+  buildings natural-mana-2 (0,0)
+  stack scenario-stack-1 opponent p0 attack opponent-hero -> player-unit
+
+#7 expect ok (2 checks)
+
+#8 player {"type":"passPriority"}
+  accepted: v4 commandAccepted
+  event pieceAttacked opponent opponent-hero -> player-unit damage 1 counter 1
+  state round=1 phase=movement active=opponent priority=-
+  player mana 6/8 hand 0 deck 0 discard 1 | player-hero (0,1) hp 20/20 atk 1 ap 3/3 | player-unit (0,0) atk 1 arm 3/4 ap 2/2
+  opponent mana 8/8 hand 0 deck 0 discard 0 | opponent-hero (1,-1) hp 19/20 atk 1 ap 3/3
+  buildings natural-mana-2 (0,0)
+
+#9 expect ok (2 checks)
+
+legal commands for opponent (7):
+  {"type":"movePiece","pieceId":"opponent-hero","to":{"q":1,"r":-2}}
+  {"type":"movePiece","pieceId":"opponent-hero","to":{"q":2,"r":-2}}
+  {"type":"movePiece","pieceId":"opponent-hero","to":{"q":0,"r":-1}}
+  {"type":"movePiece","pieceId":"opponent-hero","to":{"q":2,"r":-1}}
+  {"type":"movePiece","pieceId":"opponent-hero","to":{"q":1,"r":0}}
+  {"type":"startAttackPhase"}
+  {"type":"startCardPlay"}
+
+result: ok (4 expectations passed)
