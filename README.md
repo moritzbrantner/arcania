@@ -7,7 +7,7 @@ Players control heroes on a radius-3 hex arena. Cards cost mana and hero action 
 ## GitHub Pages
 
 The Pages workflow publishes the frontend as a static preview at
-`https://moritzbrantner.github.io/card-board-hybrid/`.
+`https://moritzbrantner.github.io/arcania/`.
 
 The public dashboard, rules/wiki, and fully local tutorial work without the Rust
 backend. Account authentication, the backend-driven catalog, persisted matches,

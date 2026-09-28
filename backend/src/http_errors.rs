@@ -1,3 +1,4 @@
+use crate::card_workshop::CardWorkshopError;
 use crate::deck_library::DeckLibraryError;
 use crate::identity::IdentityError;
 use crate::loadout_resolution::LoadoutResolutionError;
@@ -48,6 +49,27 @@ pub(crate) fn match_command_error_response(
         )
             .into_response(),
     }
+}
+
+pub(crate) fn card_workshop_error_response(error: CardWorkshopError) -> axum::response::Response {
+    let status = match error {
+        CardWorkshopError::NotFound => StatusCode::NOT_FOUND,
+        CardWorkshopError::VersionConflict { .. }
+        | CardWorkshopError::CardIdConflict(_)
+        | CardWorkshopError::PublishedCardIdImmutable { .. } => StatusCode::CONFLICT,
+        CardWorkshopError::InvalidDefinition { .. }
+        | CardWorkshopError::InvalidPublishedRevision(_) => StatusCode::BAD_REQUEST,
+        CardWorkshopError::Sqlite(_) | CardWorkshopError::Snapshot(_) => {
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    };
+    (
+        status,
+        Json(ApiError {
+            message: error.to_string(),
+        }),
+    )
+        .into_response()
 }
 
 pub(crate) fn deck_error_response(error: DeckLibraryError) -> axum::response::Response {
