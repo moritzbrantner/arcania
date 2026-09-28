@@ -15,7 +15,7 @@
       "dependencies": {
         "@moritzbrantner/input-bindings": "github:moritzbrantner/input-bindings#f3747579e462d9c6e65196912d1348afd5cf4b13",
         "@moritzbrantner/input-bindings-runtime": "github:moritzbrantner/input-bindings#2f8c5e2caf435d9bdc284aae09246041680c67b6",
-        "@moritzbrantner/input-bindings-web": "github:moritzbrantner/input-bindings#3d514ab479915338f47bdc776ce2fd9d8e3e3f65",
+        "@moritzbrantner/input-bindings-web": "github:moritzbrantner/input-bindings#e24c89e0c917ded25531fc1bd1b3c9a553e2c4ff",
         "@react-three/fiber": "^9.6.1",
         "@vitejs/plugin-react": "^5.1.2",
         "lucide-react": "^0.577.0",
@@ -182,7 +182,7 @@
 
     "@moritzbrantner/input-bindings-runtime": ["@moritzbrantner/input-bindings-runtime@github:moritzbrantner/input-bindings#2f8c5e2", { "dependencies": { "@moritzbrantner/input-bindings": "github:moritzbrantner/input-bindings#f3747579e462d9c6e65196912d1348afd5cf4b13" } }, "moritzbrantner-input-bindings-2f8c5e2", "sha512-wTs+WgKAFApiZzEMu5aHIZS3chE4B+hQE2UKWrFmqGC0NnU3VXA2Cq4DaFQCR6Bz+yFyhSjLNfb9TYJYMhoLQA=="],
 
-    "@moritzbrantner/input-bindings-web": ["@moritzbrantner/input-bindings-web@github:moritzbrantner/input-bindings#3d514ab", { "dependencies": { "@moritzbrantner/input-bindings": "github:moritzbrantner/input-bindings#f3747579e462d9c6e65196912d1348afd5cf4b13", "@moritzbrantner/input-bindings-runtime": "github:moritzbrantner/input-bindings#2f8c5e2caf435d9bdc284aae09246041680c67b6" } }, "moritzbrantner-input-bindings-3d514ab", "sha512-AW62evkI1RPNEVJvE1YRpoUGL8k8shaLvVyKULaek+/T1SHMi/yKhCYAlSNwM3tUk8fgZRwiPDF+bPrw8Z9mWA=="],
+    "@moritzbrantner/input-bindings-web": ["input-bindings-workspace@github:moritzbrantner/input-bindings#e24c89e", {}, "moritzbrantner-input-bindings-e24c89e", "sha512-qebzspADZ3MJv69Kn0d1itFnxhLvLIW9SFYjqSyV9S7KjvIRovyxJBDPe6acImH2PkcxpMKS0tsv4Fh1RFQ2sw=="],
 
     "@napi-rs/wasm-runtime": ["@napi-rs/wasm-runtime@1.1.6", "", { "dependencies": { "@tybys/wasm-util": "^0.10.3" }, "peerDependencies": { "@emnapi/core": "^1.7.1", "@emnapi/runtime": "^1.7.1" } }, "sha512-ZLv/JdUfkvOy9eCnnBaGfiO+XimbjebAeO+MRQqD/B+FR1tnRN0tpKSJHRbE8sFfS6aqsXZ67TQjfwfsxULVbg=="],
 
