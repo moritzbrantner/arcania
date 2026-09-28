@@ -1,0 +1,47 @@
+setup play-unit-card
+  state round=1 phase=movement active=player priority=-
+  player mana 8/8 hand 1 deck 0 discard 0 | player-hero (0,1) hp 20/20 atk 1 ap 3/3
+  opponent mana 8/8 hand 0 deck 0 discard 0 | opponent-hero (1,-1) hp 20/20 atk 1 ap 3/3
+  buildings natural-mana-2 (0,0)
+
+#4 expect ok (3 checks)
+
+#5 player {"type":"playCard","cardId":"scenario-ember-squire","target":{"type":"hex","coord":{"q":0,"r":0}}}
+  rejected: wrongPhase (that action is not available in this phase)
+
+#6 expect ok (2 checks)
+
+#7 player {"type":"startAttackPhase"}
+  accepted: v2 commandAccepted
+  event phaseChanged player attack
+  state round=1 phase=attack active=player priority=-
+  player mana 8/8 hand 1 deck 0 discard 0 | player-hero (0,1) hp 20/20 atk 1 ap 3/3
+  opponent mana 8/8 hand 0 deck 0 discard 0 | opponent-hero (1,-1) hp 20/20 atk 1 ap 3/3
+  buildings natural-mana-2 (0,0)
+
+#8 player {"type":"startCardPlay"}
+  accepted: v3 commandAccepted
+  event phaseChanged player cardPlay
+  state round=1 phase=cardPlay active=player priority=-
+  player mana 8/8 hand 1 deck 0 discard 0 | player-hero (0,1) hp 20/20 atk 1 ap 3/3
+  opponent mana 8/8 hand 0 deck 0 discard 0 | opponent-hero (1,-1) hp 20/20 atk 1 ap 3/3
+  buildings natural-mana-2 (0,0)
+
+#9 expect ok (2 checks)
+
+#10 player {"type":"playCard","cardId":"scenario-ember-squire","target":{"type":"hex","coord":{"q":0,"r":0}}}
+  accepted: v4 commandAccepted
+  event cardPlayed player ember-squire (unit cost 1) -> hex (0,0)
+  event actionQueued player stack-1 player p0 playUnit ember-squire (0,0)
+  event unitSummoned player P1 "Ember Squire" (0,0)
+  state round=1 phase=cardPlay active=player priority=-
+  player mana 7/8 hand 0 deck 0 discard 1 | player-hero (0,1) hp 20/20 atk 1 ap 3/3 | P1 (0,0) atk 1 arm 2/2 ap 1/2
+  opponent mana 8/8 hand 0 deck 0 discard 0 | opponent-hero (1,-1) hp 20/20 atk 1 ap 3/3
+  buildings natural-mana-2 (0,0)
+
+#11 expect ok (2 checks)
+
+legal commands for player (1):
+  {"type":"endTurn"}
+
+result: ok (4 expectations passed)
