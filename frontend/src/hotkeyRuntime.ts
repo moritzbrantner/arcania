@@ -7,6 +7,7 @@ import {
   attachKeyboardRuntime,
   normalizeLogicalKey,
   type BrowserRuntimeAdapterOptions,
+  type RuntimeEventTargetLike,
 } from "@moritzbrantner/input-bindings-web";
 import { HOTKEY_COMMANDS, normalizeHotkeysWithDefaults } from "./hotkeys";
 import type { HotkeyBinding, HotkeyCommandId } from "./types";
@@ -88,43 +89,71 @@ export function attachHotkeyRuntime(
   handlers: HotkeyHandlers,
   targets: HotkeyRuntimeTargets = {},
 ): () => void {
-  const keyTarget = targets.keyTarget ?? window;
   let handledCurrentKeydown = false;
   const controller = new InputRuntimeController({
     registry: hotkeyActionRegistry(hotkeys, handlers),
     getActiveContexts: () => ACTIVE_CONTEXTS,
-    // The shared runtime decides consumption before the handler can report whether
-    // it handled the command, so Rune Lanes applies preventDefault itself.
+    // The shared runtime decides consumption before a handler can report whether it
+    // handled the command, so Rune Lanes consumes handled keys itself (see below).
     consumePolicy: "never",
     onDispatch: (dispatch) => {
       const commandId = hotkeyCommandForDispatch(dispatch);
-      if (commandId) {
-        handledCurrentKeydown = handlers[commandId]?.() ?? false;
+      if (commandId && handlers[commandId]?.()) {
+        handledCurrentKeydown = true;
       }
     },
   });
 
-  const detachRuntime = attachKeyboardRuntime(controller, {
+  return attachKeyboardRuntime(controller, {
     ...targets,
-    keyTarget,
+    keyTarget: consumingHandledKeydowns(targets.keyTarget ?? window, () => {
+      const handled = handledCurrentKeydown;
+      handledCurrentKeydown = false;
+      return handled;
+    }),
     ignoreTextEntry: true,
     mode: "logical",
     resetOnBlur: true,
     resetOnHidden: true,
     resetOnDetach: true,
   });
+}
 
-  const consumeHandledKeydown = (event: KeyboardEvent) => {
-    if (handledCurrentKeydown) {
-      event.preventDefault();
-    }
-    handledCurrentKeydown = false;
-  };
-  keyTarget.addEventListener("keydown", consumeHandledKeydown);
+/**
+ * Wraps the runtime's own `keydown` listener so that the key is consumed in the same
+ * listener call that dispatched a handled command. A separate consuming listener would
+ * depend on the order in which the two listeners fire.
+ */
+function consumingHandledKeydowns(
+  target: RuntimeEventTargetLike,
+  takeHandled: () => boolean,
+): RuntimeEventTargetLike {
+  type Listener = (event: KeyboardEvent) => void;
+  const wrappers = new Map<Listener, Listener>();
 
-  return () => {
-    detachRuntime();
-    keyTarget.removeEventListener("keydown", consumeHandledKeydown);
+  return {
+    addEventListener(type, listener, options) {
+      if (type !== "keydown") {
+        target.addEventListener(type, listener, options);
+        return;
+      }
+      const wrapped: Listener = (event) => {
+        takeHandled();
+        listener(event);
+        if (takeHandled()) {
+          event.preventDefault();
+        }
+      };
+      wrappers.set(listener, wrapped);
+      target.addEventListener(type, wrapped, options);
+    },
+    removeEventListener(type, listener, options) {
+      const wrapped = type === "keydown" ? wrappers.get(listener) : undefined;
+      if (wrapped) {
+        wrappers.delete(listener);
+      }
+      target.removeEventListener(type, wrapped ?? listener, options);
+    },
   };
 }
 

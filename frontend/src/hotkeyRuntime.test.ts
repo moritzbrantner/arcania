@@ -78,6 +78,17 @@ describe("hotkey runtime", () => {
     expect(press("x").defaultPrevented).toBe(false);
   });
 
+  it("consumes a handled key regardless of the order keydown listeners fire in", () => {
+    const keyTarget = new ReverseOrderEventTarget();
+    detachers.push(
+      attachHotkeyRuntime([], { endTurn: () => false, openCatalog: () => true }, { keyTarget }),
+    );
+
+    expect(keyTarget.press("c").defaultPrevented).toBe(true);
+    expect(keyTarget.press("x").defaultPrevented).toBe(false);
+    expect(keyTarget.press("t").defaultPrevented).toBe(false);
+  });
+
   it("ignores key events from editable controls", () => {
     const openCatalog = vi.fn(() => true);
     attach([], { openCatalog });
@@ -123,4 +134,33 @@ function press(key: string, init: KeyboardEventInit = {}, target: EventTarget = 
   target.dispatchEvent(event);
   window.dispatchEvent(new KeyboardEvent("keyup", { key, bubbles: true, cancelable: true, ...init }));
   return event;
+}
+
+// Invokes listeners in reverse registration order, as a browser does not promise any
+// particular order between listeners registered by different modules or targets.
+class ReverseOrderEventTarget {
+  private readonly listeners = new Map<string, Array<(event: Event) => void>>();
+
+  addEventListener(type: string, listener: (event: Event) => void) {
+    this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]);
+  }
+
+  removeEventListener(type: string, listener: (event: Event) => void) {
+    this.listeners.set(
+      type,
+      (this.listeners.get(type) ?? []).filter((registered) => registered !== listener),
+    );
+  }
+
+  press(key: string) {
+    const event = new KeyboardEvent("keydown", { key, cancelable: true });
+    for (const listener of [...(this.listeners.get("keydown") ?? [])].reverse()) {
+      listener(event);
+    }
+    const release = new KeyboardEvent("keyup", { key, cancelable: true });
+    for (const listener of [...(this.listeners.get("keyup") ?? [])].reverse()) {
+      listener(release);
+    }
+    return event;
+  }
 }
