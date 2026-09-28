@@ -2,9 +2,11 @@ use std::error::Error;
 use std::fmt;
 
 use argon2::Argon2;
-use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
-use rand::RngCore;
-use rand::rngs::OsRng;
+use argon2::password_hash::phc::PasswordHash;
+use argon2::password_hash::{PasswordHasher, PasswordVerifier};
+use rand::Rng;
+use rand::rand_core::UnwrapErr;
+use rand::rngs::SysRng;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
@@ -853,9 +855,8 @@ fn drop_column_if_exists(
 }
 
 fn hash_password(password: &str) -> Result<String, IdentityError> {
-    let salt = SaltString::generate(&mut OsRng);
     let password_hash = Argon2::default()
-        .hash_password(password.as_bytes(), &salt)?
+        .hash_password(password.as_bytes())?
         .to_string();
     Ok(password_hash)
 }
@@ -875,9 +876,36 @@ fn random_auth_token() -> String {
 
 fn random_hex_token(byte_count: usize) -> String {
     let mut bytes = vec![0_u8; byte_count];
-    OsRng.fill_bytes(&mut bytes);
+    UnwrapErr(SysRng).fill_bytes(&mut bytes);
     bytes
         .into_iter()
         .map(|byte| format!("{byte:02x}"))
         .collect()
+}
+
+#[cfg(test)]
+mod password_hash_tests {
+    use super::{hash_password, password_matches};
+
+    /// Produced by `argon2` 0.5 (`Argon2::default()`, fixed salt) before the 0.6 upgrade;
+    /// stored account hashes in that format must keep verifying.
+    const ARGON2_0_5_HASH: &str = "$argon2id$v=19$m=19456,t=2,p=1$YXJjYW5pYS1maXh0dXJlIQ$xAW/aH8bVDKE6BlAsR40jYFCU6Ew+mu1Mriu7qyeg24";
+    const PASSWORD: &str = "correct horse battery staple";
+
+    #[test]
+    fn hashes_stored_by_previous_argon2_release_still_verify() {
+        assert!(password_matches(PASSWORD, ARGON2_0_5_HASH));
+        assert!(!password_matches("wrong password", ARGON2_0_5_HASH));
+    }
+
+    #[test]
+    fn new_hashes_use_default_argon2id_parameters_with_fresh_salt() {
+        let first = hash_password(PASSWORD).expect("hash password");
+        let second = hash_password(PASSWORD).expect("hash password");
+
+        assert!(first.starts_with("$argon2id$v=19$m=19456,t=2,p=1$"));
+        assert_ne!(first, second);
+        assert!(password_matches(PASSWORD, &first));
+        assert!(!password_matches("wrong password", &first));
+    }
 }

@@ -1,7 +1,8 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rand::RngCore;
-use rand::rngs::OsRng;
+use rand::Rng;
+use rand::rand_core::UnwrapErr;
+use rand::rngs::SysRng;
 
 pub(super) fn readable_match_id(attempt: u32) -> String {
     let millis = SystemTime::now()
@@ -38,11 +39,11 @@ pub(super) fn random_hex_token(byte_count: usize) -> String {
     let mut bytes = [0_u8; 24];
     let mut dynamic_bytes;
     let bytes = if byte_count == bytes.len() {
-        OsRng.fill_bytes(&mut bytes);
+        UnwrapErr(SysRng).fill_bytes(&mut bytes);
         bytes.as_slice()
     } else {
         dynamic_bytes = vec![0_u8; byte_count];
-        OsRng.fill_bytes(&mut dynamic_bytes);
+        UnwrapErr(SysRng).fill_bytes(&mut dynamic_bytes);
         dynamic_bytes.as_slice()
     };
     let mut token = String::with_capacity(bytes.len() * 2);
