@@ -9,6 +9,7 @@ pub mod routes;
 pub(crate) mod app_state;
 pub(crate) mod auth_context;
 pub(crate) mod card_catalog;
+pub(crate) mod card_workshop;
 pub(crate) mod deck_library;
 pub(crate) mod deck_recipe_legality;
 pub(crate) mod http_errors;
