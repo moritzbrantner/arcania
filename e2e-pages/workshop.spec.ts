@@ -1,17 +1,43 @@
 import { expect, test } from "@playwright/test";
 
+test.beforeAll(async ({ request }) => {
+  const expectedRevision = process.env.ARCANIA_PAGES_REVISION;
+  if (expectedRevision) {
+    test.setTimeout(120_000);
+    // Wait for the CDN to serve this deployment before exercising the public UI.
+    await expect.poll(async () => {
+      const response = await request.get(`./deployment.json?revision=${expectedRevision}`, { headers: { "Cache-Control": "no-cache" } });
+      return response.ok() ? response.json() : null;
+    }, { timeout: 90_000 }).toEqual({ revision: expectedRevision });
+  }
+});
+
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem("rune-lanes-board-visual-mode", "2d");
   });
 });
 
-test("Pages can edit rules, create a card, play against a bot, and resume without a server", async ({ page }, testInfo) => {
+test("Pages can edit rules, create a card, play against a bot, and resume without a server", async ({ page, baseURL }, testInfo) => {
   const apiRequests: string[] = [];
   const failedAssets: string[] = [];
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => { pageErrors.push(error.message); });
   page.on("request", (request) => { if (new URL(request.url()).pathname.includes("/api/")) { apiRequests.push(request.url()); } });
-  page.on("response", (response) => { if (response.status() >= 400) { failedAssets.push(response.url()); } });
-  await page.goto("./");
+  page.on("response", (response) => {
+    // Pages serves 404.html for these client routes. The reload assertions below
+    // must still prove that the app loads and restores the saved state.
+    const url = new URL(response.url());
+    const isPagesFallback = process.env.ARCANIA_PAGES_URL && response.status() === 404
+      && response.request().resourceType() === "document"
+      && ["workshop", "match/browser-solo"].some((route) => {
+        const expected = new URL(route, baseURL);
+        return url.origin === expected.origin && url.pathname.replace(/\/$/, "") === expected.pathname;
+      });
+    if (response.status() >= 400 && !isPagesFallback) { failedAssets.push(response.url()); }
+  });
+  const entry = await page.goto("./");
+  expect(entry?.status()).toBe(200);
   await expect(page.getByRole("button", { name: "Play against bot", exact: true })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath("workshop.png"), fullPage: true });
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -47,6 +73,7 @@ test("Pages can edit rules, create a card, play against a bot, and resume withou
   await page.screenshot({ path: testInfo.outputPath("match.png"), fullPage: true });
   expect(apiRequests).toEqual([]);
   expect(failedAssets).toEqual([]);
+  expect(pageErrors).toEqual([]);
 });
 
 test("invalid imported presets are rejected without losing saved rules", async ({ page }) => {

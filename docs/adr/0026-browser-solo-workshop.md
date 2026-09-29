@@ -11,7 +11,7 @@ Rules are frozen per Match in the typed `RuneLanesRuleset`, including in compati
 
 Browser persistence is a versioned setup plus ordered accepted commands, replayed through the core on reload. This is an application command journal, not the domain event stream described in ADR 0024. There is no authoritative browser snapshot or silent repair of incompatible saves. One browser Solo match is retained; starting another replaces it. Rules/card presets persist separately, support JSON import/export, and affect new matches only. Local storage write failures roll back the attempted move. These experiments do not award account progression.
 
-The Pages workflow builds the WASM with the pinned wasm-bindgen CLI and runs desktop/mobile tests against the built site at `/arcania/` without a backend. Presentation assets retain their asset-tooling specs, receipts, revision, and replay verification alongside the intentionally distributed SVG.
+The Pages workflow builds the WASM with the pinned wasm-bindgen CLI and runs desktop/mobile tests against the built site at `/arcania/` without a backend. After deployment, it checks the published commit in `deployment.json` and repeats those flows on the public Pages URL. Client-route reloads use Pages' `404.html` fallback; tests require restored state and successful assets even though the document has a 404 status. Presentation assets retain their asset-tooling specs, receipts, revision, and replay verification alongside the intentionally distributed SVG.
 
 ## Consequences
 
