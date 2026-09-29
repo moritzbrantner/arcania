@@ -217,6 +217,14 @@ bun run test:pages
 
 For local frontend development, run `bun run build:browser-engine` once and open `/workshop`. Rebuild the engine after Rust changes. `build:pages` targets `/arcania/`; the Pages workflow derives the repository name automatically and includes its own WASM build and browser tests. The workflow deploys only from `main`.
 
+The workflow also tests the public site after deployment on desktop and mobile, including bot turns, custom cards, rule persistence, reload, and victory. Run the same checks without a local server:
+
+```sh
+ARCANIA_PAGES_URL=https://moritzbrantner.github.io/arcania/ bun run test:pages
+```
+
+Set `ARCANIA_PAGES_REVISION` to a full commit SHA to also verify `deployment.json` before testing. GitHub Pages serves the app's `404.html` for client routes; reload checks allow that document status while still rejecting failed assets and requiring the saved match to render.
+
 Browser storage is local to the current browser/origin. Export a preset to keep a portable backup of rules and cards. A new match replaces the previous browser match; malformed or incompatible saves fail visibly. Clear site data only if you intend to remove local saves.
 
 Visual asset provenance and regeneration instructions: [assets/workshop](assets/workshop/README.md). Architecture: [ADR 0026](docs/adr/0026-browser-solo-workshop.md).
