@@ -188,12 +188,6 @@ impl RuneLanesRuleset {
     }
 }
 
-impl HeroType {
-    pub(crate) fn profile(self) -> HeroRule {
-        CURRENT_RULESET.hero(self)
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RulesetError {
     UnsupportedSchemaVersion(u32),

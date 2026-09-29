@@ -153,11 +153,11 @@ The root account-oriented surface that summarizes player status and routes into 
 _Avoid_: match picker, landing page
 
 **Solo match**:
-A match where one human controls Player and the backend AI controls Opponent.
+A match where one human controls Player and an AI policy controls Opponent, hosted by the backend or the browser.
 _Avoid_: offline match
 
 **Solo AI policy**:
-The backend-owned decision policy that chooses the Opponent's next intent during a Solo match.
+The core-owned decision policy that chooses the Opponent's next intent during a Solo match; its host schedules advancement.
 _Avoid_: bot logic, enemy AI, opponent automation
 
 **Self-play match**:
@@ -173,7 +173,7 @@ A candidate AI policy evaluated against the default policy.
 _Avoid_: experiment bot, AI build
 
 **Rule preset**:
-A typed experiment configuration that changes match setup or numeric Card-template values without adding new Card effect semantics.
+A typed experiment configuration that changes match setup, numeric rules, or Card definitions using existing Card effect semantics. Browser Rule presets may include custom cards and are frozen when a Solo match starts.
 _Avoid_: rules patch, effect script
 
 **Simulation suite**:
@@ -379,3 +379,6 @@ _Avoid_: article, mechanic page, doc page
 **Wiki scene**:
 A public client-side interactive demonstration embedded in a Wiki topic to illustrate one player-facing rule concept with authored board or deck recipe states. A Wiki scene does not create a Match, replay, archive entry, or progression.
 _Avoid_: match scenario, dev scenario, sandbox match
+
+**Card workshop**:
+The browser-local surface for editing Rule presets and custom cards and trying them in Solo matches. It does not change the hosted catalog, accounts, or progression.

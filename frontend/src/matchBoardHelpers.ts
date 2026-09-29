@@ -262,6 +262,9 @@ export function hasPlayablePriorityResponse(match: MatchState, viewerSide: Side)
 }
 
 export function isPlayableCard(match: MatchState, viewerSide: Side, card: Card) {
+  if (viewerSide === "player" && match.legalCommands) {
+    return match.legalCommands.some((command) => command.type === "playCard" && command.cardId === card.id);
+  }
   const participant = participantBySide(match, viewerSide);
   const pending = topStackItem(match);
   if (pending) {
@@ -310,6 +313,11 @@ export function isLegalCardTarget(
   coord: HexCoord,
   piece: BoardPiece | null,
 ) {
+  if (viewerSide === "player" && match.legalCommands) {
+    return match.legalCommands.some((command) => command.type === "playCard" && command.cardId === card.id && (
+      command.target.type === "hex" ? sameCoord(command.target.coord, coord) : command.target.pieceId === piece?.id
+    ));
+  }
   const participant = participantBySide(match, viewerSide);
   if (!isPlayableCard(match, viewerSide, card)) {
     return false;
@@ -372,6 +380,9 @@ function targetPolicyAllows(policy: BuffTargetPolicy, isHero: boolean) {
 }
 
 export function isLegalMove(match: MatchState, viewerSide: Side, piece: BoardPiece, coord: HexCoord) {
+  if (viewerSide === "player" && match.legalCommands) {
+    return match.legalCommands.some((command) => command.type === "movePiece" && command.pieceId === piece.id && sameCoord(command.to, coord));
+  }
   return (
     match.actionStack.length === 0 &&
     match.phase === "movement" &&
@@ -389,6 +400,9 @@ export function isLegalAttack(
   attacker: BoardPiece,
   target: BoardPiece,
 ) {
+  if (viewerSide === "player" && match.legalCommands) {
+    return match.legalCommands.some((command) => command.type === "attack" && command.attackerId === attacker.id && command.targetId === target.id);
+  }
   return (
     match.actionStack.length === 0 &&
     match.phase === "attack" &&

@@ -1,3 +1,4 @@
+import { pagesMode } from "../browser/engine";
 import { BookOpen, Gauge, Layers, LibraryBig, LogIn, LogOut, History, Menu, Play, Settings as SettingsIcon, User, UsersRound, X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { AccountProps } from "../appTypes";
@@ -52,6 +53,7 @@ export function AccountActions({
   }, [menuOpen]);
 
   if (!currentUser) {
+    if (pagesMode) { return <button className="secondary-link" type="button" onClick={() => onNavigate("/workshop")}>Solo workshop</button>; }
     const loginPath = loginNextPath ? protectedLoginRoute(loginNextPath) : "/login";
     return (
       <div className="account-actions">

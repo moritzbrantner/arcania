@@ -2,7 +2,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::commands::{CommandContext, GameCommand};
 use crate::event_sourcing::EventSourcedMatch;
-use crate::rules::{CURRENT_RULESET, RuneLanesRuleset};
+#[cfg(test)]
+use crate::rules::CURRENT_RULESET;
+use crate::rules::RuneLanesRuleset;
 use crate::{ActionTarget, MatchError, MatchState, Phase, PlayerState, Side};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -134,7 +136,7 @@ impl MatchQueries<'_> {
 
     #[must_use]
     pub fn ruleset(&self) -> RuneLanesRuleset {
-        CURRENT_RULESET
+        self.state.ruleset
     }
 
     #[must_use]

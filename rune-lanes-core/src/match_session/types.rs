@@ -8,6 +8,7 @@ use super::{CardSummary, MatchMode, default_attack_range};
 
 #[derive(Clone, Debug)]
 pub struct MatchState {
+    pub(crate) ruleset: crate::rules::RuneLanesRuleset,
     pub mode: MatchMode,
     pub round: u32,
     pub phase: Phase,
@@ -428,7 +429,11 @@ pub enum BuildingEffect {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum SpellEffect {
     Heal {
         amount: i32,
@@ -440,6 +445,7 @@ pub enum SpellEffect {
     StatBuff {
         attack: i32,
         armor: i32,
+        #[serde(alias = "max_ap")]
         max_ap: i8,
         targets: BuffTargetPolicy,
     },
@@ -459,13 +465,26 @@ pub enum SpellEffect {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum ItemPassiveEffect {
-    StatBonus { attack: i32, armor: i32, max_ap: i8 },
+    StatBonus {
+        attack: i32,
+        armor: i32,
+        #[serde(alias = "max_ap")]
+        max_ap: i8,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum ItemActiveEffect {
     HealCarrier {
         amount: i32,
@@ -486,6 +505,7 @@ pub enum ItemActiveEffect {
     StatMarker {
         attack: i32,
         armor: i32,
+        #[serde(alias = "max_ap")]
         max_ap: i8,
         #[serde(default)]
         priority: u8,

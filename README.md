@@ -201,3 +201,22 @@ bun run ci:local
 same local CI script before a push reaches GitHub. If GitHub Actions cannot run
 because of a billing or spending limit, a passing `bun run ci:local` is the
 project's local signal that the shared CI workflow would have passed.
+
+## GitHub Pages Solo play and card workshop
+
+Open the Pages site to play against a bot without an account or backend. The workshop offers all eight Heroes, editable match/Hero rules, a card editor (Unit/Spell fields plus an advanced editor for existing effects), preset import/export, and automatic resume of the latest match. Settings links to match rules and the card editor. Custom cards appear in both opening hands. Saved presets affect new matches; hosted matches and account progression remain separate.
+
+```sh
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.128 --locked
+bun install --frozen-lockfile
+bun run build:pages
+VITE_BASE_PATH=/arcania/ bun run --cwd frontend dev:preview
+bun run test:pages
+```
+
+For local frontend development, run `bun run build:browser-engine` once and open `/workshop`. Rebuild the engine after Rust changes. `build:pages` targets `/arcania/`; the Pages workflow derives the repository name automatically and includes its own WASM build and browser tests. The workflow deploys only from `main`.
+
+Browser storage is local to the current browser/origin. Export a preset to keep a portable backup of rules and cards. A new match replaces the previous browser match; malformed or incompatible saves fail visibly. Clear site data only if you intend to remove local saves.
+
+Visual asset provenance and regeneration instructions: [assets/workshop](assets/workshop/README.md). Architecture: [ADR 0026](docs/adr/0026-browser-solo-workshop.md).

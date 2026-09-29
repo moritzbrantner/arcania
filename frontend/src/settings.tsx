@@ -181,6 +181,8 @@ export function SettingsPage({
           <div>
             <p className="eyebrow">{isSignedIn ? "Account preferences" : "Local preferences"}</p>
             <h1>Settings</h1>
+            <button className="secondary-link" type="button" onClick={() => onNavigate("/workshop?tab=rules")}>Edit match rules</button>
+            <button className="secondary-link" type="button" onClick={() => onNavigate("/workshop?tab=cards")}>Open card editor</button>
           </div>
           <div className="actions">
             <button className="icon-button" type="button" onClick={() => onNavigate("/")} title="Dashboard">

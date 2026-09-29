@@ -4,6 +4,13 @@ on:
   pull_request:
     paths:
       - "frontend/**"
+      - "rune-lanes-core/**"
+      - "rune-lanes-browser/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "scripts/build-browser-engine.sh"
+      - "e2e-pages/**"
+      - "playwright.pages.config.mts"
       - "package.json"
       - "bun.lock"
       - ".github/workflows/pages.yml"
@@ -11,6 +18,13 @@ on:
     branches: [main]
     paths:
       - "frontend/**"
+      - "rune-lanes-core/**"
+      - "rune-lanes-browser/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "scripts/build-browser-engine.sh"
+      - "e2e-pages/**"
+      - "playwright.pages.config.mts"
       - "package.json"
       - "bun.lock"
       - ".github/workflows/pages.yml"
@@ -40,6 +54,15 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Set up browser engine toolchain
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal --target wasm32-unknown-unknown
+          rustup default 1.98.1
+          cargo install wasm-bindgen-cli --version 0.2.128 --locked
+
+      - name: Build browser engine
+        run: bun run build:browser-engine
+
       - name: Verify frontend
         run: |
           bun run --cwd frontend typecheck
@@ -49,12 +72,20 @@ jobs:
         env:
           VITE_BASE_PATH: ${{ env.PAGES_BASE_PATH }}
           VITE_DISABLE_BACKEND_PROXY: "1"
+          VITE_BROWSER_ONLY: "1"
         run: |
           bun run --cwd frontend build
           cp frontend/dist/index.html frontend/dist/404.html
 
+      - name: Test browser Solo matches without a backend
+        run: |
+          bunx --no-install playwright install --with-deps chromium
+          bun run test:pages
+
       - name: Verify Pages artifact
         run: |
+          test -s frontend/dist/engine/rune_lanes_browser_bg.wasm
+          test -s frontend/dist/engine/rune_lanes_browser.js
           test -s frontend/dist/index.html
           test -s frontend/dist/404.html
           grep -F "${PAGES_BASE_PATH}assets/" frontend/dist/index.html

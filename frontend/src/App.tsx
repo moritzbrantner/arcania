@@ -1,3 +1,5 @@
+import { WorkshopPage } from "./browser/WorkshopPage";
+import { pagesMode } from "./browser/engine";
 import { useEffect, useMemo, useState } from "react";
 import { loadCurrentAccount, logoutAccount } from "./api";
 import type { AuthSessionResponse } from "./types";
@@ -43,7 +45,7 @@ import { WikiPage } from "./pages/WikiPage";
 export function App() {
   const [path, setPath] = useState(() => currentRoutePath());
   const [authState, setAuthState] = useState<AuthState>(() =>
-    getAuthToken() ? { status: "loading" } : { status: "signedOut" },
+    !pagesMode && getAuthToken() ? { status: "loading" } : { status: "signedOut" },
   );
 
   useEffect(() => {
@@ -53,7 +55,7 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!getAuthToken()) {
+    if (pagesMode || !getAuthToken()) {
       setAuthState({ status: "signedOut" });
       return;
     }
@@ -135,6 +137,10 @@ export function App() {
 
   if (authState.status === "loading") {
     return <ShellMessage title="Rune Lanes" message="Checking account" />;
+  }
+
+  if (normalizedPath === "/workshop" || (pagesMode && ["", "/play"].includes(normalizedPath))) {
+    return <WorkshopPage tab={searchParams.get("tab")} onNavigate={navigate} />;
   }
 
   if (normalizedPath === "/login" || normalizedPath === "/register") {

@@ -11,3 +11,5 @@
 @import "./styles/tutorial.css";
 @import "./styles/wiki.css";
 @import "./styles/match-mobile-fixes.css";
+
+@import "./browser/workshop.css";

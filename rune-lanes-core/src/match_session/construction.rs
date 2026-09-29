@@ -7,6 +7,7 @@ use super::{
 
 impl PlayerState {
     pub(super) fn new(
+        ruleset: &crate::rules::RuneLanesRuleset,
         side: Side,
         board_radius: i32,
         mut rng_seed: u64,
@@ -15,17 +16,15 @@ impl PlayerState {
         progression: MatchProgressionLoadout,
     ) -> Self {
         shuffle(&mut deck, &mut rng_seed);
-        let mana = mana_with_progression(
-            CURRENT_RULESET.turn.base_hero_mana,
-            progression.effects.mana_delta,
-        );
+        let mana =
+            mana_with_progression(ruleset.turn.base_hero_mana, progression.effects.mana_delta);
 
         Self {
             side,
             knocked_out: false,
             mana,
             max_mana: mana,
-            hero: Hero::new(side, board_radius, hero_type, &progression.effects),
+            hero: Hero::new(ruleset, side, board_radius, hero_type, &progression.effects),
             progression,
             hand: Vec::new(),
             deck_count: deck.len(),
@@ -55,6 +54,7 @@ impl PlayerState {
 }
 impl Hero {
     pub(super) fn new(
+        ruleset: &crate::rules::RuneLanesRuleset,
         side: Side,
         board_radius: i32,
         hero_type: HeroType,
@@ -98,7 +98,7 @@ impl Hero {
                 },
             ),
         };
-        let profile = hero_type.profile();
+        let profile = ruleset.hero(hero_type);
         let max_hp = (profile.max_hp + effects.max_hp_delta).max(1);
         let attack = (profile.attack + effects.attack_delta).max(0);
         let max_ap = (i16::from(profile.max_ap) + i16::from(effects.max_ap_delta)).max(1) as u8;
@@ -129,7 +129,8 @@ fn shuffle<T>(items: &mut [T], seed: &mut u64) {
 
     for index in (1..items.len()).rev() {
         *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
-        let swap_index = (*seed as usize) % (index + 1);
+        // Take the modulus before narrowing: wasm32 and native hosts must shuffle identically.
+        let swap_index = (*seed % (index as u64 + 1)) as usize;
         items.swap(index, swap_index);
     }
 }

@@ -200,6 +200,7 @@ impl MatchState {
             .unwrap_or(1);
 
         Self::new_with_seed_hero_types_mode_decks_radius_and_optional_teammates(
+            CURRENT_RULESET,
             seed,
             player_hero_type,
             opponent_hero_type,
@@ -333,6 +334,7 @@ impl MatchState {
         opponent_progression: MatchProgressionLoadout,
     ) -> Self {
         Self::new_with_seed_hero_types_mode_decks_radius_and_optional_teammates(
+            CURRENT_RULESET,
             seed,
             player_hero_type,
             opponent_hero_type,
@@ -352,6 +354,7 @@ impl MatchState {
         reason = "2v2 setup passes mirrored per-seat setup explicitly"
     )]
     fn new_with_seed_hero_types_mode_decks_radius_and_optional_teammates(
+        ruleset: crate::rules::RuneLanesRuleset,
         seed: u64,
         player_hero_type: HeroType,
         opponent_hero_type: HeroType,
@@ -365,11 +368,13 @@ impl MatchState {
         opponent_two: Option<(HeroType, Vec<Card>, MatchProgressionLoadout)>,
     ) -> Self {
         let mut game = Self {
+            ruleset,
             mode,
             round: 1,
             phase: Phase::Movement,
             active_side: Side::Player,
             player: PlayerState::new(
+                &ruleset,
                 Side::Player,
                 board_radius,
                 seed ^ 0xA11C_E551_1234_5678,
@@ -378,6 +383,7 @@ impl MatchState {
                 player_progression,
             ),
             opponent: PlayerState::new(
+                &ruleset,
                 Side::Opponent,
                 board_radius,
                 seed ^ 0x0B0E_1234_9876_5432,
@@ -387,6 +393,7 @@ impl MatchState {
             ),
             player_two: player_two.map(|(hero_type, deck, progression)| {
                 PlayerState::new(
+                    &ruleset,
                     Side::PlayerTwo,
                     board_radius,
                     seed ^ 0xA11C_E552_2234_5678,
@@ -397,6 +404,7 @@ impl MatchState {
             }),
             opponent_two: opponent_two.map(|(hero_type, deck, progression)| {
                 PlayerState::new(
+                    &ruleset,
                     Side::OpponentTwo,
                     board_radius,
                     seed ^ 0x0B0E_2234_9876_5432,
@@ -417,19 +425,19 @@ impl MatchState {
             next_building_id: 1,
         };
 
-        for _ in 0..opening_hand_size(&game.player.progression) {
+        for _ in 0..opening_hand_size(&ruleset, &game.player.progression) {
             game.player.draw();
         }
-        for _ in 0..opening_hand_size(&game.opponent.progression) {
+        for _ in 0..opening_hand_size(&ruleset, &game.opponent.progression) {
             game.opponent.draw();
         }
         if let Some(player_two) = &mut game.player_two {
-            for _ in 0..opening_hand_size(&player_two.progression) {
+            for _ in 0..opening_hand_size(&ruleset, &player_two.progression) {
                 player_two.draw();
             }
         }
         if let Some(opponent_two) = &mut game.opponent_two {
-            for _ in 0..opening_hand_size(&opponent_two.progression) {
+            for _ in 0..opening_hand_size(&ruleset, &opponent_two.progression) {
                 opponent_two.draw();
             }
         }
@@ -437,6 +445,34 @@ impl MatchState {
         game.start_turn(Side::Player, &mut ignored_frames, None);
 
         game
+    }
+
+    /// Creates an isolated Solo match with frozen, validated experimental rules.
+    pub fn new_with_rule_preset(
+        seed: u64,
+        player_hero_type: HeroType,
+        opponent_hero_type: HeroType,
+        player_deck: Vec<Card>,
+        opponent_deck: Vec<Card>,
+        ruleset: crate::rules::RuneLanesRuleset,
+    ) -> Result<Self, crate::rules::RulesetError> {
+        ruleset.validate()?;
+        Ok(
+            Self::new_with_seed_hero_types_mode_decks_radius_and_optional_teammates(
+                ruleset,
+                seed,
+                player_hero_type,
+                opponent_hero_type,
+                MatchMode::Solo,
+                ruleset.arena.duel_radius,
+                player_deck,
+                opponent_deck,
+                MatchProgressionLoadout::default(),
+                MatchProgressionLoadout::default(),
+                None,
+                None,
+            ),
+        )
     }
 
     pub fn new_ai_lab_with_seed_and_decks(
@@ -634,6 +670,8 @@ impl MatchState {
                 }
                 if self.mode == MatchMode::Shared {
                     self.end_shared_turn(side, &mut frames, action_index);
+                } else if side == Side::Opponent {
+                    self.finish_ai_turn(side, &mut frames, action_index);
                 } else {
                     self.end_player_turn(&mut frames, action_index);
                 }
@@ -843,7 +881,7 @@ impl MatchState {
 
     fn refresh_mana_from_sources(&mut self, side: Side) {
         let mana = mana_with_progression(
-            CURRENT_RULESET
+            self.ruleset
                 .turn
                 .base_hero_mana
                 .saturating_add(self.occupied_mana_sources(side)),
@@ -1013,9 +1051,7 @@ impl MatchState {
                 )?;
                 if self
                     .carrier_item_count(&planned_item_play.carrier_id)
-                    .is_some_and(|count| {
-                        count >= usize::from(CURRENT_RULESET.turn.max_carried_items)
-                    })
+                    .is_some_and(|count| count >= usize::from(self.ruleset.turn.max_carried_items))
                 {
                     return Err(MatchError::InvalidTarget);
                 }
@@ -1499,7 +1535,8 @@ impl MatchState {
 
         let progression = self.player_ref(side).progression.clone();
         let is_first_summoned_unit = self.player_ref(side).summoned_unit_count == 0;
-        let Some(unit) = card_interactions::summon_unit_from_card(
+        let attack_range = self.ruleset.turn.default_attack_range;
+        let Some(mut unit) = card_interactions::summon_unit_from_card(
             &card,
             side,
             || self.next_unit_id(side),
@@ -1509,6 +1546,7 @@ impl MatchState {
         ) else {
             return;
         };
+        unit.attack_range = attack_range;
         let unit_id = unit.id.clone();
         let unit_name = unit.name.clone();
         let unit_position = unit.position;
@@ -3208,10 +3246,10 @@ impl MatchState {
         }
 
         let mut picked_up = Vec::new();
-        let mut remaining_capacity = usize::from(CURRENT_RULESET.turn.max_carried_items)
+        let mut remaining_capacity = usize::from(self.ruleset.turn.max_carried_items)
             .saturating_sub(
                 self.carrier_item_count(carrier_id)
-                    .unwrap_or(usize::from(CURRENT_RULESET.turn.max_carried_items)),
+                    .unwrap_or(usize::from(self.ruleset.turn.max_carried_items)),
             );
         self.board.dropped_items.retain(|dropped_item| {
             if dropped_item.position == position && remaining_capacity > 0 {
@@ -3291,8 +3329,9 @@ impl MatchState {
     fn add_carried_item_to_carrier(&mut self, carrier_id: &str, item: CarriedItem) -> bool {
         for side in self.participant_sides() {
             if self.player_ref(side).hero.id == carrier_id {
+                let max_items = usize::from(self.ruleset.turn.max_carried_items);
                 let hero = &mut self.player_mut(side).hero;
-                if hero.items.len() >= usize::from(CURRENT_RULESET.turn.max_carried_items) {
+                if hero.items.len() >= max_items {
                     return false;
                 }
                 card_interactions::apply_item_passive_to_hero(hero, &item.passive);
@@ -3306,7 +3345,7 @@ impl MatchState {
             .iter_mut()
             .find(|unit| unit.id == carrier_id)
         {
-            if unit.items.len() >= usize::from(CURRENT_RULESET.turn.max_carried_items) {
+            if unit.items.len() >= usize::from(self.ruleset.turn.max_carried_items) {
                 return false;
             }
             card_interactions::apply_item_passive(unit, &item.passive);
@@ -3567,8 +3606,11 @@ impl PlayerState {
     }
 }
 
-fn opening_hand_size(progression: &MatchProgressionLoadout) -> usize {
-    usize::from(CURRENT_RULESET.turn.opening_hand_size)
+fn opening_hand_size(
+    ruleset: &crate::rules::RuneLanesRuleset,
+    progression: &MatchProgressionLoadout,
+) -> usize {
+    usize::from(ruleset.turn.opening_hand_size)
         + usize::from(progression.effects.opening_hand_delta)
 }
 

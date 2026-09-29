@@ -40,7 +40,7 @@ export function DashboardPage({ currentUser, onNavigate, onSignOut }: AccountPro
           <MatchPreview matches={matches} state={matchesState} onNavigate={onNavigate}/>
         </section>
       </> : (
-        <GuestDashboard onNavigate={onNavigate}/>
+        <><button className="primary-button" type="button" onClick={() => onNavigate("/workshop")}>Play against a bot · Card workshop</button><GuestDashboard onNavigate={onNavigate}/></>
       )}
     </section>
   </main>;

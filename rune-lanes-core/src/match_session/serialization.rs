@@ -5,6 +5,8 @@ use super::{HexBoard, MatchMode, MatchState, Phase, PlayerState, Side, StackItem
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct MatchSnapshot {
+    #[serde(default)]
+    ruleset: crate::rules::RuneLanesRuleset,
     #[serde(default = "default_match_mode")]
     mode: MatchMode,
     round: u32,
@@ -38,6 +40,7 @@ pub(super) struct MatchSnapshot {
 impl From<&MatchState> for MatchSnapshot {
     fn from(match_state: &MatchState) -> Self {
         Self {
+            ruleset: match_state.ruleset,
             round: match_state.round,
             mode: match_state.mode,
             phase: match_state.phase.clone(),
@@ -66,6 +69,7 @@ impl From<MatchSnapshot> for MatchState {
         board.migrate_legacy_mana_sources();
         board.remove_legacy_outer_natural_mana_wells();
         Self {
+            ruleset: snapshot.ruleset,
             round: snapshot.round,
             mode: snapshot.mode,
             phase: snapshot.phase,

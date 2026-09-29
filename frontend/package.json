@@ -9,7 +9,8 @@
     "test:unit": "vitest run",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
-    "test:stories": "vitest run --environment jsdom src/**/*.stories.test.tsx src/storybook/storyCoverage.test.ts"
+    "test:stories": "vitest run --environment jsdom src/**/*.stories.test.tsx src/storybook/storyCoverage.test.ts",
+    "dev:preview": "vite preview"
   },
   "dependencies": {
     "@moritzbrantner/input-bindings": "github:moritzbrantner/input-bindings#f3747579e462d9c6e65196912d1348afd5cf4b13",

@@ -20,3 +20,5 @@ pub use card_definitions::{
     PublishedCardRevision, PublishedCardRevisionError,
 };
 pub use match_session::*;
+
+pub mod workshop;
