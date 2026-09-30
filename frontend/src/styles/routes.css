@@ -1126,10 +1126,11 @@ button {
 
 .hero-picker {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   margin: 0;
   border: 0;
   padding: 0;
+  min-width: 0;
 }
 
 .hero-picker legend {
@@ -1140,31 +1141,102 @@ button {
   text-transform: uppercase;
 }
 
+.hero-picker-stage {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(180px, 0.85fr);
+  min-height: 248px;
+  overflow: hidden;
+  border: 1px solid rgba(217, 184, 79, 0.42);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 24% 52%, rgba(88, 183, 161, 0.24), transparent 38%),
+    radial-gradient(circle at 78% 14%, rgba(217, 184, 79, 0.14), transparent 34%),
+    linear-gradient(145deg, rgba(25, 31, 29, 0.98), rgba(13, 17, 16, 0.96));
+  box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.24), 0 18px 44px rgba(0, 0, 0, 0.2);
+}
+
+.hero-picker-stage::after {
+  position: absolute;
+  inset: auto 8% 10px 8%;
+  height: 1px;
+  content: "";
+  background: linear-gradient(90deg, transparent, rgba(217, 184, 79, 0.52), transparent);
+}
+
+.hero-picker-model {
+  min-width: 0;
+  min-height: 248px;
+}
+
+.hero-picker-model .hero-preview-3d {
+  height: 100%;
+  min-height: 248px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.hero-picker-copy {
+  z-index: 1;
+  display: grid;
+  align-content: center;
+  gap: 10px;
+  padding: 24px 24px 24px 8px;
+}
+
+.hero-picker-kicker {
+  color: var(--gold);
+  font-size: 0.72rem;
+  font-weight: 950;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.hero-picker-copy > strong {
+  color: #fffaf0;
+  font: 700 clamp(1.65rem, 3vw, 2.45rem)/1 Georgia, serif;
+}
+
+.hero-picker-copy p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
 .hero-options {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 8px;
 }
 
 .hero-option {
   display: grid;
-  gap: 10px;
-  min-height: 166px;
+  gap: 8px;
+  min-height: 92px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 12px;
+  border-radius: 9px;
+  padding: 11px;
   color: #fffaf0;
-  background: var(--panel);
+  background: rgba(28, 33, 32, 0.9);
   cursor: pointer;
   text-align: left;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.hero-option:hover:not(:disabled) {
+  border-color: rgba(217, 184, 79, 0.52);
+  transform: translateY(-1px);
 }
 
 .hero-option.selected {
   border-color: var(--gold);
   background:
-    linear-gradient(145deg, rgba(217, 184, 79, 0.16), transparent 68%),
+    linear-gradient(145deg, rgba(217, 184, 79, 0.17), transparent 68%),
     var(--panel-strong);
-  box-shadow: 0 0 0 2px rgba(217, 184, 79, 0.18);
+  box-shadow: 0 0 0 2px rgba(217, 184, 79, 0.16);
 }
 
 .hero-option-header,
@@ -1187,18 +1259,19 @@ button {
 }
 
 .hero-option-header span span,
-.hero-option-text {
+.hero-option-statline {
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 800;
 }
 
-.hero-option-text {
-  line-height: 1.35;
+.hero-option-statline {
+  line-height: 1.3;
 }
 
 .hero-stat-row {
   justify-content: start;
+  flex-wrap: wrap;
 }
 
 .hero-stat-row span {
@@ -1213,6 +1286,28 @@ button {
   background: rgba(255, 255, 255, 0.06);
   font-size: 0.82rem;
   font-weight: 900;
+}
+
+@media (max-width: 620px) {
+  .hero-picker-stage {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-picker-model {
+    min-height: 210px;
+  }
+
+  .hero-picker-model .hero-preview-3d {
+    min-height: 210px;
+  }
+
+  .hero-picker-copy {
+    padding: 0 18px 24px;
+  }
+
+  .hero-options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .open-match-form {
