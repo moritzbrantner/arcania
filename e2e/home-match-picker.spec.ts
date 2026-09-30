@@ -4,6 +4,49 @@ const AUTH_TOKEN_STORAGE_KEY = "rune-lanes-auth-token";
 const MATCH_ID = "solo-account-deck";
 const SHARED_MATCH_ID = "shared-home-match";
 
+test("mobile navigation contains keyboard focus and restores it on close", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 600 });
+  await page.addInitScript(
+    ({ key }) => localStorage.setItem(key, "existing-token"),
+    { key: AUTH_TOKEN_STORAGE_KEY },
+  );
+  await mockHomeApi(page, []);
+  await page.goto("/");
+  const trigger = page.getByRole("button", { name: "Open navigation menu" });
+  const dialog = page.getByRole("dialog", { name: "Navigation menu" });
+  const close = dialog.getByRole("button", { name: "Close navigation menu" });
+
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(dialog.getByRole("button").last()).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+
+  await page.keyboard.press("Enter");
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await page.mouse.wheel(0, 1200);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+  for (const destination of ["Dashboard", "Play", "Decks", "Heroes"]) {
+    await page.keyboard.press("Tab");
+    await expect(dialog.getByRole("button", { name: destination, exact: true })).toBeFocused();
+  }
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/heroes$/);
+  await expect(page.getByRole("heading", { name: "Heroes", exact: true })).toBeVisible();
+  await expect(dialog).toHaveCount(0);
+});
+
 test("Dashboard continues the newest active match when the deck library fails", async ({ page }) => {
   const matchRequests = [];
   await page.addInitScript(

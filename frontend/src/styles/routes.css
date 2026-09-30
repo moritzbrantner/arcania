@@ -217,7 +217,22 @@ button {
 .learn-menu button:hover,
 .nav-drawer > button:hover { background: rgba(255,255,255,.08); }
 .nav-drawer-trigger { display: none; }
-.nav-drawer-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; justify-items: end; background: rgba(0,0,0,.54); }
+.nav-drawer-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  justify-items: end;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  border: 0;
+  padding: 0;
+  background: rgba(0,0,0,.54);
+}
+.nav-drawer-backdrop::backdrop { background: transparent; }
 .nav-drawer { width: min(330px, 88vw); height: 100%; border-radius: 0; padding: 18px; overflow-y: auto; }
 .nav-drawer-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; color: #fffaf0; }
 .nav-drawer hr { width: 100%; border: 0; border-top: 1px solid var(--line); }
