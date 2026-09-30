@@ -1,5 +1,36 @@
 use super::*;
 
+fn assert_no_account_identity(value: &serde_json::Value) {
+    match value {
+        serde_json::Value::Object(fields) => {
+            for (key, value) in fields {
+                assert!(
+                    ![
+                        "id",
+                        "userId",
+                        "ownerUserId",
+                        "participantUserId",
+                        "accountId",
+                        "email",
+                        "displayName",
+                        "handle",
+                        "publicHandle",
+                    ]
+                    .contains(&key.as_str()),
+                    "account identity field {key} leaked into the summary"
+                );
+                assert_no_account_identity(value);
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for value in values {
+                assert_no_account_identity(value);
+            }
+        }
+        _ => {}
+    }
+}
+
 #[tokio::test]
 async fn completed_two_v_two_summaries_report_results_for_each_viewer_team() {
     for (winner, results) in [
@@ -62,6 +93,30 @@ async fn completed_two_v_two_summaries_report_results_for_each_viewer_team() {
             assert_eq!(summary["viewer"]["side"], seat["side"]);
             assert_eq!(summary["viewer"]["result"], result, "seat {}", seat["side"]);
             assert_eq!(summary["summary"]["viewerResult"], result);
+            let (team, heroes, opposing) =
+                if matches!(seat["side"].as_str(), Some("player" | "playerTwo")) {
+                    (
+                        "player",
+                        ["runekeeper", "warden"],
+                        ["pyromancer", "barbarian"],
+                    )
+                } else {
+                    (
+                        "opponent",
+                        ["pyromancer", "barbarian"],
+                        ["runekeeper", "warden"],
+                    )
+                };
+            assert_eq!(summary["summary"]["viewerTeam"], team);
+            assert_eq!(
+                summary["summary"]["viewerHeroTypes"],
+                serde_json::json!(heroes)
+            );
+            assert_eq!(
+                summary["summary"]["opposingHeroTypes"],
+                serde_json::json!(opposing)
+            );
+            assert_no_account_identity(&summary);
             assert!(summary["reward"].is_null());
         }
         let _ = fs::remove_file(path);
@@ -252,6 +307,21 @@ async fn completed_shared_account_participant_can_load_summary_from_match_route(
     assert_eq!(status, StatusCode::OK);
     assert_eq!(opponent_summary["summary"]["viewerDeckName"], "Ember Burn");
     assert!(!opponent_summary.to_string().contains("Balanced Starter"));
+    for (response, team, own_hero, opposing_hero) in [
+        (&summary, "player", "pyromancer", "warden"),
+        (&opponent_summary, "opponent", "warden", "pyromancer"),
+    ] {
+        assert_eq!(response["summary"]["viewerTeam"], team);
+        assert_eq!(
+            response["summary"]["viewerHeroTypes"],
+            serde_json::json!([own_hero])
+        );
+        assert_eq!(
+            response["summary"]["opposingHeroTypes"],
+            serde_json::json!([opposing_hero])
+        );
+        assert_no_account_identity(response);
+    }
 
     let (status, _) = json_request(
         app.clone(),
