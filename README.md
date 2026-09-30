@@ -208,7 +208,7 @@ Open the Pages site to play against a bot without an account or backend. The wor
 
 ```sh
 rustup target add wasm32-unknown-unknown
-cargo install wasm-bindgen-cli --version 0.2.128 --locked
+cargo install wasm-bindgen-cli --version 0.2.129 --locked
 bun install --frozen-lockfile
 bun run build:pages
 VITE_BASE_PATH=/arcania/ bun run --cwd frontend dev:preview
