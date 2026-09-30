@@ -51,6 +51,7 @@ test("Pages can edit rules, create a card, play against a bot, and resume withou
   await page.reload();
   await expect(page.getByRole("spinbutton", { name: "Ember Squire copies", exact: true })).toHaveValue("3");
   await page.getByRole("combobox", { name: "Base recipe", exact: true }).selectOption("balanced-starter");
+  await page.getByRole("button", { name: "Save preset", exact: true }).click();
   await page.screenshot({ path: testInfo.outputPath("workshop-deck-editor.png"), fullPage: true });
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page.getByRole("button", { name: "Edit match rules", exact: true }).click();
