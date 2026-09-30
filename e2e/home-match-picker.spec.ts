@@ -4,6 +4,99 @@ const AUTH_TOKEN_STORAGE_KEY = "rune-lanes-auth-token";
 const MATCH_ID = "solo-account-deck";
 const SHARED_MATCH_ID = "shared-home-match";
 
+for (const viewport of [{ width: 1280, height: 420 }, { width: 390, height: 600 }]) {
+  test(`Dashboard overview scrolls normally at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.addInitScript(
+      ({ key }) => localStorage.setItem(key, "existing-token"),
+      { key: AUTH_TOKEN_STORAGE_KEY },
+    );
+    await mockHomeApi(page, []);
+    await page.goto("/");
+    const lowerOverview = page.getByRole("button", { name: "View all Matches", exact: true });
+    await expect(page.getByRole("region", { name: "Current loadout" }).getByRole("heading", { name: "Default Legal" })).toBeVisible();
+    await expect(page.getByText("Next level in 140 XP")).toBeVisible();
+    await expect(page.getByText("No matches yet.")).toBeVisible();
+    await expect(lowerOverview).not.toBeInViewport();
+
+    await page.mouse.wheel(0, 5000);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    await expect(lowerOverview).toBeInViewport();
+    await page.keyboard.press("Home");
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+    await page.keyboard.press("End");
+    await expect(lowerOverview).toBeInViewport();
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  });
+}
+
+test("desktop navigation exposes core destinations and secondary menu with active routes", async ({ page }) => {
+  await page.addInitScript(
+    ({ key }) => localStorage.setItem(key, "existing-token"),
+    { key: AUTH_TOKEN_STORAGE_KEY },
+  );
+  await mockHomeApi(page, []);
+  await page.goto("/");
+  const nav = page.getByRole("navigation", { name: "Primary navigation" });
+  for (const name of ["Dashboard", "Play", "Decks", "Heroes", "Matches"]) {
+    await expect(nav.getByRole("button", { name, exact: true })).toBeVisible();
+  }
+  await expect(nav.getByRole("button", { name: "Rune Lanes", exact: true })).toHaveCount(0);
+  await expect(nav.getByRole("button", { name: "Dashboard", exact: true })).toHaveAttribute("aria-current", "page");
+  await nav.getByRole("button", { name: "Learn & settings", exact: true }).click();
+  for (const name of ["Catalog", "Rules", "Tutorial", "Settings"]) {
+    await expect(nav.getByRole("menuitem", { name, exact: true })).toBeVisible();
+  }
+  await nav.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(page).toHaveURL(/\/play$/);
+  await expect(nav.getByRole("button", { name: "Play", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(nav.getByRole("button", { name: "Dashboard", exact: true })).not.toHaveAttribute("aria-current", "page");
+});
+
+test("guest navigation exposes essentials without account destinations", async ({ page }) => {
+  await mockHomeApi(page, [], { signedIn: false });
+  await page.goto("/");
+  const nav = page.getByRole("navigation", { name: "Primary navigation" });
+  for (const name of ["Dashboard", "Play", "Learn & settings", "Sign In"]) {
+    await expect(nav.getByRole("button", { name, exact: true })).toBeVisible();
+  }
+  for (const name of ["Decks", "Heroes", "Matches"]) {
+    await expect(nav.getByRole("button", { name, exact: true })).toHaveCount(0);
+  }
+  await expect(nav.getByRole("button", { name: /Account menu for/ })).toHaveCount(0);
+});
+
+test("Dashboard and account navigation reach Heroes and Progression while Profile edits identity", async ({ page }) => {
+  await page.addInitScript(
+    ({ key }) => localStorage.setItem(key, "existing-token"),
+    { key: AUTH_TOKEN_STORAGE_KEY },
+  );
+  await mockHomeApi(page, []);
+  await page.goto("/");
+  await page.getByRole("button", { name: "View all Heroes", exact: true }).click();
+  await expect(page).toHaveURL(/\/heroes$/);
+  await expect(page.getByRole("list", { name: "Hero roster" }).getByRole("listitem")).toHaveCount(8);
+  const nav = page.getByRole("navigation", { name: "Primary navigation" });
+  await expect(nav.getByRole("button", { name: "Heroes", exact: true })).toHaveAttribute("aria-current", "page");
+  await nav.getByRole("button", { name: "Dashboard", exact: true }).click();
+  await page.getByRole("button", { name: "View progression", exact: true }).click();
+  await expect(page).toHaveURL(/\/progression$/);
+  await expect(page.getByText("Next level in 140 XP")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Unlocked runes" }).getByText("Spark Stone", { exact: true })).toBeVisible();
+
+  await nav.getByRole("button", { name: "Account menu for Rune Player" }).click();
+  await nav.getByRole("menuitem", { name: "Profile", exact: true }).click();
+  await expect(page).toHaveURL(/\/profile$/);
+  await expect(page.getByLabel("Display Name")).toHaveValue("Rune Player");
+  await expect(page.getByLabel("Public Handle")).toHaveValue("rune-player");
+  await expect(page.getByRole("button", { name: "Save Profile", exact: true })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Hero roster" })).toHaveCount(0);
+  await expect(page.getByRole("tablist", { name: "Hero mastery" })).toHaveCount(0);
+  await nav.getByRole("button", { name: "Account menu for Rune Player" }).click();
+  await nav.getByRole("menuitem", { name: "Progression", exact: true }).click();
+  await expect(page).toHaveURL(/\/progression$/);
+});
+
 test("account Progression groups runes and keeps its catalog read-only", async ({ page }) => {
   await page.addInitScript(
     ({ key }) => localStorage.setItem(key, "existing-token"),
@@ -355,6 +448,7 @@ async function openAdvancedSetup(page) {
 function authUser() {
   return {
     id: 1,
+    handle: "rune-player",
     email: "player@local.dev",
     displayName: "Rune Player",
     avatar: { symbol: "sparkles", color: "emerald" },
