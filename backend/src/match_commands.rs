@@ -8,13 +8,16 @@ use rune_lanes_core::event_sourcing::{
 };
 
 use crate::match_access::{Actor, MatchAccess};
-use crate::match_session::{MatchActionRequest, MatchError, RecordedReplayFrame, Side};
+use crate::match_session::{
+    MatchActionRequest, MatchError, RecordedReplayFrame, Side, SoloAiPolicy,
+};
 use crate::match_store::{
     MatchStoreError, SharedMatchStatus, SqliteMatchStore, StoredMatch, StoredSharedMatch,
 };
 
 pub struct MatchCommands<'a> {
     store: &'a mut SqliteMatchStore,
+    solo_ai_policy: SoloAiPolicy,
 }
 
 #[derive(Clone, Debug)]
@@ -80,7 +83,10 @@ impl From<EventSourcingError> for MatchCommandError {
 
 impl<'a> MatchCommands<'a> {
     pub fn new(store: &'a mut SqliteMatchStore) -> Self {
-        Self { store }
+        Self {
+            store,
+            solo_ai_policy: SoloAiPolicy::default(),
+        }
     }
 
     pub fn apply_solo_action(
@@ -130,10 +136,9 @@ impl<'a> MatchCommands<'a> {
                     side: Side::Opponent,
                     action_index,
                 };
-                let policy = crate::match_session::SoloAiPolicy::baseline();
                 match aggregate
                     .state()
-                    .next_solo_ai_game_command_with_policy(Side::Opponent, &policy)?
+                    .next_solo_ai_game_command_with_policy(Side::Opponent, &self.solo_ai_policy)?
                 {
                     Some(command) => aggregate.decide(metadata, command)?,
                     None => aggregate.decide_ai_turn_finished(metadata)?,
@@ -365,6 +370,87 @@ mod tests {
             .expect("replay should load")
             .expect("replay should exist");
         assert!(replay.frames.len() > 1);
+    }
+
+    #[test]
+    fn solo_ai_uses_the_configured_default_policy_and_persists_its_command() {
+        let config = crate::match_session::AiPolicyConfig::from_json(
+            r#"{"defaultPolicyId":"movement-only","policies":[{"id":"movement-only","rules":["moveTowardPlayerHero"]}]}"#,
+        )
+        .expect("alternate default policy should parse");
+        let mut store = SqliteMatchStore::new(test_db_path("solo-configured-policy"))
+            .expect("store should open");
+        let cards = [crate::deck_library::DeckCardCount {
+            template_id: "ember-squire".to_string(),
+            count: 1,
+        }];
+        let created = store
+            .create_match_for_user_with_decks(
+                HeroType::Pyromancer,
+                HeroType::Runekeeper,
+                crate::deck_library::deck_from_counts(Side::Player, &cards)
+                    .expect("player cards should materialize"),
+                crate::deck_library::deck_from_counts(Side::Opponent, &cards)
+                    .expect("opponent cards should materialize"),
+                MatchProgressionLoadout::default(),
+                MatchProgressionLoadout::default(),
+                "Policy test".to_string(),
+                None,
+            )
+            .expect("match should create");
+        let mut commands = MatchCommands::new(&mut store);
+        commands.solo_ai_policy = config.default_policy().expect("default should resolve");
+        for request in [
+            MatchActionRequest::StartCardPlay,
+            MatchActionRequest::EndTurn,
+        ] {
+            commands
+                .apply_solo_action(Actor::Anonymous, &created.id, request)
+                .expect("player should finish the turn");
+        }
+        let queued = commands
+            .apply_solo_action(Actor::Anonymous, &created.id, MatchActionRequest::AdvanceAi)
+            .expect("selected policy command should apply");
+
+        assert_eq!(
+            queued.stored_match.state.phase,
+            crate::match_session::Phase::Movement
+        );
+        assert!(matches!(
+            queued.stored_match.state.action_stack.as_slice(),
+            [crate::match_session::StackItem {
+                side: Side::Opponent,
+                action: crate::match_session::StackAction::MovePiece { .. },
+                ..
+            }]
+        ));
+        let applied = commands
+            .apply_solo_action(
+                Actor::Anonymous,
+                &created.id,
+                MatchActionRequest::PassPriority,
+            )
+            .expect("player should pass the response window");
+        assert!(applied.replay_frames.iter().any(|frame| matches!(
+            frame.event,
+            ReplayEvent::PieceMoved { side: Side::Opponent, from, to, .. } if from != to
+        )));
+        let recovered = store
+            .load_event_sourced_match(&created.id)
+            .expect("event stream should load")
+            .expect("match should exist")
+            .0;
+        assert_eq!(
+            recovered
+                .state()
+                .to_snapshot_json()
+                .expect("recovered snapshot should serialize"),
+            applied
+                .stored_match
+                .state
+                .to_snapshot_json()
+                .expect("applied snapshot should serialize")
+        );
     }
 
     #[test]
