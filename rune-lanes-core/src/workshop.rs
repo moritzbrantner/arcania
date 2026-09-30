@@ -88,7 +88,10 @@ impl WorkshopSetup {
     }
 
     fn validate_deck_recipe(&self, label: &str, cards: &[DeckCardCount]) -> Result<(), String> {
-        let total = cards.iter().map(|card| u32::from(card.count)).sum::<u32>();
+        let total = cards
+            .iter()
+            .map(|card| u32::from(card.count))
+            .sum::<u32>();
         if total < u32::from(self.ruleset.turn.opening_hand_size) || total > 120 {
             return Err(format!(
                 "{label} deck recipe must contain between {} and 120 cards.",
@@ -351,5 +354,4 @@ mod tests {
 
         assert!(setup.validate().is_err());
     }
-
 }
