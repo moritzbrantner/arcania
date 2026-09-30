@@ -141,8 +141,8 @@ pub fn workshop_defaults() -> Result<String, String> {
         seed: 42,
         player_hero: Default::default(),
         opponent_hero: Default::default(),
-        player_deck_recipe: rune_lanes_core::system_deck_recipes()[0].cards.clone(),
-        opponent_deck_recipe: rune_lanes_core::system_deck_recipes()[0].cards.clone(),
+        player_deck_recipe: system_deck_recipes()[0].cards.clone(),
+        opponent_deck_recipe: system_deck_recipes()[0].cards.clone(),
         ruleset: CURRENT_RULESET,
         cards: vec![],
     })
@@ -214,7 +214,13 @@ mod tests {
             serde_json::from_str(&system_decks().unwrap()).unwrap();
         assert_eq!(decks.len(), 8);
         assert_eq!(decks[0].id, "balanced-starter");
-        assert_eq!(decks[0].cards.iter().map(|card| u32::from(card.count)).sum::<u32>(), 60);
+        assert_eq!(
+            decks[0]
+                .cards
+                .iter()
+                .map(|card| u32::from(card.count))
+                .sum::<u32>(),
+            60
+        );
     }
-
 }
