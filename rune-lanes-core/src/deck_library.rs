@@ -29,14 +29,12 @@ pub struct SystemDeckRecipe {
 #[derive(Debug)]
 pub enum DeckLibraryError {
     UnknownTemplate(String),
-    UnknownSystemDeck(String),
 }
 
 impl std::fmt::Display for DeckLibraryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::UnknownTemplate(template_id) => write!(f, "unknown card template {template_id}"),
-            Self::UnknownSystemDeck(deck_id) => write!(f, "unknown system deck {deck_id}"),
         }
     }
 }
@@ -53,23 +51,6 @@ pub fn starter_deck_snapshot() -> DeckRecipeSnapshot {
 
 pub fn system_deck_by_id(deck_id: &str) -> Option<SystemDeckRecipe> {
     system_deck_recipes().into_iter().find(|deck| deck.id == deck_id)
-}
-
-pub fn system_deck_snapshot(deck_id: &str) -> Result<DeckRecipeSnapshot, DeckLibraryError> {
-    let Some(deck) = system_deck_by_id(deck_id) else {
-        return Err(DeckLibraryError::UnknownSystemDeck(deck_id.to_string()));
-    };
-    Ok(DeckRecipeSnapshot {
-        name: deck.name,
-        cards: deck.cards,
-    })
-}
-
-pub fn deck_from_snapshot(
-    side: Side,
-    snapshot: &DeckRecipeSnapshot,
-) -> Result<Vec<Card>, DeckLibraryError> {
-    deck_from_counts(side, &snapshot.cards)
 }
 
 pub fn deck_from_counts(
