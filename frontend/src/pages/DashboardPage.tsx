@@ -47,16 +47,27 @@ export function DashboardPage({ currentUser, onNavigate, onSignOut }: AccountPro
 }
 
 function CurrentLoadout({ deck, progression, activeMatches, deckState, onNavigate }: { deck: DeckRecipeSummary | null; progression: ProgressionResponse | null; activeMatches: MatchSummary[]; deckState: DeckLoadState | null; onNavigate: (to: string) => void }) {
-  if (deckState?.status === "loading") return <section className="dashboard-current-loadout"><p className="empty-state">Loading your current loadout.</p></section>;
-  if (deckState?.status === "error") return <section className="dashboard-current-loadout"><div><p className="eyebrow">Current loadout</p><h2>Deck library unavailable</h2><p>{deckState.message}</p></div><button className="secondary-link" type="button" onClick={() => onNavigate("/decks")}>Open Decks</button></section>;
-  if (!deck) return <section className="dashboard-current-loadout"><div><p className="eyebrow">Current loadout</p><h2>No legal deck recipe</h2><p>Create a legal configured deck before starting a match.</p></div><button className="primary-button" type="button" onClick={() => onNavigate("/decks")}><Layers size={18}/>Open Decks</button></section>;
-  const hero = heroOptionByType(deck.heroType);
-  const runes = deck.runeIds.map((id) => progression?.runes.find((rune) => rune.id === id)?.name ?? id);
+  const hero = deck ? heroOptionByType(deck.heroType) : null;
+  const runes = deck?.runeIds.map((id) => progression?.runes.find((rune) => rune.id === id)?.name ?? id) ?? [];
   const newest = activeMatches[0];
   return <section className="dashboard-current-loadout" aria-label="Current loadout">
-    <div className="dashboard-current-copy"><p className="eyebrow">Current loadout</p><h2>{deck.name}</h2><p>{hero.name} · {hero.role} · {deck.legality.totalCards} cards</p><p className="dashboard-muted-line">{runes.length ? runes.join(", ") : "No runes equipped"}</p>{activeMatches.length > 1 ? <button className="text-link" type="button" onClick={() => onNavigate("/matches")}>{activeMatches.length} active matches</button> : null}</div>
-    <div className="dashboard-current-model"><HeroPreview3D heroType={deck.heroType} label={hero.name}/></div>
-    <div className="dashboard-current-actions"><button className="primary-button" type="button" onClick={() => onNavigate(newest ? `/match/${newest.matchId}` : "/play")}><Play size={18}/>{newest ? "Continue match" : "Start match"}</button><button className="secondary-link" type="button" onClick={() => onNavigate("/decks")}><Layers size={18}/>Manage deck</button></div>
+    <div className="dashboard-current-copy">
+      <p className="eyebrow">Current loadout</p>
+      {deck && hero ? <>
+        <h2>{deck.name}</h2>
+        <p>{hero.name} · {hero.role} · {deck.legality.totalCards} cards</p>
+        <p className="dashboard-muted-line">{runes.length ? runes.join(", ") : "No runes equipped"}</p>
+      </> : deckState?.status === "loading" ? <p className="empty-state">Loading your current loadout.</p> : <>
+        <h2>{deckState?.status === "error" ? "Deck library unavailable" : "No legal deck recipe"}</h2>
+        <p>{deckState?.status === "error" ? deckState.message : "Create a legal configured deck before starting a match."}</p>
+      </>}
+      {activeMatches.length > 1 ? <button className="text-link" type="button" onClick={() => onNavigate("/matches")}>{activeMatches.length} active matches</button> : null}
+    </div>
+    {deck && hero ? <div className="dashboard-current-model"><HeroPreview3D heroType={deck.heroType} label={hero.name}/></div> : null}
+    <div className="dashboard-current-actions">
+      {newest || deck ? <button className="primary-button" type="button" onClick={() => onNavigate(newest ? `/match/${newest.matchId}` : "/play")}><Play size={18}/>{newest ? "Continue match" : "Start match"}</button> : <button className="primary-button" type="button" onClick={() => onNavigate("/decks")}><Layers size={18}/>Open Decks</button>}
+      {newest || deck ? <button className="secondary-link" type="button" onClick={() => onNavigate("/decks")}><Layers size={18}/>Manage deck</button> : null}
+    </div>
   </section>;
 }
 

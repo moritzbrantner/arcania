@@ -4,6 +4,30 @@ const AUTH_TOKEN_STORAGE_KEY = "rune-lanes-auth-token";
 const MATCH_ID = "solo-account-deck";
 const SHARED_MATCH_ID = "shared-home-match";
 
+test("Dashboard continues the newest active match when the deck library fails", async ({ page }) => {
+  const matchRequests = [];
+  await page.addInitScript(
+    ({ key }) => localStorage.setItem(key, "existing-token"),
+    { key: AUTH_TOKEN_STORAGE_KEY },
+  );
+  await mockHomeApi(page, matchRequests);
+  await page.route("**/api/decks", (route) => route.fulfill({ status: 503, json: { message: "Deck library unavailable" } }));
+  await page.route("**/api/profile/matches", (route) => route.fulfill({ json: { matches: [
+    { matchId: "older-active", mode: "solo", createdAt: 1, updatedAt: 10, round: 1, phase: "movement", winner: null, frameCount: 1 },
+    { matchId: MATCH_ID, mode: "solo", createdAt: 1, updatedAt: 20, round: 2, phase: "cardPlay", winner: null, frameCount: 2 },
+  ] } }));
+
+  await page.goto("/");
+  const loadout = page.getByRole("region", { name: "Current loadout" });
+  await expect(loadout.getByRole("heading", { name: "Deck library unavailable" })).toBeVisible();
+  await expect(loadout.getByRole("button", { name: "2 active matches" })).toBeVisible();
+  await expect(loadout.getByRole("button", { name: "Start match" })).toHaveCount(0);
+  await loadout.getByRole("button", { name: "Continue match" }).click();
+  await expect(page).toHaveURL(new RegExp(`/match/${MATCH_ID}$`));
+  await expect(page.getByRole("region", { name: "Hex board" })).toBeVisible();
+  expect(matchRequests).toEqual([]);
+});
+
 test("AI deck selection remains visible with system and legal account deck recipes", async ({ page }) => {
   const matchRequests = [];
   await page.addInitScript(
