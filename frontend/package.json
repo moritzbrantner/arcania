@@ -23,7 +23,7 @@
     "react-dom": "^19.2.1",
     "three": "^0.186.0",
     "typescript": "^5.9.3",
-    "vite": "^7.2.7"
+    "vite": "^8.0.0"
   },
   "devDependencies": {
     "@storybook/addon-vitest": "^10.4.6",
