@@ -1558,7 +1558,7 @@ async fn load_match_summary(
         Ok(profile) => profile,
         Err(response) => return response,
     };
-    let (summary, viewer_side, reward) = {
+    let (summary, viewer_side, viewer_deck_name, reward) = {
         let mut store = state
             .store
             .lock()
@@ -1588,6 +1588,15 @@ async fn load_match_summary(
         if replay.summary.state.mode == MatchMode::Shared && viewer_side.is_none() {
             return match_summary_not_found_response(&match_id);
         }
+        let viewer_deck_name = match (replay.summary.state.mode, profile.as_ref()) {
+            (MatchMode::Shared, Some(profile)) => {
+                match store.viewer_context_for_user(&match_id, profile.id) {
+                    Ok(context) => context.and_then(|(_, deck_name)| deck_name),
+                    Err(error) => return store_error_response(error),
+                }
+            }
+            _ => replay.summary.player_deck_name.clone(),
+        };
         let reward = if let (Some(profile), Some(viewer_side)) = (profile.as_ref(), viewer_side) {
             let progression = ProgressionModule::new(store.connection_mut());
             match progression.match_reward_summary(profile.id, &match_id, viewer_side) {
@@ -1597,7 +1606,7 @@ async fn load_match_summary(
         } else {
             None
         };
-        (replay.summary, viewer_side, reward)
+        (replay.summary, viewer_side, viewer_deck_name, reward)
     };
 
     let viewer = MatchSummaryViewer {
@@ -1612,7 +1621,7 @@ async fn load_match_summary(
             viewer_side
                 .map(|side| side.team())
                 .unwrap_or(crate::match_session::Team::Player),
-            summary.player_deck_name.clone(),
+            viewer_deck_name,
         ),
         viewer,
         reward,

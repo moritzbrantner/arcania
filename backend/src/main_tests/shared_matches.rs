@@ -165,6 +165,7 @@ async fn completed_shared_account_participant_can_load_summary_from_match_route(
     let app = create_app(SqliteMatchStore::new(&path).expect("store should open"));
     let player_auth = register_test_account(app.clone(), "shared-player@example.com").await;
     let opponent_auth = register_test_account(app.clone(), "shared-opponent@example.com").await;
+    let unrelated_auth = register_test_account(app.clone(), "shared-unrelated@example.com").await;
 
     let (status, created) = json_request(
         app.clone(),
@@ -190,9 +191,19 @@ async fn completed_shared_account_participant_can_load_summary_from_match_route(
             .expect("invite URL exists"),
     );
 
-    for (token, auth, hero_type) in [
-        (player_token, &player_auth, "pyromancer"),
-        (opponent_token, &opponent_auth, "warden"),
+    for (token, auth, hero_type, deck_choice) in [
+        (
+            player_token,
+            &player_auth,
+            "pyromancer",
+            r#"{"source":"starter"}"#,
+        ),
+        (
+            opponent_token,
+            &opponent_auth,
+            "warden",
+            r#"{"source":"system","systemDeckId":"ember-burn"}"#,
+        ),
     ] {
         let (status, _) = json_request(
             app.clone(),
@@ -201,7 +212,9 @@ async fn completed_shared_account_participant_can_load_summary_from_match_route(
                 .uri(format!("/api/shared-matches/{match_id}/seats/{token}/join"))
                 .header("authorization", format!("Bearer {auth}"))
                 .header("content-type", "application/json")
-                .body(Body::from(format!(r#"{{"heroType":"{hero_type}"}}"#)))
+                .body(Body::from(format!(
+                    r#"{{"heroType":"{hero_type}","deckChoice":{deck_choice}}}"#
+                )))
                 .expect("request should build"),
         )
         .await;
@@ -224,6 +237,32 @@ async fn completed_shared_account_participant_can_load_summary_from_match_route(
     assert_eq!(summary["viewer"]["side"], "player");
     assert_eq!(summary["viewer"]["result"], "defeat");
     assert_eq!(summary["reward"]["accountXpGained"], 100);
+    assert_eq!(summary["summary"]["viewerDeckName"], "Balanced Starter");
+    assert!(!summary.to_string().contains("Ember Burn"));
+
+    let (status, opponent_summary) = json_request(
+        app.clone(),
+        Request::builder()
+            .uri(format!("/api/matches/{match_id}/summary"))
+            .header("authorization", format!("Bearer {opponent_auth}"))
+            .body(Body::empty())
+            .expect("request should build"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(opponent_summary["summary"]["viewerDeckName"], "Ember Burn");
+    assert!(!opponent_summary.to_string().contains("Balanced Starter"));
+
+    let (status, _) = json_request(
+        app.clone(),
+        Request::builder()
+            .uri(format!("/api/matches/{match_id}/summary"))
+            .header("authorization", format!("Bearer {unrelated_auth}"))
+            .body(Body::empty())
+            .expect("request should build"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 
     let (status, replay) = json_request(
         app,
