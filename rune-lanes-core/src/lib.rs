@@ -19,6 +19,7 @@ pub use card_definitions::{
     CardCatalog, CardCatalogError, CardDefinition, CardDefinitionValidationError, CardRevisionId,
     PublishedCardRevision, PublishedCardRevisionError,
 };
+pub use deck_library::{DeckCardCount, SystemDeckRecipe, system_deck_recipes};
 pub use match_session::*;
 
 pub mod workshop;
