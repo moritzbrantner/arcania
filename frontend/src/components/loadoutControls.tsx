@@ -200,7 +200,7 @@ export function HeroPicker({
   legend?: string;
 }) {
   const selectedHero =
-    HERO_OPTIONS.find((hero) => hero.id === selectedHeroType) ?? HERO_OPTIONS[0];
+    HERO_OPTIONS.find((hero) => hero.id === selectedHeroType) ?? HERO_OPTIONS[0]!;
 
   return (
     <fieldset className="hero-picker" aria-label={legend}>
