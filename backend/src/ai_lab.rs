@@ -194,7 +194,7 @@ enum SeatDirection {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct RulePreset {
     id: String,
     #[serde(default)]
@@ -1272,6 +1272,51 @@ mod tests {
         )
         .expect_err("new effect fields should be rejected");
         assert!(unknown_effect.to_string().contains("unknown field"));
+    }
+
+    #[test]
+    fn rule_preset_rejects_unknown_fields_at_every_setup_boundary() {
+        for preset in [
+            serde_json::json!({"id": "invalid", "effect": {"type": "newEffect"}}),
+            serde_json::json!({"id": "invalid", "player": {"effect": {}}}),
+            serde_json::json!({"id": "invalid", "player": {"hero": {"effect": {}}}}),
+            serde_json::json!({"id": "invalid", "units": [{
+                "id": "unit", "side": "player", "templateId": "ember-squire",
+                "position": {"q": 0, "r": 2}, "effect": {}
+            }]}),
+            serde_json::json!({"id": "invalid", "cardOverrides": [{
+                "templateId": "ember-squire", "effect": {}
+            }]}),
+        ] {
+            let error = serde_json::from_value::<SuiteConfigFile>(serde_json::json!({
+                "suites": [], "rulePresets": [preset]
+            }))
+            .expect_err("unsupported effect fields must fail instead of being ignored");
+            assert!(error.to_string().contains("unknown field `effect`"));
+        }
+    }
+
+    #[test]
+    fn rule_preset_rejects_invalid_hero_stats() {
+        for hero in [
+            serde_json::json!({"hp": 0}),
+            serde_json::json!({"maxHp": -1}),
+            serde_json::json!({"maxAp": 0}),
+            serde_json::json!({"apRemaining": 0}),
+            serde_json::json!({"attackRange": 0}),
+        ] {
+            let preset: RulePreset = serde_json::from_value(serde_json::json!({
+                "id": "invalid-stats", "player": {"hero": hero}
+            }))
+            .expect("numeric Hero overrides should deserialize");
+            assert!(
+                preset
+                    .validate()
+                    .expect_err("invalid Hero stats must fail validation")
+                    .to_string()
+                    .contains("invalid hero stats")
+            );
+        }
     }
 
     #[test]
