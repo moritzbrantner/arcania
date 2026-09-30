@@ -38,7 +38,6 @@ impl std::fmt::Display for DeckLibraryError {
         }
     }
 }
-
 impl std::error::Error for DeckLibraryError {}
 
 pub fn starter_deck_snapshot() -> DeckRecipeSnapshot {
@@ -50,7 +49,9 @@ pub fn starter_deck_snapshot() -> DeckRecipeSnapshot {
 }
 
 pub fn system_deck_by_id(deck_id: &str) -> Option<SystemDeckRecipe> {
-    system_deck_recipes().into_iter().find(|deck| deck.id == deck_id)
+    system_deck_recipes()
+        .into_iter()
+        .find(|deck| deck.id == deck_id)
 }
 
 pub fn deck_from_counts(
@@ -284,7 +285,6 @@ pub fn system_deck_recipes() -> Vec<SystemDeckRecipe> {
     ]
 }
 
-
 fn system_deck(
     id: &str,
     name: &str,
@@ -313,7 +313,10 @@ mod tests {
     fn system_decks_have_sixty_known_cards() {
         for deck in system_deck_recipes() {
             assert_eq!(
-                deck.cards.iter().map(|card| u32::from(card.count)).sum::<u32>(),
+                deck.cards
+                    .iter()
+                    .map(|card| u32::from(card.count))
+                    .sum::<u32>(),
                 60,
                 "{} should contain sixty cards",
                 deck.name
@@ -334,7 +337,11 @@ mod tests {
         let starter = starter_deck_snapshot();
         assert_eq!(starter.name, "Balanced Starter");
         assert_eq!(
-            starter.cards.iter().map(|card| u32::from(card.count)).sum::<u32>(),
+            starter
+                .cards
+                .iter()
+                .map(|card| u32::from(card.count))
+                .sum::<u32>(),
             60
         );
     }
