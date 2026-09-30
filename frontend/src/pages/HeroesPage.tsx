@@ -16,6 +16,7 @@ export function HeroesPage({ currentUser, onNavigate, onSignOut, onProfileUpdate
   const [state, setState] = useState<ProgressionLoadState>({ status: "loading" });
   const [selectedHero, setSelectedHero] = useState<HeroType>(currentUser.preferredHeroType);
   const [savingPreferred, setSavingPreferred] = useState(false);
+  const [preferredError, setPreferredError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -30,8 +31,11 @@ export function HeroesPage({ currentUser, onNavigate, onSignOut, onProfileUpdate
 
   async function makePreferred() {
     setSavingPreferred(true);
+    setPreferredError(null);
     try {
       onProfileUpdated(await updatePreferredHero(selectedHero));
+    } catch (error: unknown) {
+      setPreferredError(error instanceof Error ? error.message : "Could not update preferred Hero. Please try again.");
     } finally {
       setSavingPreferred(false);
     }
@@ -68,6 +72,7 @@ export function HeroesPage({ currentUser, onNavigate, onSignOut, onProfileUpdate
                   {selectedHero === currentUser.preferredHeroType ? "Preferred Hero" : "Make preferred"}
                 </button>
               </div>
+              {preferredError ? <p className="notice" role="alert">{preferredError}</p> : null}
               {selectedProgression ? <ProgressionPanel progression={state.progression} selectedHero={selectedHero} onSelectHero={setSelectedHero} onProgressionChanged={(progression) => setState({ status: "ready", progression })} /> : null}
             </section>
           </>
