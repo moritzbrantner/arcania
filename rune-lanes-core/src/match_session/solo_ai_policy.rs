@@ -787,6 +787,44 @@ mod tests {
     }
 
     #[test]
+    fn policy_config_selects_the_named_default() {
+        let config = AiPolicyConfig::from_json(
+            r#"{"defaultPolicyId":"movement","policies":[{"id":"attacks","rules":["inRangeAttack"]},{"id":"movement","rules":["moveTowardPlayerHero"]}]}"#,
+        )
+        .expect("valid config should parse");
+
+        assert_eq!(
+            config
+                .default_policy()
+                .expect("default should resolve")
+                .rule_order(),
+            &[SoloAiRuleId::MoveTowardPlayerHero]
+        );
+    }
+
+    #[test]
+    fn policy_config_rejects_duplicate_ids_missing_defaults_and_empty_rules() {
+        assert!(matches!(
+            AiPolicyConfig::from_json(
+                r#"{"defaultPolicyId":"duplicate","policies":[{"id":"duplicate","rules":["inRangeAttack"]},{"id":"duplicate","rules":["moveTowardPlayerHero"]}]}"#
+            ),
+            Err(AiPolicyConfigError::DuplicatePolicy(id)) if id == "duplicate"
+        ));
+        assert!(matches!(
+            AiPolicyConfig::from_json(
+                r#"{"defaultPolicyId":"missing","policies":[{"id":"existing","rules":["inRangeAttack"]}]}"#
+            ),
+            Err(AiPolicyConfigError::MissingDefault(id)) if id == "missing"
+        ));
+        assert!(matches!(
+            AiPolicyConfig::from_json(
+                r#"{"defaultPolicyId":"empty","policies":[{"id":"empty","rules":[]}]}"#
+            ),
+            Err(AiPolicyConfigError::EmptyPolicy(id)) if id == "empty"
+        ));
+    }
+
+    #[test]
     fn adjacent_attack_beats_spell_summon_and_move() {
         let mut view = base_view();
         let opponent_unit = piece("opponent-unit", Side::Opponent, hex(0, 2));
