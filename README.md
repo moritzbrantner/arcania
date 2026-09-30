@@ -202,9 +202,9 @@ same local CI script before a push reaches GitHub. If GitHub Actions cannot run
 because of a billing or spending limit, a passing `bun run ci:local` is the
 project's local signal that the shared CI workflow would have passed.
 
-## GitHub Pages Solo play and card workshop
+## GitHub Pages Solo play and workshop
 
-Open the Pages site to play against a bot without an account or backend. The workshop offers all eight Heroes, editable match/Hero rules, a card editor (Unit/Spell fields plus an advanced editor for existing effects), preset import/export, and automatic resume of the latest match. Settings links to match rules and the card editor. Custom cards appear in both opening hands. Saved presets affect new matches; hosted matches and account progression remain separate.
+Open the Pages site to play against a bot without an account or backend. The workshop offers all eight Heroes through the shared 3D Hero picker, selectable system deck recipes with local card-count editing for either side, editable match/Hero rules, a card editor (Unit/Spell fields plus an advanced editor for existing effects), preset import/export, and automatic resume of the latest match. System deck recipes are authored once in `rune-lanes-core` and reused by hosted and browser flows. Custom cards appear in both opening hands. Saved presets affect new matches; hosted matches and account progression remain separate.
 
 ```sh
 rustup target add wasm32-unknown-unknown
@@ -217,7 +217,7 @@ bun run test:pages
 
 For local frontend development, run `bun run build:browser-engine` once and open `/workshop`. Rebuild the engine after Rust changes. `build:pages` targets `/arcania/`; the Pages workflow derives the repository name automatically and includes its own WASM build and browser tests. The workflow deploys only from `main`.
 
-The workflow also tests the public site after deployment on desktop and mobile, including bot turns, custom cards, rule persistence, reload, and victory. Run the same checks without a local server:
+The workflow also tests the public site after deployment on desktop and mobile, including 3D Hero picking, deck-recipe selection/editing, bot turns, custom cards, rule persistence, reload, and victory. Run the same checks without a local server:
 
 ```sh
 ARCANIA_PAGES_URL=https://moritzbrantner.github.io/arcania/ bun run test:pages
@@ -225,6 +225,6 @@ ARCANIA_PAGES_URL=https://moritzbrantner.github.io/arcania/ bun run test:pages
 
 Set `ARCANIA_PAGES_REVISION` to a full commit SHA to also verify `deployment.json` before testing. GitHub Pages serves the app's `404.html` for client routes; reload checks allow that document status while still rejecting failed assets and requiring the saved match to render.
 
-Browser storage is local to the current browser/origin. Export a preset to keep a portable backup of rules and cards. A new match replaces the previous browser match; malformed or incompatible saves fail visibly. Clear site data only if you intend to remove local saves.
+Browser storage is local to the current browser/origin. Export a preset to keep a portable backup of Heroes, deck recipes, rules and custom cards. A new match replaces the previous browser match; malformed or incompatible saves fail visibly. Clear site data only if you intend to remove local saves.
 
 Visual asset provenance and regeneration instructions: [assets/workshop](assets/workshop/README.md). Architecture: [ADR 0026](docs/adr/0026-browser-solo-workshop.md).
