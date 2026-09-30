@@ -1,6 +1,74 @@
 use super::*;
 
 #[tokio::test]
+async fn completed_two_v_two_summaries_report_results_for_each_viewer_team() {
+    for (winner, results) in [
+        (Side::Player, ["victory", "defeat", "victory", "defeat"]),
+        (Side::Opponent, ["defeat", "victory", "defeat", "victory"]),
+    ] {
+        let path = test_db_path("shared-two-v-two-summary-results");
+        let app = create_app(SqliteMatchStore::new(&path).expect("store should open"));
+        let (status, created) = json_request(
+            app.clone(),
+            Request::builder()
+                .method("POST")
+                .uri("/api/shared-matches")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"format":"twoVTwo"}"#))
+                .expect("request should build"),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let match_id = created["matchId"].as_str().expect("match id should exist");
+        let seats = created["seatUrls"]
+            .as_array()
+            .expect("seat URLs should exist");
+        assert_eq!(seats.len(), 4);
+
+        for (seat, hero_type) in
+            seats
+                .iter()
+                .zip(["runekeeper", "pyromancer", "warden", "barbarian"])
+        {
+            let token = seat_token_from_url(seat["url"].as_str().expect("seat URL should exist"));
+            let (status, _) = json_request(
+                app.clone(),
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/shared-matches/{match_id}/seats/{token}/join"))
+                    .header("content-type", "application/json")
+                    .body(Body::from(format!(r#"{{"heroType":"{hero_type}"}}"#)))
+                    .expect("request should build"),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK);
+        }
+
+        complete_match_by_forfeit(&path, match_id, winner);
+
+        for (seat, result) in seats.iter().zip(results) {
+            let token = seat_token_from_url(seat["url"].as_str().expect("seat URL should exist"));
+            let (status, summary) = json_request(
+                app.clone(),
+                Request::builder()
+                    .uri(format!(
+                        "/api/shared-matches/{match_id}/seats/{token}/summary"
+                    ))
+                    .body(Body::empty())
+                    .expect("request should build"),
+            )
+            .await;
+            assert_eq!(status, StatusCode::OK);
+            assert_eq!(summary["viewer"]["side"], seat["side"]);
+            assert_eq!(summary["viewer"]["result"], result, "seat {}", seat["side"]);
+            assert_eq!(summary["summary"]["viewerResult"], result);
+            assert!(summary["reward"].is_null());
+        }
+        let _ = fs::remove_file(path);
+    }
+}
+
+#[tokio::test]
 async fn completed_shared_seat_links_can_load_summary_and_replay() {
     let path = test_db_path("shared-summary-replay");
     let app = create_app(SqliteMatchStore::new(&path).expect("store should open"));

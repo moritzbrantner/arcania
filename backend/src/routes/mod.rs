@@ -1737,7 +1737,9 @@ fn replay_response(replay: crate::match_store::StoredReplay) -> axum::response::
 
 fn viewer_result(viewer_side: Option<Side>, winner: Option<Side>) -> ViewerResult {
     match (viewer_side, winner) {
-        (Some(viewer_side), Some(winner)) if viewer_side == winner => ViewerResult::Victory,
+        (Some(viewer_side), Some(winner)) if viewer_side.team() == winner.team() => {
+            ViewerResult::Victory
+        }
         (Some(_), Some(_)) => ViewerResult::Defeat,
         _ => ViewerResult::Spectator,
     }
