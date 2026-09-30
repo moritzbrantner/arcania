@@ -35,7 +35,7 @@ test("login submits credentials to the existing login API and opens a safe next 
   expect(authRequests).toEqual(["/api/auth/login"]);
 });
 
-for (const protectedPath of ["/profile", "/decks", "/matches"]) {
+for (const protectedPath of ["/profile", "/decks", "/matches", "/heroes", "/progression"]) {
   test(`signed-out players visiting ${protectedPath} are redirected to login with next`, async ({
     page,
   }) => {
@@ -49,7 +49,7 @@ for (const protectedPath of ["/profile", "/decks", "/matches"]) {
   });
 }
 
-for (const nextPath of ["/profile", "/settings", "/decks", "/matches"]) {
+for (const nextPath of ["/profile", "/settings", "/decks", "/matches", "/heroes", "/progression"]) {
   test(`successful login from ${nextPath} lands on the requested protected route`, async ({
     page,
   }) => {
