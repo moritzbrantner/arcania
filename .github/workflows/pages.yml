@@ -58,7 +58,7 @@ jobs:
         run: |
           rustup toolchain install 1.98.1 --profile minimal --target wasm32-unknown-unknown
           rustup default 1.98.1
-          cargo install wasm-bindgen-cli --version 0.2.128 --locked
+          cargo install wasm-bindgen-cli --version 0.2.129 --locked
 
       - name: Build browser engine
         run: bun run build:browser-engine
