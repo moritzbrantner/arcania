@@ -3,7 +3,11 @@ use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{CardDefinition, HeroType, MatchState, Side, rules::RuneLanesRuleset};
+use crate::{
+    CardDefinition, HeroType, MatchState, Side,
+    deck_library::DeckCardCount,
+    rules::RuneLanesRuleset,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -11,6 +15,10 @@ pub struct WorkshopSetup {
     pub seed: u32,
     pub player_hero: HeroType,
     pub opponent_hero: HeroType,
+    #[serde(default = "starter_deck_recipe")]
+    pub player_deck_recipe: Vec<DeckCardCount>,
+    #[serde(default = "starter_deck_recipe")]
+    pub opponent_deck_recipe: Vec<DeckCardCount>,
     pub ruleset: RuneLanesRuleset,
     pub cards: Vec<CardDefinition>,
 }
@@ -43,6 +51,8 @@ impl WorkshopSetup {
                 return Err("Hero limits: 100 HP, 20 attack, 10 AP, 6 attack range.".into());
             }
         }
+        self.validate_deck_recipe("Player", &self.player_deck_recipe)?;
+        self.validate_deck_recipe("Opponent", &self.opponent_deck_recipe)?;
         if self.cards.len() > 8 {
             return Err("A Rule preset can include up to 8 custom cards.".into());
         }
@@ -77,13 +87,46 @@ impl WorkshopSetup {
         Ok(())
     }
 
+    fn validate_deck_recipe(&self, label: &str, cards: &[DeckCardCount]) -> Result<(), String> {
+        let total = cards.iter().map(|card| u32::from(card.count)).sum::<u32>();
+        if total < u32::from(self.ruleset.turn.opening_hand_size) || total > 120 {
+            return Err(format!(
+                "{label} deck recipe must contain between {} and 120 cards.",
+                self.ruleset.turn.opening_hand_size
+            ));
+        }
+
+        let mut template_ids = HashSet::new();
+        for card in cards {
+            if card.count == 0 || card.count > 30 {
+                return Err(format!(
+                    "{label} deck recipe card counts must be between 1 and 30."
+                ));
+            }
+            if !template_ids.insert(&card.template_id) {
+                return Err(format!(
+                    "{label} deck recipe contains duplicate template {}.",
+                    card.template_id
+                ));
+            }
+            if crate::starter_card_catalog().latest(&card.template_id).is_none() {
+                return Err(format!(
+                    "{label} deck recipe references unknown card template {}.",
+                    card.template_id
+                ));
+            }
+        }
+        Ok(())
+    }
+
     pub fn create_match(&self) -> Result<MatchState, String> {
         self.validate()?;
-        let recipe = crate::deck_library::starter_deck_snapshot();
-        let player_deck = crate::deck_library::deck_from_snapshot(Side::Player, &recipe)
-            .map_err(|error| error.to_string())?;
-        let opponent_deck = crate::deck_library::deck_from_snapshot(Side::Opponent, &recipe)
-            .map_err(|error| error.to_string())?;
+        let player_deck =
+            crate::deck_library::deck_from_counts(Side::Player, &self.player_deck_recipe)
+                .map_err(|error| error.to_string())?;
+        let opponent_deck =
+            crate::deck_library::deck_from_counts(Side::Opponent, &self.opponent_deck_recipe)
+                .map_err(|error| error.to_string())?;
         let mut state = MatchState::new_with_rule_preset(
             u64::from(self.seed),
             self.player_hero,
@@ -109,6 +152,10 @@ impl WorkshopSetup {
     }
 }
 
+fn starter_deck_recipe() -> Vec<DeckCardCount> {
+    crate::deck_library::starter_deck_snapshot().cards
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -123,6 +170,8 @@ mod tests {
             seed: 42,
             player_hero: HeroType::Runekeeper,
             opponent_hero: HeroType::Runekeeper,
+            player_deck_recipe: starter_deck_recipe(),
+            opponent_deck_recipe: starter_deck_recipe(),
             ruleset: CURRENT_RULESET,
             cards: vec![],
         }
@@ -250,4 +299,57 @@ mod tests {
         setup.ruleset.turn.base_hero_mana = 0;
         assert!(setup.create_match().is_err());
     }
+
+    #[test]
+    fn selected_deck_recipe_drives_match_cards() {
+        let mut setup = setup();
+        setup.player_deck_recipe = crate::deck_library::system_deck_by_id("ember-burn")
+            .unwrap()
+            .cards;
+        let state = setup.create_match().unwrap();
+        let player_templates = state
+            .player
+            .hand
+            .iter()
+            .chain(state.player.deck.iter())
+            .map(|card| card.template_id.as_str())
+            .collect::<Vec<_>>();
+        let opponent_templates = state
+            .opponent
+            .hand
+            .iter()
+            .chain(state.opponent.deck.iter())
+            .map(|card| card.template_id.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(player_templates.contains(&"meteor-bloom"));
+        assert!(!player_templates.contains(&"runekeeper-lens"));
+        assert!(opponent_templates.contains(&"runekeeper-lens"));
+    }
+
+    #[test]
+    fn old_workshop_presets_default_to_the_starter_deck_recipe() {
+        let value = serde_json::to_value(setup()).unwrap();
+        let mut object = value.as_object().unwrap().clone();
+        object.remove("playerDeckRecipe");
+        object.remove("opponentDeckRecipe");
+
+        let restored: WorkshopSetup =
+            serde_json::from_value(serde_json::Value::Object(object)).unwrap();
+
+        assert_eq!(restored.player_deck_recipe, starter_deck_recipe());
+        assert_eq!(restored.opponent_deck_recipe, starter_deck_recipe());
+    }
+
+    #[test]
+    fn invalid_workshop_deck_recipe_is_rejected() {
+        let mut setup = setup();
+        setup.player_deck_recipe = vec![DeckCardCount {
+            template_id: "missing-card".into(),
+            count: 60,
+        }];
+
+        assert!(setup.validate().is_err());
+    }
+
 }
