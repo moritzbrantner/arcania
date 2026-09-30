@@ -106,6 +106,9 @@
 .browser-match .card-button { color: #fffaf0; }
 .browser-match .match-chrome-restore { display: none; }
 .browser-match.match-chrome-minimized .match-chrome-restore { display: inline-flex; }
+@media (min-width: 701px) {
+  .browser-match .match-chrome, .browser-match .opponent-hand-display { color: #fffaf0; --muted: #c9cec5; }
+}
 @media (max-width: 700px) {
   :root[data-board-scale="normal"] .browser-match {
     --hex-width: clamp(54px, 13.5vw, 80px);

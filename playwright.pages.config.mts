@@ -1,7 +1,8 @@
 import { createServer } from "node:net";
 import { defineConfig, devices } from "@playwright/test";
 
-const port = process.env.ARCANIA_PAGES_TEST_PORT ? Number(process.env.ARCANIA_PAGES_TEST_PORT) : await new Promise<number>((resolve, reject) => {
+const deployedURL = process.env.ARCANIA_PAGES_URL;
+const port = deployedURL ? undefined : process.env.ARCANIA_PAGES_TEST_PORT ? Number(process.env.ARCANIA_PAGES_TEST_PORT) : await new Promise<number>((resolve, reject) => {
   const server = createServer();
   server.once("error", reject);
   server.listen(0, "127.0.0.1", () => {
@@ -11,7 +12,8 @@ const port = process.env.ARCANIA_PAGES_TEST_PORT ? Number(process.env.ARCANIA_PA
   });
 });
 
-process.env.ARCANIA_PAGES_TEST_PORT = String(port);
+if (port !== undefined) { process.env.ARCANIA_PAGES_TEST_PORT = String(port); }
+const baseURL = deployedURL ?? `http://127.0.0.1:${port}/arcania/`;
 
 export default defineConfig({
   testDir: "./e2e-pages",
@@ -19,8 +21,8 @@ export default defineConfig({
   timeout: 45_000,
   expect: { timeout: 10_000 },
   workers: 1,
-  use: { baseURL: `http://127.0.0.1:${port}/arcania/`, trace: "retain-on-failure" },
-  webServer: {
+  use: { baseURL, trace: "retain-on-failure" },
+  webServer: deployedURL ? undefined : {
     command: `bun run --cwd frontend dev:preview --host 127.0.0.1 --port ${port} --strictPort`,
     url: `http://127.0.0.1:${port}/arcania/`,
     reuseExistingServer: false,

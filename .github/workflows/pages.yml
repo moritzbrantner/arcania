@@ -44,7 +44,7 @@ jobs:
       PAGES_BASE_PATH: /${{ github.event.repository.name }}/
     steps:
       - name: Check out repository
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -76,6 +76,7 @@ jobs:
         run: |
           bun run --cwd frontend build
           cp frontend/dist/index.html frontend/dist/404.html
+          printf '{"revision":"%s"}\n' "$GITHUB_SHA" > frontend/dist/deployment.json
 
       - name: Test browser Solo matches without a backend
         run: |
@@ -101,6 +102,8 @@ jobs:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
     permissions:
       contents: read
       pages: write
@@ -117,3 +120,34 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+  verify-live:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - name: Install browser tests
+        run: |
+          bun install --frozen-lockfile
+          bunx --no-install playwright install --with-deps chromium
+
+      - name: Verify the deployed revision and play on the public site
+        env:
+          ARCANIA_PAGES_URL: ${{ needs.deploy.outputs.page_url }}
+          ARCANIA_PAGES_REVISION: ${{ github.sha }}
+        run: bun run test:pages
+
+      - name: Preserve live screenshots and failure traces
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pages-live-results
+          path: test-results-pages/
+          retention-days: 7
