@@ -14,7 +14,9 @@ for (const viewport of [{ width: 1280, height: 420 }, { width: 390, height: 600 
     await mockHomeApi(page, []);
     await page.goto("/");
     const lowerOverview = page.getByRole("button", { name: "View all Matches", exact: true });
-    await expect(lowerOverview).toBeAttached();
+    await expect(page.getByRole("region", { name: "Current loadout" }).getByRole("heading", { name: "Default Legal" })).toBeVisible();
+    await expect(page.getByText("Next level in 140 XP")).toBeVisible();
+    await expect(page.getByText("No matches yet.")).toBeVisible();
     await expect(lowerOverview).not.toBeInViewport();
 
     await page.mouse.wheel(0, 5000);
