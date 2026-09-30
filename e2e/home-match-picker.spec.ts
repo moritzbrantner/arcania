@@ -63,6 +63,7 @@ test("Dashboard continues the newest active match when the deck library fails", 
   await page.goto("/");
   const loadout = page.getByRole("region", { name: "Current loadout" });
   await expect(loadout.getByRole("heading", { name: "Deck library unavailable" })).toBeVisible();
+  await expect(page.getByText("Loading decks.", { exact: true })).toHaveCount(0);
   await expect(loadout.getByRole("button", { name: "2 active matches" })).toBeVisible();
   await expect(loadout.getByRole("button", { name: "Start match" })).toHaveCount(0);
   await loadout.getByRole("button", { name: "Continue match" }).click();
