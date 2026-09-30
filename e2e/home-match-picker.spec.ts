@@ -4,6 +4,32 @@ const AUTH_TOKEN_STORAGE_KEY = "rune-lanes-auth-token";
 const MATCH_ID = "solo-account-deck";
 const SHARED_MATCH_ID = "shared-home-match";
 
+test("account Progression groups runes and keeps its catalog read-only", async ({ page }) => {
+  await page.addInitScript(
+    ({ key }) => localStorage.setItem(key, "existing-token"),
+    { key: AUTH_TOKEN_STORAGE_KEY },
+  );
+  await mockHomeApi(page, []);
+  await page.route("**/api/progression", (route) => route.fulfill({ json: {
+    ...progression(),
+    runes: [...progression().runes, {
+      id: "chrono-rune", name: "Chrono Rune", text: "Start round two with +1 AP.", unlockLevel: 5, unlocked: false,
+    }],
+  } }));
+  await page.goto("/progression");
+
+  const unlocked = page.getByRole("region", { name: "Unlocked runes" });
+  const locked = page.getByRole("region", { name: "Locked runes" });
+  await expect(unlocked.getByText("Spark Stone", { exact: true })).toBeVisible();
+  await expect(unlocked.getByText("Start with a brighter spark.")).toBeVisible();
+  await expect(locked.getByText("Chrono Rune", { exact: true })).toBeVisible();
+  await expect(locked.getByText("Unlocks at level 5")).toBeVisible();
+  await expect(page.getByText("Next level in 140 XP")).toBeVisible();
+  await expect(page.getByText("Next rune: Chrono Rune at level 5")).toBeVisible();
+  await expect(unlocked.getByRole("button")).toHaveCount(0);
+  await expect(locked.getByRole("button")).toHaveCount(0);
+});
+
 test("mobile navigation contains keyboard focus and restores it on close", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 600 });
   await page.addInitScript(
