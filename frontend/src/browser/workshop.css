@@ -6,7 +6,7 @@
 .workshop-heading { padding: 48px 0 30px; }
 .workshop-heading h1 { font: 500 clamp(32px, 5vw, 56px)/1.1 Georgia, serif; margin: 12px 0 16px; letter-spacing: -.025em; }
 .workshop-heading > p:last-child { color: var(--muted); max-width: 650px; line-height: 1.7; }
-.workshop-tabs { gap: 24px; border-bottom: 1px solid var(--line); margin-bottom: 28px; }
+.workshop-tabs { gap: 24px; border-bottom: 1px solid var(--line); margin-bottom: 28px; flex-wrap: wrap; }
 .workshop-tabs button { display: flex; align-items: center; gap: 8px; padding: 16px 4px; background: none; color: var(--muted); border: 0; border-bottom: 3px solid transparent; font: inherit; cursor: pointer; }
 .workshop-tabs button[aria-current] { color: var(--gold); border-bottom-color: var(--gold); }
 .workshop-content { border: 0; margin: 0; padding: 0; min-width: 0; }
@@ -23,6 +23,31 @@
 .workshop-shell button:focus-visible, .workshop-shell input:focus-visible, .workshop-shell select:focus-visible, .workshop-shell textarea:focus-visible, .workshop-shell summary:focus-visible { outline: 2px solid var(--gold); outline-offset: 4px; }
 .workshop-start { width: 100%; justify-content: space-between; min-height: 52px; }
 .workshop-loadout { display: flex; flex-wrap: wrap; gap: 16px; font-size: 12px; color: var(--muted); }
+.workshop-hero-picker { display: grid; align-content: center; min-width: 0; padding: 28px; background: radial-gradient(circle at 50% 32%, rgba(88, 183, 161, .14), transparent 38%), #111615; }
+.workshop-hero-picker .hero-picker-stage { min-height: 300px; }
+.workshop-hero-picker .hero-picker-model, .workshop-hero-picker .hero-picker-model .hero-preview-3d { min-height: 300px; }
+.workshop-deck-edit-link { display: inline-flex; align-items: center; gap: 7px; margin-left: 0; }
+.workshop-deck-editor { display: grid; gap: 24px; }
+.workshop-deck-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; padding: 20px 0 8px; border-bottom: 1px solid var(--line); }
+.workshop-deck-heading h2 { margin: 8px 0 10px; font: 500 clamp(28px, 4vw, 42px)/1.08 Georgia, serif; }
+.workshop-deck-heading p { margin: 0; color: var(--muted); line-height: 1.55; }
+.workshop-deck-heading .eyebrow { display: flex; align-items: center; gap: 7px; color: var(--gold); }
+.workshop-deck-heading > strong { flex: 0 0 auto; color: var(--gold); font: 700 22px Georgia, serif; }
+.workshop-deck-side { display: inline-flex; width: fit-content; padding: 4px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
+.workshop-deck-side button { border: 0; border-radius: 7px; padding: 10px 14px; color: var(--muted); background: transparent; cursor: pointer; font: inherit; font-weight: 800; }
+.workshop-deck-side button[aria-pressed="true"] { color: #fffaf0; background: rgba(217, 184, 79, .16); box-shadow: inset 0 0 0 1px rgba(217, 184, 79, .28); }
+.workshop-deck-toolbar { display: grid; grid-template-columns: minmax(220px, .65fr) minmax(260px, 1fr); gap: 16px; }
+.workshop-deck-card-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+.workshop-deck-card-list article { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 11px; align-items: center; min-width: 0; border: 1px solid var(--line); border-radius: 10px; padding: 9px; background: rgba(28, 33, 32, .72); }
+.workshop-deck-card-list article.selected { border-color: rgba(217, 184, 79, .52); background: linear-gradient(145deg, rgba(217, 184, 79, .11), transparent 72%), var(--panel); }
+.workshop-deck-card-list img { width: 48px; height: 58px; border-radius: 6px; object-fit: cover; background: var(--ink); }
+.workshop-deck-card-list article > div:nth-child(2) { display: grid; gap: 5px; min-width: 0; }
+.workshop-deck-card-list article > div:nth-child(2) strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.workshop-deck-card-list article > div:nth-child(2) span { color: var(--muted); font-size: 11px; text-transform: capitalize; }
+.workshop-deck-count { display: grid; grid-template-columns: 30px 46px 30px; align-items: center; gap: 4px; }
+.workshop-deck-count button { display: grid; place-items: center; width: 30px; height: 30px; border: 1px solid var(--line); border-radius: 6px; color: inherit; background: var(--ink); cursor: pointer; }
+.workshop-deck-count button:disabled { opacity: .35; cursor: default; }
+.workshop-deck-count input { width: 46px; height: 32px; border: 1px solid var(--line); border-radius: 6px; padding: 0 4px; color: inherit; background: var(--ink); text-align: center; font: inherit; font-weight: 800; }
 .workshop-scene { position: relative; display: grid; place-items: center; background: linear-gradient(180deg, transparent, var(--ink)), url('../../public/workshop/rune-field.svg') center/cover; min-height: 440px; overflow: hidden; }
 .workshop-hero-art { width: 76%; z-index: 1; filter: drop-shadow(0 22px 22px #0008); transform: rotate(-7deg); border: 1px solid var(--gold); border-radius: 45% 45% 12px 12px; }
 .workshop-orbit { position: absolute; width: 110%; aspect-ratio: 1; border: 1px solid var(--gold); opacity: .25; border-radius: 50%; }
@@ -65,7 +90,15 @@
   .workshop-heading { padding-top: 28px; }
   .workshop-play { grid-template-columns: 1fr; }
   .workshop-play-copy { padding: 24px; }
+  .workshop-hero-picker { padding: 20px; }
+  .workshop-hero-picker .hero-picker-stage { min-height: 240px; }
+  .workshop-hero-picker .hero-picker-model, .workshop-hero-picker .hero-picker-model .hero-preview-3d { min-height: 240px; }
   .workshop-scene { display: none; }
+  .workshop-deck-heading { align-items: start; flex-direction: column; }
+  .workshop-deck-toolbar { grid-template-columns: 1fr; }
+  .workshop-deck-side { width: 100%; }
+  .workshop-deck-side button { flex: 1; }
+  .workshop-deck-card-list { grid-template-columns: 1fr; }
   .workshop-tabs { gap: 16px; }
   .workshop-tabs button { font-size: 13px; }
   .workshop-card-columns { grid-template-columns: 1fr; gap: 24px; }
