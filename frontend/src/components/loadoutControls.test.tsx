@@ -3,7 +3,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LoadoutCarousel } from "./loadoutControls";
+import { HeroPicker, LoadoutCarousel } from "./loadoutControls";
 import type { DeckRecipeSummary, HeroType, ProgressionResponse } from "../types";
 import type { HomeLoadout } from "../deckHelpers";
 
@@ -12,6 +12,28 @@ vi.mock("../HeroPreview3D", () => ({
 }));
 
 afterEach(() => cleanup());
+
+describe("HeroPicker", () => {
+  it("shows the selected Hero in the 3D stage and emits roster changes", () => {
+    const onSelect = vi.fn();
+
+    render(
+      <HeroPicker
+        legend="Your Hero"
+        selectedHeroType="runekeeper"
+        busy={false}
+        onSelect={onSelect}
+      />,
+    );
+
+    expect(screen.getByText("Runekeeper preview")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Your Hero" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Pyromancer/ }));
+
+    expect(onSelect).toHaveBeenCalledWith("pyromancer");
+  });
+});
 
 describe("LoadoutCarousel", () => {
   it("wraps through configured deck recipes and displays saved runes", () => {
