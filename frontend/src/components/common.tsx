@@ -149,6 +149,7 @@ export function TopNav({ currentUser, onNavigate, onSignOut, activePath = "", ..
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [learnOpen, setLearnOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const drawerRef = useRef<HTMLDialogElement | null>(null);
   const wasDrawerOpen = useRef(false);
   useEffect(() => {
     if (wasDrawerOpen.current && !drawerOpen) {
@@ -158,11 +159,9 @@ export function TopNav({ currentUser, onNavigate, onSignOut, activePath = "", ..
   }, [drawerOpen]);
   useEffect(() => {
     if (!drawerOpen) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setDrawerOpen(false);
-    };
-    document.addEventListener("keydown", closeOnEscape);
-    return () => document.removeEventListener("keydown", closeOnEscape);
+    const dialog = drawerRef.current;
+    dialog?.showModal();
+    return () => dialog?.close();
   }, [drawerOpen]);
   const navigate = (to: string) => {
     setDrawerOpen(false);
@@ -199,7 +198,26 @@ export function TopNav({ currentUser, onNavigate, onSignOut, activePath = "", ..
         activeAccountRoute={activeAccountRoute}
       />
       <button ref={triggerRef} className="icon-button nav-drawer-trigger" type="button" aria-label="Open navigation menu" aria-expanded={drawerOpen} onClick={() => setDrawerOpen(true)}><Menu size={20}/></button>
-      {drawerOpen ? <div className="nav-drawer-backdrop" onMouseDown={() => setDrawerOpen(false)}><div className="nav-drawer" role="dialog" aria-modal="true" aria-label="Navigation menu" onMouseDown={(event) => event.stopPropagation()}><div className="nav-drawer-heading"><strong>Navigation</strong><button className="icon-button" type="button" aria-label="Close navigation menu" onClick={() => setDrawerOpen(false)}><X size={18}/></button></div>{coreLinks.filter((link) => !link.signedIn || currentUser).map(({ to, label, icon: Icon }) => <button key={to} className={activePath === to ? "active" : ""} type="button" onClick={() => navigate(to)}><Icon size={18}/>{label}</button>)}<hr/>{learnLinks.map(({to,label,icon:Icon}) => <button key={to} type="button" onClick={() => navigate(to)}><Icon size={18}/>{label}</button>)}</div></div> : null}
+      {drawerOpen ? <dialog ref={drawerRef} className="nav-drawer-backdrop" aria-modal="true" aria-label="Navigation menu" onMouseDown={() => setDrawerOpen(false)} onCancel={(event) => { event.preventDefault(); setDrawerOpen(false); }} onKeyDown={(event) => {
+        if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) return;
+        const controls = event.currentTarget.querySelectorAll<HTMLButtonElement>("button:not(:disabled)");
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        const focused = event.currentTarget.ownerDocument.activeElement;
+        if (event.shiftKey ? focused !== first : focused !== last) return;
+        event.preventDefault();
+        (event.shiftKey ? last : first)?.focus();
+      }}>
+        <div className="nav-drawer" onMouseDown={(event) => event.stopPropagation()}>
+          <div className="nav-drawer-heading">
+            <strong>Navigation</strong>
+            <button className="icon-button" type="button" aria-label="Close navigation menu" autoFocus onClick={() => setDrawerOpen(false)}><X size={18}/></button>
+          </div>
+          {coreLinks.filter((link) => !link.signedIn || currentUser).map(({ to, label, icon: Icon }) => <button key={to} className={activePath === to ? "active" : ""} type="button" onClick={() => navigate(to)}><Icon size={18}/>{label}</button>)}
+          <hr/>
+          {learnLinks.map(({to,label,icon:Icon}) => <button key={to} type="button" onClick={() => navigate(to)}><Icon size={18}/>{label}</button>)}
+        </div>
+      </dialog> : null}
     </nav>
   );
 }
