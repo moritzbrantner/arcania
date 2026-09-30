@@ -192,15 +192,44 @@ export function HeroPicker({
   selectedHeroType,
   busy,
   onSelect,
+  legend = "Hero Type",
 }: {
   selectedHeroType: HeroType;
   busy: boolean;
   onSelect: (heroType: HeroType) => void;
+  legend?: string;
 }) {
+  const selectedHero =
+    HERO_OPTIONS.find((hero) => hero.id === selectedHeroType) ?? HERO_OPTIONS[0];
+
   return (
-    <fieldset className="hero-picker" aria-label="Hero type">
-      <legend>Hero Type</legend>
-      <div className="hero-options">
+    <fieldset className="hero-picker" aria-label={legend}>
+      <legend>{legend}</legend>
+      <div className="hero-picker-stage">
+        <div className="hero-picker-model">
+          <HeroPreview3D heroType={selectedHero.id} label={selectedHero.name} />
+        </div>
+        <div className="hero-picker-copy">
+          <span className="hero-picker-kicker">{selectedHero.role}</span>
+          <strong>{selectedHero.name}</strong>
+          <p>{selectedHero.text}</p>
+          <span className="hero-stat-row">
+            <span>
+              <Heart size={13} />
+              {selectedHero.hp} HP
+            </span>
+            <span>
+              <Sword size={13} />
+              {selectedHero.attack} ATK
+            </span>
+            <span>
+              <Zap size={13} />
+              {selectedHero.ap} AP
+            </span>
+          </span>
+        </div>
+      </div>
+      <div className="hero-options" aria-label={`${legend} options`}>
         {HERO_OPTIONS.map((hero) => (
           <button
             key={hero.id}
@@ -215,22 +244,10 @@ export function HeroPicker({
                 <strong>{hero.name}</strong>
                 <span>{hero.role}</span>
               </span>
-              <WandSparkles size={18} />
+              <WandSparkles size={16} aria-hidden="true" />
             </span>
-            <span className="hero-option-text">{hero.text}</span>
-            <span className="hero-stat-row">
-              <span>
-                <Heart size={13} />
-                {hero.hp}
-              </span>
-              <span>
-                <Sword size={13} />
-                {hero.attack}
-              </span>
-              <span>
-                <Zap size={13} />
-                {hero.ap}
-              </span>
+            <span className="hero-option-statline">
+              {hero.hp} HP · {hero.attack} ATK · {hero.ap} AP
             </span>
           </button>
         ))}
