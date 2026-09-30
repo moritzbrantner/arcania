@@ -18,7 +18,7 @@
     "@moritzbrantner/input-bindings-web": "github:moritzbrantner/input-bindings#3d514ab479915338f47bdc776ce2fd9d8e3e3f65",
     "@react-three/fiber": "^9.6.1",
     "@vitejs/plugin-react": "^6.0.0",
-    "lucide-react": "^0.577.0",
+    "lucide-react": "^1.0.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "three": "^0.186.0",
