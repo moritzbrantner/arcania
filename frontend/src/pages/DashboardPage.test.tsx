@@ -25,8 +25,8 @@ const unavailableDeckCases = [
   { label: "no legal deck", request: () => Promise.resolve({ ...deckResponse, decks: [{ ...deck, legality: { ...deck.legality, legal: false } }] }) },
 ];
 
-function setup(matches: MatchSummary[] = [], decksRequest: Promise<DeckResponse> = Promise.resolve(deckResponse)) {
-  vi.mocked(loadProgression).mockResolvedValue(progression);
+function setup(matches: MatchSummary[] = [], decksRequest: Promise<DeckResponse> = Promise.resolve(deckResponse), progressionRequest: Promise<ProgressionResponse> = Promise.resolve(progression)) {
+  vi.mocked(loadProgression).mockReturnValue(progressionRequest);
   vi.mocked(loadDecks).mockReturnValue(decksRequest);
   vi.mocked(loadProfileMatches).mockResolvedValue({ matches });
   const onNavigate = vi.fn();
@@ -80,5 +80,28 @@ describe("DashboardPage", () => {
     expect(onNavigate).toHaveBeenCalledWith("/decks");
     expect(loadout.queryByRole("button", { name: "Start match" })).not.toBeInTheDocument();
     expect(loadout.queryByRole("button", { name: "Continue match" })).not.toBeInTheDocument();
+  });
+
+  it("shows progression failures without loading placeholders and preserves the other sections", async () => {
+    const onNavigate = setup([], undefined, Promise.reject(new Error("Progression service unavailable")));
+    expect(await screen.findAllByText("Progression service unavailable")).toHaveLength(2);
+    expect(screen.queryByText("Loading heroes.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Loading progression.")).not.toBeInTheDocument();
+    expect(screen.getByText("Balanced Starter")).toBeInTheDocument();
+    expect(await screen.findByText("No matches yet.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "View all Heroes" }));
+    fireEvent.click(screen.getByRole("button", { name: "View progression" }));
+    expect(onNavigate).toHaveBeenCalledWith("/heroes");
+    expect(onNavigate).toHaveBeenCalledWith("/progression");
+  });
+
+  it("shows deck failures without a loading placeholder and preserves progression and Matches", async () => {
+    const onNavigate = setup([], Promise.reject(new Error("Deck service unavailable")));
+    expect(await screen.findAllByText("Deck service unavailable")).toHaveLength(2);
+    expect(screen.queryByText("Loading decks.")).not.toBeInTheDocument();
+    expect(await screen.findByText("Next level in 90 XP")).toBeInTheDocument();
+    expect(await screen.findByText("No matches yet.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Manage decks" }));
+    expect(onNavigate).toHaveBeenCalledWith("/decks");
   });
 });
