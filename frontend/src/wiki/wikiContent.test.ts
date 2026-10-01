@@ -41,4 +41,24 @@ describe("wiki content", () => {
     expect(content).toContain("24");
     expect(content).toContain("12");
   });
+
+  it("teaches both proactive Card windows, independent budgets, and stack resumption", () => {
+    const turnFlow = wikiTopicById("turn-flow");
+    const actions = wikiTopicById("action-points");
+    const cards = wikiTopicById("cards-and-priority");
+
+    expect(turnFlow?.keyRules).toContain(
+      "A turn proceeds through Movement Phase, Attack Phase, then final Card Play.",
+    );
+    expect(cards?.keyRules).toContain(
+      "Proactive Card play means the active side plays a Card with an empty stack during Movement or final Card Play, never during Attack.",
+    );
+    expect(cards?.keyRules).toContain(
+      "After a Card and its responses resolve, play resumes in the phase where the stack began, unless the match ends or normal phase completion advances play.",
+    );
+    expect(actions?.example).toContain("Ember Squire enters with 1/2 Unit action points");
+    expect(actions?.keyRules.join(" ")).toContain(
+      "a Hero with no action points can still play otherwise-legal Cards using Mana",
+    );
+  });
 });

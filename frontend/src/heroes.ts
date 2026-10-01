@@ -39,7 +39,7 @@ export const HERO_OPTIONS = [
     hp: 16,
     attack: 1,
     ap: 4,
-    text: "Extra action point for repositioning and summons.",
+    text: "Extra action point for repositioning, attacks, and activations. Summons spend Mana only.",
     token: "Chr",
   },
   {
