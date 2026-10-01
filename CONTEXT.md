@@ -414,3 +414,7 @@ _Avoid_: card bundle, latest pack
 **Card pack manifest**:
 The description of a Card pack's contents, compatibility requirements and dependencies on exact versions of other Card packs.
 _Avoid_: pack recipe, deck recipe
+
+**Card pack transfer**:
+A versioned portable document containing one exact root Card pack manifest, its complete dependency closure and every referenced exact published Card definition. Import preview reports Card and pack identity conflicts before the whole transfer can be applied.
+_Avoid_: latest pack export, partial pack installation

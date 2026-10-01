@@ -60,18 +60,23 @@ impl CardRevisionTransfer {
     }
 
     pub fn prepare_import<'a>(&'a self, destination: &'a CardCatalog) -> CardRevisionImport<'a> {
-        let status = match destination.resolve(self.revision.id()) {
-            Some(existing) if existing == &self.revision => {
-                CardRevisionImportStatus::AlreadyPresent
-            }
-            Some(_) => CardRevisionImportStatus::IdentityConflict,
-            None => CardRevisionImportStatus::NewRevision,
-        };
+        let status = card_revision_import_status(&self.revision, destination);
         CardRevisionImport {
             destination,
             revision: &self.revision,
             status,
         }
+    }
+}
+
+pub(crate) fn card_revision_import_status(
+    revision: &PublishedCardRevision,
+    destination: &CardCatalog,
+) -> CardRevisionImportStatus {
+    match destination.resolve(revision.id()) {
+        Some(existing) if existing == revision => CardRevisionImportStatus::AlreadyPresent,
+        Some(_) => CardRevisionImportStatus::IdentityConflict,
+        None => CardRevisionImportStatus::NewRevision,
     }
 }
 
