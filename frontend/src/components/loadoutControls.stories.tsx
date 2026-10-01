@@ -1,4 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { useState } from "react";
+import type { HeroType } from "../types";
 import { fn } from "storybook/test";
 import {
   HeroPicker,
@@ -66,7 +68,7 @@ export const HeroPickerStory: Story = {
   name: "HeroPicker",
   render: () => (
     <main className="app-shell picker-shell">
-      <HeroPicker selectedHeroType="runekeeper" busy={false} onSelect={fn()} />
+      <InteractiveHeroPicker />
     </main>
   ),
 };
@@ -94,3 +96,8 @@ export const LobbySeatStatusStory: Story = {
     </main>
   ),
 };
+
+function InteractiveHeroPicker() {
+  const [hero, setHero] = useState<HeroType>("runekeeper");
+  return <HeroPicker selectedHeroType={hero} busy={false} onSelect={setHero} />;
+}

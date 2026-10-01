@@ -1168,7 +1168,7 @@ button {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 12px;
-  color: #fffaf0;
+  color: inherit;
   background: var(--panel);
   cursor: pointer;
   text-align: left;
@@ -1224,7 +1224,7 @@ button {
   border: 1px solid rgba(247, 243, 234, 0.12);
   border-radius: 8px;
   padding: 0 8px;
-  color: #fffaf0;
+  color: inherit;
   background: rgba(255, 255, 255, 0.06);
   font-size: 0.82rem;
   font-weight: 900;
@@ -5927,4 +5927,13 @@ h1 {
 
 :root[data-motion="reduced"] .piece-feedback {
   display: none;
+}
+
+.hero-preview-3d > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.hero-picker > .hero-preview-3d {
+  height: 240px;
 }

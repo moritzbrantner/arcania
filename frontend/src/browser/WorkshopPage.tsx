@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, BookOpen, Download, Layers, Play, Settings, Sparkles, Swords, Upload } from "lucide-react";
+import { HeroPicker } from "../components/loadoutControls";
 import { HERO_OPTIONS } from "../heroes";
 import type { CatalogCard, HeroType } from "../types";
 import { CardEditor } from "./CardEditor";
@@ -70,7 +71,7 @@ export function WorkshopPage({ tab, onNavigate }: { tab: string | null; onNaviga
             <small>No account needed. Rules, cards and your latest match are saved in this browser. Starting a match replaces the previous one.</small>
             <button className="text-link" type="button" onClick={() => onNavigate("/tutorial")}>Learn to play with the tutorial</button>
           </div>
-          <div className="workshop-scene" aria-hidden="true"><div className="workshop-orbit" /><img className="workshop-hero-art" src={`${import.meta.env.BASE_URL}hero-art/${setup.playerHero}.svg`} alt="" /><div className="workshop-scene-caption"><span>37 hexes. Endless possibilities.</span><strong>{HERO_OPTIONS.find((hero) => hero.id === setup.playerHero)?.name}</strong></div></div>
+          <div className="workshop-hero-picker"><HeroPicker selectedHeroType={setup.playerHero} busy={busy} onSelect={(playerHero) => edit({ ...setup, playerHero })} /></div>
         </section> : activeTab === "rules" ? <RuleEditor setup={setup} onChange={edit} /> : activeTab === "decks" ? <DeckRecipeEditor playerRecipe={setup.playerDeckRecipe} opponentRecipe={setup.opponentDeckRecipe} catalog={catalog} systemDecks={systemDecks} onChange={(side, cards) => edit(side === "player" ? { ...setup, playerDeckRecipe: cards } : { ...setup, opponentDeckRecipe: cards })} /> : <CardEditor cards={setup.cards} catalog={catalog} onChange={(cards) => run(async () => { const next = await validateSetup({ ...setup, cards }); edit(next); setNotice("Card changes ready. Save the preset or start a match to keep them."); })} />}
         {activeTab !== "play" ? <div className="workshop-save"><span>{dirty ? "Unsaved changes" : "Saved preset"}</span><button className="primary-button" type="submit">Save preset</button><button className="secondary-link" type="button" onClick={() => run(start)}>Save & play against bot<ArrowRight size={18} /></button></div> : null}
         <details className="workshop-tools"><summary>Preset tools & repeatable matches</summary><p>Export rules, deck recipes and custom cards to share or keep a backup. Importing validates the preset before replacing your draft.</p><NumberField label="Match seed" min={0} max={4294967295} value={setup.seed} onChange={(seed) => edit({ ...setup, seed })} /><div className="actions"><button className="secondary-link" type="button" onClick={() => run(exportPreset)}><Download size={16} />Export preset</button><label className="secondary-link workshop-import"><Upload size={16} />Import preset<input type="file" accept="application/json,.json" aria-label="Import preset" onChange={(event) => {
