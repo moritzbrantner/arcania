@@ -1,4 +1,4 @@
-import type { CardKind, CatalogResponse, HeroType, MatchActionRequest, MatchResponse, Rarity } from "../types";
+import type { CardKind, CatalogResponse, DeckCardCount, HeroType, MatchActionRequest, MatchResponse, Rarity, SystemDeckRecipe } from "../types";
 
 export type CustomCard = { id: string; name: string; rarity: Rarity; cost: number; text: string; kind: CardKind };
 export type HeroRule = { maxHp: number; attack: number; maxAp: number; attackRange: number };
@@ -6,6 +6,8 @@ export type WorkshopSetup = {
   seed: number;
   playerHero: HeroType;
   opponentHero: HeroType;
+  playerDeckRecipe: DeckCardCount[];
+  opponentDeckRecipe: DeckCardCount[];
   ruleset: {
     schemaVersion: number;
     arena: { duelRadius: number; twoVTwoRadius: number };
@@ -28,6 +30,7 @@ type Engine = {
   workshop_defaults(): string;
   validate_setup(setup: string): string;
   catalog(): string;
+  system_decks(): string;
 };
 
 const SETUP_KEY = "rune-lanes.workshop.v1";
@@ -126,4 +129,10 @@ export async function browserAction(action: MatchActionRequest) {
 export async function browserCatalog(forMatch = false): Promise<CatalogResponse> {
   const catalog: CatalogResponse = JSON.parse(forMatch ? (await currentMatch()).catalog() : (await engine()).catalog());
   return { cards: catalog.cards.map((card) => ({ ...card, artPath: `${import.meta.env.BASE_URL}${card.artPath}` })) };
+}
+
+export type WorkshopSystemDeckRecipe = Omit<SystemDeckRecipe, "legality">;
+
+export async function browserSystemDecks(): Promise<WorkshopSystemDeckRecipe[]> {
+  return JSON.parse((await engine()).system_decks());
 }
