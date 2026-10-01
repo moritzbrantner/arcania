@@ -167,6 +167,7 @@ export const WIKI_SCENES = [
         instruction:
           "The Player has spent Hero action points, a friendly Unit is damaged, and a Mana Well is occupied before control passes.",
         match: matchState({
+          phase: "cardPlay",
           round: 1,
           activeSide: "player",
           player: { mana: 1, maxMana: 3, hero: hero("player", { q: -1, r: 1 }, { apRemaining: 0 }) },
@@ -208,7 +209,7 @@ export const WIKI_SCENES = [
         instruction:
           "Player becomes active again. Mana, Hero action points, Unit action points, and Unit armor refresh at turn start.",
         match: matchState({
-          round: 1,
+          round: 2,
           activeSide: "player",
           player: { mana: 4, maxMana: 4, hero: hero("player", { q: -1, r: 1 }, { apRemaining: 3 }) },
           units: [unit("player", { q: 0, r: 0 }, { armor: 2, maxArmor: 2, apRemaining: 2 })],
@@ -301,76 +302,115 @@ export const WIKI_SCENES = [
     type: "board",
     id: "action-points-budget",
     title: "Action Point Budgets",
-    summary: "Hero action points and Unit action points are separate budgets.",
+    summary: "Use Mana for Cards and separate action points for positioning before committing to Attack.",
     steps: [
       {
-        title: "Hero budget",
-        instruction: "The Hero starts with a full Hero action point budget.",
-        match: matchState({
-          player: { hero: hero("player", { q: -1, r: 1 }, { apRemaining: 3, maxAp: 3 }) },
-          units: [unit("player", { q: 0, r: 0 }, { apRemaining: 2, maxAp: 2 })],
-        }),
+        title: "Hero and Mana budgets",
+        instruction: "Start Movement with 3 Mana and 3 Hero action points. Cards spend Mana; movement spends the moving piece's action points.",
+        match: matchState({ hand: [wikiEmberSquireCard, wikiSparkJoltCard] }),
         selectedPieceId: WIKI_PLAYER_HERO_ID,
         highlights: [{ kind: "piece", pieceId: WIKI_PLAYER_HERO_ID, tone: "primary" }],
         callouts: [
+          { label: "Phase", value: "Movement" },
+          { label: "Mana", value: "3/3" },
           { label: "Hero AP", value: "3/3" },
-          { label: "Unit AP", value: "2/2" },
         ],
       },
       {
-        title: "Play a Card",
-        instruction: "Playing Ember Squire spends Mana, while Hero and Unit action points are unchanged.",
+        title: "Summon during Movement",
+        instruction: "Ember Squire has resolved on the adjacent empty Hex. It spends 1 Mana, preserves Hero AP, and enters with 1/2 Unit action points.",
         match: matchState({
-          player: { hero: hero("player", { q: -1, r: 1 }, { apRemaining: 3, maxAp: 3 }) },
-          hand: [wikiEmberSquireCard],
-          units: [unit("player", { q: 0, r: 0 }, { apRemaining: 2, maxAp: 2 })],
+          player: { mana: 2, discardCount: 1 },
+          hand: [wikiSparkJoltCard],
+          units: [unit("player", { q: 0, r: 0 }, { apRemaining: 1 })],
         }),
-        selectedCardId: WIKI_EMBER_SQUIRE_CARD_ID,
-        focusedCoord: { q: 0, r: 1 },
+        selectedPieceId: WIKI_PLAYER_UNIT_ID,
+        focusedCoord: { q: 0, r: 0 },
         highlights: [
           { kind: "piece", pieceId: WIKI_PLAYER_HERO_ID, tone: "primary" },
+          { kind: "piece", pieceId: WIKI_PLAYER_UNIT_ID, tone: "secondary" },
+        ],
+        callouts: [
+          { label: "Phase", value: "Movement" },
+          { label: "Mana", value: "2/3" },
+          { label: "Hero AP", value: "3/3" },
+          { label: "Unit AP", value: "1/2" },
+        ],
+      },
+      {
+        title: "Move the summoned Unit",
+        instruction: "Ember Squire moves one adjacent Hex using its entry action point. Hero AP and Mana stay unchanged.",
+        match: matchState({
+          player: { mana: 2, discardCount: 1 },
+          hand: [wikiSparkJoltCard],
+          units: [unit("player", { q: 0, r: 1 }, { apRemaining: 0 })],
+        }),
+        selectedPieceId: WIKI_PLAYER_UNIT_ID,
+        focusedCoord: { q: 0, r: 1 },
+        highlights: [
+          { kind: "piece", pieceId: WIKI_PLAYER_UNIT_ID, tone: "primary" },
           { kind: "coord", coord: { q: 0, r: 1 }, tone: "secondary" },
         ],
         callouts: [
-          { label: "Hero AP", value: "2/3" },
-          { label: "Selected card", value: "Ember Squire" },
+          { label: "Phase", value: "Movement" },
+          { label: "Mana", value: "2/3" },
+          { label: "Hero AP", value: "3/3" },
+          { label: "Unit AP", value: "0/2" },
         ],
       },
       {
-        title: "Move a Unit",
-        instruction: "Moving spends the Unit's own action point. The Hero budget does not change.",
+        title: "Commit to Attack",
+        instruction: "Starting Attack closes Movement. Proactive Cards are unavailable; pieces need action points and an enemy in range to attack. Ember Squire has spent its entry budget.",
         match: matchState({
-          player: { hero: hero("player", { q: -1, r: 1 }, { apRemaining: 2, maxAp: 3 }) },
-          units: [unit("player", { q: 1, r: 0 }, { apRemaining: 1, maxAp: 2 })],
+          phase: "attack",
+          player: { mana: 2, discardCount: 1 },
+          hand: [wikiSparkJoltCard],
+          units: [unit("player", { q: 0, r: 1 }, { apRemaining: 0 })],
         }),
         selectedPieceId: WIKI_PLAYER_UNIT_ID,
-        focusedCoord: { q: 1, r: 0 },
-        highlights: [
-          { kind: "piece", pieceId: WIKI_PLAYER_UNIT_ID, tone: "primary" },
-          { kind: "coord", coord: { q: 1, r: 0 }, tone: "secondary" },
-        ],
+        highlights: [{ kind: "piece", pieceId: WIKI_PLAYER_UNIT_ID, tone: "primary" }],
         callouts: [
-          { label: "Hero AP", value: "2/3" },
-          { label: "Unit AP", value: "1/2" },
+          { label: "Phase", value: "Attack" },
+          { label: "Proactive Cards", value: "Unavailable" },
+          { label: "Hero AP", value: "3/3" },
+          { label: "Unit AP", value: "0/2" },
         ],
       },
       {
-        title: "Attack once",
-        instruction: "A Unit can still have action points left after attacking, but that piece cannot attack again this turn.",
+        title: "Final Card Play",
+        instruction: "Finish attacks to reach final Card Play. Remaining Mana can pay for Spark Jolt, but movement and attacks cannot resume.",
         match: matchState({
-          units: [
-            unit("player", { q: 0, r: 0 }, { apRemaining: 1, maxAp: 2, hasAttacked: true }),
-            unit("opponent", { q: 1, r: 0 }, { id: WIKI_OPPONENT_UNIT_ID }),
-          ],
+          phase: "cardPlay",
+          player: { mana: 2, discardCount: 1 },
+          hand: [wikiSparkJoltCard],
+          units: [unit("player", { q: 0, r: 1 }, { apRemaining: 0 })],
         }),
-        selectedPieceId: WIKI_PLAYER_UNIT_ID,
-        highlights: [
-          { kind: "piece", pieceId: WIKI_PLAYER_UNIT_ID, tone: "primary" },
-          { kind: "piece", pieceId: WIKI_OPPONENT_UNIT_ID, tone: "danger" },
-        ],
+        selectedCardId: WIKI_SPARK_JOLT_CARD_ID,
+        selectedPieceId: WIKI_OPPONENT_HERO_ID,
+        highlights: [{ kind: "piece", pieceId: WIKI_OPPONENT_HERO_ID, tone: "danger" }],
         callouts: [
-          { label: "Unit AP", value: "1/2" },
-          { label: "Attack limit", value: "Once per piece per turn" },
+          { label: "Phase", value: "Card Play" },
+          { label: "Mana", value: "2/3" },
+          { label: "Hero AP", value: "3/3" },
+        ],
+      },
+      {
+        title: "Spend remaining Mana",
+        instruction: "Spark Jolt resolves for 1 damage after spending 1 Mana. Hero AP stays unchanged. End Turn is available once this final Card Play stack is empty.",
+        match: matchState({
+          phase: "cardPlay",
+          player: { mana: 1, discardCount: 2 },
+          opponent: { hero: hero("opponent", { q: 1, r: -1 }, { hp: 17 }) },
+          hand: [],
+          units: [unit("player", { q: 0, r: 1 }, { apRemaining: 0 })],
+        }),
+        selectedPieceId: WIKI_OPPONENT_HERO_ID,
+        highlights: [{ kind: "piece", pieceId: WIKI_OPPONENT_HERO_ID, tone: "danger" }],
+        callouts: [
+          { label: "Phase", value: "Card Play" },
+          { label: "Mana", value: "1/3" },
+          { label: "Hero AP", value: "3/3" },
+          { label: "Opponent Hero HP", value: "17/18" },
         ],
       },
     ],
@@ -379,71 +419,90 @@ export const WIKI_SCENES = [
     type: "board",
     id: "cards-priority-stack",
     title: "Cards and Priority",
-    summary: "Watch a response Spell enter above an action and resolve first.",
+    summary: "A Movement summon waits for a higher-priority Spell response, then Movement resumes.",
     steps: [
       {
-        title: "Action enters the stack",
-        instruction: "Opponent attacks, creating a stack item. Player has priority before it resolves.",
+        title: "Movement Card enters the stack",
+        instruction: "Playing Ember Squire spends 1 Mana and no Hero AP. The summon waits on the stack; ordinary board actions and phase changes are frozen.",
         match: matchState({
-          prioritySide: "player",
-          units: [unit("player", { q: 0, r: 0 }), unit("opponent", { q: 1, r: 0 }, { id: WIKI_OPPONENT_UNIT_ID })],
-          actionStack: [attackStackItem()],
+          mode: "shared",
+          prioritySide: "opponent",
+          player: { mana: 2, discardCount: 1 },
+          hand: [],
+          actionStack: [emberSquireStackItem()],
         }),
+        focusedCoord: { q: 0, r: 0 },
         highlights: [
-          { kind: "piece", pieceId: WIKI_OPPONENT_UNIT_ID, tone: "danger" },
-          { kind: "piece", pieceId: WIKI_PLAYER_UNIT_ID, tone: "primary" },
+          { kind: "piece", pieceId: WIKI_PLAYER_HERO_ID, tone: "primary" },
+          { kind: "coord", coord: { q: 0, r: 0 }, tone: "secondary" },
         ],
         callouts: [
+          { label: "Phase", value: "Movement" },
+          { label: "Mana", value: "2/3" },
+          { label: "Hero AP", value: "3/3" },
           { label: "Stack items", value: "1" },
+          { label: "Priority", value: "Opponent" },
+        ],
+      },
+      {
+        title: "Opponent responds with a Spell",
+        instruction: "Opponent spends 1 Mana on Spark Jolt, a priority-3 response above the priority-0 summon. Player receives priority.",
+        match: matchState({
+          mode: "shared",
+          prioritySide: "player",
+          player: { mana: 2, discardCount: 1 },
+          opponent: { mana: 2, discardCount: 1, handCount: 2 },
+          hand: [],
+          actionStack: [emberSquireStackItem(), sparkJoltStackItem()],
+        }),
+        selectedPieceId: WIKI_PLAYER_HERO_ID,
+        highlights: [{ kind: "piece", pieceId: WIKI_PLAYER_HERO_ID, tone: "danger" }],
+        callouts: [
+          { label: "Phase", value: "Movement" },
+          { label: "Top of stack", value: "Spark Jolt" },
+          { label: "Below it", value: "Ember Squire summon" },
           { label: "Priority", value: "Player" },
         ],
       },
       {
-        title: "Respond with a Spell",
-        instruction: "Spark Jolt is a legal higher-priority Spell response targeting the enemy Unit.",
-        match: matchState({
-          prioritySide: "player",
-          hand: [wikiSparkJoltCard],
-          units: [unit("player", { q: 0, r: 0 }), unit("opponent", { q: 1, r: 0 }, { id: WIKI_OPPONENT_UNIT_ID })],
-          actionStack: [attackStackItem()],
-        }),
-        selectedCardId: WIKI_SPARK_JOLT_CARD_ID,
-        selectedPieceId: WIKI_OPPONENT_UNIT_ID,
-        highlights: [{ kind: "piece", pieceId: WIKI_OPPONENT_UNIT_ID, tone: "danger" }],
-        callouts: [{ label: "Response", value: "Must be legal and higher priority" }],
-      },
-      {
         title: "Top resolves first",
-        instruction: "Spark Jolt sits above the attack. When both sides stop adding responses, the top stack item resolves first.",
+        instruction: "Player passes. Spark Jolt resolves for 1 Hero damage while the summon stays pending and board actions stay frozen.",
         match: matchState({
+          mode: "shared",
           prioritySide: "opponent",
-          units: [unit("player", { q: 0, r: 0 }), unit("opponent", { q: 1, r: 0 }, { id: WIKI_OPPONENT_UNIT_ID })],
-          actionStack: [attackStackItem(), sparkJoltStackItem()],
+          player: { mana: 2, discardCount: 1, hero: hero("player", { q: -1, r: 1 }, { hp: 19 }) },
+          opponent: { mana: 2, discardCount: 1, handCount: 2 },
+          hand: [],
+          actionStack: [emberSquireStackItem()],
         }),
-        selectedPieceId: WIKI_OPPONENT_UNIT_ID,
-        highlights: [{ kind: "piece", pieceId: WIKI_OPPONENT_UNIT_ID, tone: "danger" }],
+        selectedPieceId: WIKI_PLAYER_HERO_ID,
+        highlights: [{ kind: "piece", pieceId: WIKI_PLAYER_HERO_ID, tone: "danger" }],
         callouts: [
-          { label: "Top of stack", value: "Spark Jolt" },
-          { label: "Below it", value: "Opponent attack" },
+          { label: "Phase", value: "Movement" },
+          { label: "Hero HP", value: "19/20" },
+          { label: "Hero AP", value: "3/3" },
+          { label: "Stack items", value: "1" },
         ],
       },
       {
-        title: "Stack clears",
-        instruction: "After priority is passed, the response resolves before the original lower-priority action.",
+        title: "Movement resumes",
+        instruction: "Opponent passes and the summon resolves. The stack empties in Movement; Ember Squire may now move with its 1/2 entry action points.",
         match: matchState({
-          prioritySide: null,
-          units: [
-            unit("player", { q: 0, r: 0 }),
-            unit("opponent", { q: 1, r: 0 }, { id: WIKI_OPPONENT_UNIT_ID, armor: 1, maxArmor: 2 }),
-          ],
+          mode: "shared",
+          player: { mana: 2, discardCount: 1, hero: hero("player", { q: -1, r: 1 }, { hp: 19 }) },
+          opponent: { mana: 2, discardCount: 1, handCount: 2 },
+          hand: [],
+          units: [unit("player", { q: 0, r: 0 }, { apRemaining: 1 })],
           actionStack: [],
-          log: ["Spark Jolt resolved before the attack."],
         }),
-        selectedPieceId: WIKI_OPPONENT_UNIT_ID,
-        highlights: [{ kind: "piece", pieceId: WIKI_OPPONENT_UNIT_ID, tone: "danger" }],
+        selectedPieceId: WIKI_PLAYER_UNIT_ID,
+        highlights: [{ kind: "piece", pieceId: WIKI_PLAYER_UNIT_ID, tone: "primary" }],
         callouts: [
+          { label: "Phase", value: "Movement" },
+          { label: "Mana", value: "2/3" },
+          { label: "Hero AP", value: "3/3" },
+          { label: "Unit AP", value: "1/2" },
           { label: "Stack items", value: "0" },
-          { label: "Priority passing", value: "Allows top item to resolve" },
         ],
       },
     ],
@@ -458,6 +517,7 @@ export const WIKI_SCENES = [
         title: "Range check",
         instruction: "An Archer-style Hero with range 2 can attack an enemy Unit two Hexes away.",
         match: matchState({
+          phase: "attack",
           player: { hero: hero("player", { q: -1, r: 1 }, { heroType: "archer", attack: 2, attackRange: 2 }) },
           units: [unit("opponent", { q: 1, r: 1 }, { id: WIKI_OPPONENT_UNIT_ID })],
         }),
@@ -473,6 +533,7 @@ export const WIKI_SCENES = [
         title: "No blocker rule",
         instruction: "Occupied Hexes between attacker and target do not block basic attacks. Range uses hex distance, not line of sight.",
         match: matchState({
+          phase: "attack",
           player: { hero: hero("player", { q: -1, r: 1 }, { heroType: "archer", attack: 2, attackRange: 2 }) },
           units: [
             unit("player", { q: 0, r: 1 }, { id: WIKI_SECOND_PLAYER_UNIT_ID }),
@@ -491,6 +552,7 @@ export const WIKI_SCENES = [
         title: "No counterdamage",
         instruction: "The defender has range 1, so it cannot counterdamage an attacker two Hexes away.",
         match: matchState({
+          phase: "attack",
           player: { hero: hero("player", { q: -1, r: 1 }, { heroType: "archer", attack: 2, attackRange: 2 }) },
           units: [unit("opponent", { q: 1, r: 1 }, { id: WIKI_OPPONENT_UNIT_ID, attackRange: 1 })],
         }),
@@ -508,6 +570,7 @@ export const WIKI_SCENES = [
         title: "Adjacent counterdamage",
         instruction: "When the attacker is adjacent, a range-1 defender can reach back and deal counterdamage.",
         match: matchState({
+          phase: "attack",
           player: { hero: hero("player", { q: 0, r: 1 }, { heroType: "archer", attack: 2, attackRange: 2, hp: 14, maxHp: 16 }) },
           units: [unit("opponent", { q: 1, r: 1 }, { id: WIKI_OPPONENT_UNIT_ID, attackRange: 1 })],
         }),
@@ -677,6 +740,8 @@ function catalogCard(cardValue: Card, copyCount: number, artPath: string): Catal
 }
 
 function matchState(options: {
+  mode?: MatchState["mode"];
+  phase?: MatchState["phase"];
   round?: number;
   activeSide?: Side;
   prioritySide?: Side | null;
@@ -692,9 +757,9 @@ function matchState(options: {
   const hand = options.hand ?? options.player?.hand ?? [wikiEmberSquireCard, wikiSparkJoltCard];
 
   return {
-    mode: "solo",
+    mode: options.mode ?? "solo",
     round: options.round ?? 1,
-    phase: "movement",
+    phase: options.phase ?? "movement",
     activeSide: options.activeSide ?? "player",
     prioritySide: options.prioritySide ?? null,
     player: {
@@ -756,15 +821,15 @@ function activatedBuilding(position: HexCoord, activatedThisTurn: boolean): Buil
   };
 }
 
-function attackStackItem(): StackItem {
+function emberSquireStackItem(): StackItem {
   return {
-    id: "wiki-stack-attack",
-    side: "opponent",
+    id: "wiki-stack-ember-squire",
+    side: "player",
     priority: 0,
     action: {
-      type: "attack",
-      attackerId: WIKI_OPPONENT_UNIT_ID,
-      targetId: WIKI_PLAYER_UNIT_ID,
+      type: "playUnit",
+      card: cardSummary(wikiEmberSquireCard),
+      coord: { q: 0, r: 0 },
     },
   };
 }
@@ -772,12 +837,12 @@ function attackStackItem(): StackItem {
 function sparkJoltStackItem(): StackItem {
   return {
     id: "wiki-stack-spark-jolt",
-    side: "player",
+    side: "opponent",
     priority: 3,
     action: {
       type: "castSpell",
       card: cardSummary(wikiSparkJoltCard),
-      targetId: WIKI_OPPONENT_UNIT_ID,
+      targetId: WIKI_PLAYER_HERO_ID,
     },
   };
 }

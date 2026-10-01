@@ -22,6 +22,6 @@ export const Overview: Story = {};
 
 export const Topic: Story = {
   args: {
-    topicSlug: "turns-and-priority",
+    topicSlug: "action-points",
   },
 };
