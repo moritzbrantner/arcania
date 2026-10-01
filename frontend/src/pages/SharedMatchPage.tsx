@@ -308,6 +308,7 @@ export function SharedMatchPage({
   const hasPendingStack = Boolean(match && match.actionStack.length > 0);
   const isPriorityViewer = Boolean(match && match.prioritySide === viewerSide);
   const canAct = Boolean(match && (hasPendingStack ? isPriorityViewer : isActiveViewer));
+  const liveConnectionReady = socketRef.current?.readyState === WebSocket.OPEN;
 
   useEffect(() => {
     if (shared?.status === "setup" && shared.viewerHeroType) {
@@ -319,9 +320,9 @@ export function SharedMatchPage({
     match,
     viewerSide,
     submitAction: sendSharedAction,
-    readOnly: busy || !canAct,
-    cursorDisabled: busy,
-    contextMenuDisabled: busy,
+    readOnly: busy || !canAct || !liveConnectionReady,
+    cursorDisabled: busy || !liveConnectionReady,
+    contextMenuDisabled: busy || !liveConnectionReady,
     onNotice: setNotice,
   });
 
@@ -657,7 +658,6 @@ export function SharedMatchPage({
     (participant) => participant.side !== viewerSide && sameTeam(participant.side, viewerSide),
   );
   const teammateHand = teammate ? handForSide(match, teammate.side) : [];
-  const liveConnectionReady = socketRef.current?.readyState === WebSocket.OPEN;
   const selectedCardAvailability = selectedCard
     ? cardAvailability(match, viewerSide, selectedCard, {
         canAct,
@@ -684,7 +684,7 @@ export function SharedMatchPage({
     canAct: canAct && !busy && liveConnectionReady,
     availabilityOptions: { busy, connectionReady: liveConnectionReady },
   });
-  const turnChecklistItems = turnChecklistForMatch(match, viewerSide, canAct && !busy);
+  const turnChecklistItems = turnChecklistForMatch(match, viewerSide, canAct && !busy && liveConnectionReady);
   const phaseLabel =
     match.phase === "matchOver"
       ? `${sideLabel(match.winner)} wins`
@@ -752,7 +752,7 @@ export function SharedMatchPage({
                 className="primary-button"
                 type="button"
                 onClick={() => sendSharedAction({ type: "startAttackPhase" })}
-                disabled={busy || !isActiveViewer}
+                disabled={busy || !isActiveViewer || !liveConnectionReady}
               >
                 <Sword size={18} />
                 Start Attack
@@ -764,7 +764,7 @@ export function SharedMatchPage({
               className="primary-button"
               type="button"
               onClick={() => sendSharedAction({ type: "startCardPlay" })}
-              disabled={busy || !isActiveViewer}
+              disabled={busy || !isActiveViewer || !liveConnectionReady}
             >
               <Play size={18} />
               Finish Attacks
@@ -775,7 +775,7 @@ export function SharedMatchPage({
               className="primary-button"
               type="button"
               onClick={() => sendSharedAction({ type: "endTurn" })}
-              disabled={busy || !isActiveViewer}
+              disabled={busy || !isActiveViewer || !liveConnectionReady}
             >
               <Play size={18} />
               End Turn
@@ -832,7 +832,7 @@ export function SharedMatchPage({
             selectedPiece={selectedPiece}
             focusedCoord={boardCursor.visible ? boardCursor.coord : null}
             heroAppearances={shared.heroAppearances}
-            disabled={busy || match.phase === "matchOver" || !canAct}
+            disabled={busy || match.phase === "matchOver" || !canAct || !liveConnectionReady}
             onTileClick={handleTileClick}
             onTileDrop={handleCardDrop}
             onUnitContextMenu={(unit, position) => openUnitContextMenu(unit, position.x, position.y)}
