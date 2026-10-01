@@ -60,9 +60,9 @@ pub struct CardEvidenceSnapshot {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct CardEvidenceInput {
-    pub candidate: CardEvidenceSnapshot,
-    pub baseline: CardEvidenceSnapshot,
+pub struct CardEvidenceInput<Card = CardEvidenceSnapshot> {
+    pub candidate: Card,
+    pub baseline: Card,
     pub cases: Vec<CardTestScenario>,
     pub policy_config: AiPolicyConfig,
     pub player_policy_id: String,

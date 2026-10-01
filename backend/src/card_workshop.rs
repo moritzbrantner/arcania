@@ -12,6 +12,7 @@ use rune_lanes_core::{
     PublishedCardRevisionError,
 };
 
+pub mod evidence;
 mod pack_transfers;
 pub mod scenarios;
 mod transfers;
@@ -98,6 +99,7 @@ pub enum CardWorkshopError {
     PackTransfer(rune_lanes_core::CardPackTransferError),
     IncompatibleStoredPack(rune_lanes_core::CardPackRevisionId),
     InvalidScenario(String),
+    Evidence(crate::ai_lab::AiLabError),
     Scenario {
         command_index: Option<u32>,
         error: rune_lanes_core::event_sourcing::EventSourcingError,
@@ -138,6 +140,7 @@ impl fmt::Display for CardWorkshopError {
             Self::Transfer(error) => error.fmt(formatter),
             Self::PackTransfer(error) => error.fmt(formatter),
             Self::InvalidScenario(error) => formatter.write_str(error),
+            Self::Evidence(error) => error.fmt(formatter),
             Self::Scenario {
                 command_index,
                 error,
