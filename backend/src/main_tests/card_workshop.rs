@@ -672,3 +672,135 @@ async fn published_card_ids_cannot_be_renamed_between_revisions() {
 
     let _ = fs::remove_file(path);
 }
+
+#[tokio::test]
+async fn draft_taxonomy_survives_persistence_publication_history_and_fork() {
+    let path = test_db_path("card-workshop-taxonomy");
+    let app = create_app(SqliteMatchStore::new(&path).expect("store should open"));
+    let token = register_test_account(app.clone(), "taxonomy@example.com").await;
+    let taxonomy = serde_json::json!({
+        "faction": "ember-court", "element": "fire",
+        "traits": ["soldier", "veteran"], "families": ["duelist", "starter"]
+    });
+    let mut definition: serde_json::Value =
+        serde_json::from_str(&unit_definition_json("Ash Duelist", 2, 3)).unwrap();
+    definition["taxonomy"] = taxonomy.clone();
+    let (status, draft) = json_request(
+        app.clone(),
+        Request::builder()
+            .method("POST")
+            .uri("/api/card-drafts")
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::json!({"definition": definition}).to_string(),
+            ))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(draft["definition"]["taxonomy"], taxonomy);
+    let id = draft["id"].as_i64().unwrap();
+    let (status, loaded) = json_request(
+        app.clone(),
+        Request::builder()
+            .uri(format!("/api/card-drafts/{id}"))
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(loaded["definition"]["taxonomy"], taxonomy);
+    let (status, published) = json_request(
+        app.clone(),
+        Request::builder()
+            .method("POST")
+            .uri(format!("/api/card-drafts/{id}/publish"))
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"version":1}"#))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(published["revision"]["definition"]["taxonomy"], taxonomy);
+    let (status, history) = json_request(
+        app.clone(),
+        Request::builder()
+            .uri("/api/card-revisions/ash-duelist")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        history["revisions"][0]["revision"]["definition"]["taxonomy"],
+        taxonomy
+    );
+    let (status, fork) = json_request(
+        app,
+        Request::builder()
+            .method("POST")
+            .uri("/api/card-revisions/ash-duelist/1/fork")
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(fork["definition"]["taxonomy"], taxonomy);
+    let _ = fs::remove_file(path);
+}
+
+#[tokio::test]
+async fn invalid_taxonomy_is_saved_for_editing_and_rejected_on_publication() {
+    let path = test_db_path("card-workshop-invalid-taxonomy");
+    let app = create_app(SqliteMatchStore::new(&path).expect("store should open"));
+    let token = register_test_account(app.clone(), "invalid-taxonomy@example.com").await;
+    let mut definition: serde_json::Value =
+        serde_json::from_str(&unit_definition_json("Ash Duelist", 2, 3)).unwrap();
+    definition["taxonomy"] = serde_json::json!({"faction": " Bad Faction "});
+    let (status, draft) = json_request(
+        app.clone(),
+        Request::builder()
+            .method("POST")
+            .uri("/api/card-drafts")
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::json!({"definition": definition}).to_string(),
+            ))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(draft["definition"]["taxonomy"]["faction"], " Bad Faction ");
+    assert_eq!(
+        draft["validationErrors"],
+        serde_json::json!([
+            {"code": "invalidTaxonomyTag", "field": "taxonomy.faction", "value": " Bad Faction "}
+        ])
+    );
+    let id = draft["id"].as_i64().unwrap();
+    let (status, rejected) = json_request(
+        app,
+        Request::builder()
+            .method("POST")
+            .uri(format!("/api/card-drafts/{id}/publish"))
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"version":1}"#))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        rejected["message"]
+            .as_str()
+            .unwrap()
+            .contains("validation error")
+    );
+    let _ = fs::remove_file(path);
+}

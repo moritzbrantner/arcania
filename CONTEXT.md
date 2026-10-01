@@ -395,6 +395,10 @@ _Avoid_: match scenario, dev scenario, sandbox match
 **Card workshop**:
 The browser-local surface for editing Rule presets and custom cards and trying them in Solo matches. It does not change the hosted catalog, accounts, or progression.
 
+**Card taxonomy**:
+Descriptive faction, element, trait and Card family tags attached to an authored Card revision for discovery. Card taxonomy does not grant inherited behavior or change Card interactions.
+_Avoid_: Card classes, mechanic tags
+
 **Card pack**:
 A named collection of exact published Card revisions, identified by a stable pack identity and a positive version. Different versions of the same Card pack are distinct collections.
 _Avoid_: card bundle, latest pack

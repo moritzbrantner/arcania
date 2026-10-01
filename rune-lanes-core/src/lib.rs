@@ -18,7 +18,7 @@ pub use card_catalog::{
 };
 pub use card_definitions::{
     CardCatalog, CardCatalogError, CardDefinition, CardDefinitionValidationError, CardRevisionId,
-    PublishedCardRevision, PublishedCardRevisionError,
+    CardTaxonomy, PublishedCardRevision, PublishedCardRevisionError,
 };
 pub use card_packs::{
     CARD_PACK_MANIFEST_SCHEMA_VERSION, CardPackCatalog, CardPackCompatibility, CardPackManifest,

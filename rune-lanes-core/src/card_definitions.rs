@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
@@ -17,6 +17,65 @@ pub struct CardDefinition {
     pub cost: u8,
     pub text: String,
     pub kind: CardKind,
+    #[serde(default, skip_serializing_if = "CardTaxonomy::is_empty")]
+    pub taxonomy: CardTaxonomy,
+}
+
+/// Authoring and discovery metadata; it never contributes match Card mechanics.
+/// Tags use lowercase letters, digits and single interior hyphens. Drafts may
+/// retain invalid values, but publication validates them without normalization.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CardTaxonomy {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub faction: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub element: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub traits: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub families: Vec<String>,
+}
+
+impl CardTaxonomy {
+    pub fn is_empty(&self) -> bool {
+        self.faction.is_none()
+            && self.element.is_none()
+            && self.traits.is_empty()
+            && self.families.is_empty()
+    }
+
+    fn validation_errors(&self) -> Vec<CardDefinitionValidationError> {
+        let mut errors = Vec::new();
+        for (field, tag) in [("faction", &self.faction), ("element", &self.element)] {
+            if let Some(tag) = tag {
+                validate_taxonomy_tag(&format!("taxonomy.{field}"), tag, &mut errors);
+            }
+        }
+        for (field, tags) in [("traits", &self.traits), ("families", &self.families)] {
+            let mut seen = BTreeSet::new();
+            for (index, tag) in tags.iter().enumerate() {
+                let path = format!("taxonomy.{field}[{index}]");
+                validate_taxonomy_tag(&path, tag, &mut errors);
+                if !seen.insert(tag) {
+                    errors.push(CardDefinitionValidationError::DuplicateTaxonomyTag {
+                        field: path,
+                        value: tag.clone(),
+                    });
+                }
+            }
+        }
+        errors
+    }
+}
+
+fn validate_taxonomy_tag(field: &str, tag: &str, errors: &mut Vec<CardDefinitionValidationError>) {
+    if !valid_card_id(tag) {
+        errors.push(CardDefinitionValidationError::InvalidTaxonomyTag {
+            field: field.to_string(),
+            value: tag.to_string(),
+        });
+    }
 }
 
 impl CardDefinition {
@@ -33,7 +92,7 @@ impl CardDefinition {
     }
 
     pub fn validation_errors(&self) -> Vec<CardDefinitionValidationError> {
-        let mut errors = Vec::new();
+        let mut errors = self.taxonomy.validation_errors();
 
         if !valid_card_id(&self.id) {
             errors.push(CardDefinitionValidationError::InvalidId {
@@ -122,6 +181,7 @@ impl From<Card> for CardDefinition {
             cost: card.cost,
             text: card.text,
             kind: card.kind,
+            taxonomy: CardTaxonomy::default(),
         }
     }
 }
@@ -301,6 +361,34 @@ impl CardCatalog {
             .and_then(|revision_id| self.revisions.get(revision_id))
     }
 
+    /// Discover exact revisions in stable identity order. Every supplied field
+    /// must match; trait and family lists require all listed tags, regardless of
+    /// order. Empty taxonomy selects all revisions, without a latest fallback.
+    pub fn discover<'a>(
+        &'a self,
+        taxonomy: &'a CardTaxonomy,
+    ) -> impl Iterator<Item = &'a PublishedCardRevision> {
+        self.revisions.values().filter(move |revision| {
+            let candidate = &revision.definition().taxonomy;
+            taxonomy
+                .faction
+                .as_ref()
+                .is_none_or(|tag| candidate.faction.as_ref() == Some(tag))
+                && taxonomy
+                    .element
+                    .as_ref()
+                    .is_none_or(|tag| candidate.element.as_ref() == Some(tag))
+                && taxonomy
+                    .traits
+                    .iter()
+                    .all(|tag| candidate.traits.contains(tag))
+                && taxonomy
+                    .families
+                    .iter()
+                    .all(|tag| candidate.families.contains(tag))
+        })
+    }
+
     pub fn instantiate_latest(
         &self,
         card_id: &str,
@@ -328,6 +416,8 @@ impl CardCatalog {
 pub enum CardDefinitionValidationError {
     InvalidId { value: String },
     BlankName,
+    InvalidTaxonomyTag { field: String, value: String },
+    DuplicateTaxonomyTag { field: String, value: String },
     NegativeValue { field: String, value: i32 },
     NonPositiveValue { field: String, value: i32 },
     ZeroValue { field: String },
@@ -616,6 +706,7 @@ mod tests {
 
     fn unit_definition() -> CardDefinition {
         CardDefinition {
+            taxonomy: Default::default(),
             id: "ash-duelist".to_string(),
             name: "Ash Duelist".to_string(),
             rarity: Rarity::Advanced,
@@ -627,6 +718,215 @@ mod tests {
                 max_ap: 2,
             },
         }
+    }
+
+    #[test]
+    fn taxonomy_survives_published_revision_round_trip_without_changing_match_cards() {
+        let definition = unit_definition();
+        let original_card = serde_json::to_value(definition.instantiate("player-1")).unwrap();
+        let mut authored = serde_json::to_value(&definition).unwrap();
+        let taxonomy = serde_json::json!({
+            "faction": "ember-court",
+            "element": "fire",
+            "traits": ["soldier", "veteran"],
+            "families": ["duelist", "starter"]
+        });
+        authored["taxonomy"] = taxonomy.clone();
+        let tagged: CardDefinition = serde_json::from_value(authored).unwrap();
+        let published = PublishedCardRevision::new(tagged, 3).unwrap();
+        let encoded = serde_json::to_value(&published).unwrap();
+        assert_eq!(encoded["definition"]["taxonomy"], taxonomy);
+        let restored: PublishedCardRevision = serde_json::from_value(encoded).unwrap();
+        let catalog = CardCatalog::new([restored]).unwrap();
+        let exact = catalog.resolve(published.id()).unwrap();
+        assert_eq!(
+            serde_json::to_value(exact.definition()).unwrap()["taxonomy"],
+            taxonomy
+        );
+        assert_eq!(
+            serde_json::to_value(exact.definition().instantiate("player-1")).unwrap(),
+            original_card
+        );
+    }
+
+    #[test]
+    fn invalid_taxonomy_remains_editable_but_cannot_be_published() {
+        for (field, value) in [
+            ("faction", serde_json::json!(" Bad Faction ")),
+            ("element", serde_json::json!("")),
+            ("traits", serde_json::json!(["soldier", "soldier"])),
+            ("families", serde_json::json!(["parent--family"])),
+        ] {
+            let mut json = serde_json::to_value(unit_definition()).unwrap();
+            json["taxonomy"] = serde_json::json!({ field: value });
+            let draft: CardDefinition = serde_json::from_value(json).unwrap();
+            assert!(!draft.validation_errors().is_empty(), "{field}");
+            assert!(PublishedCardRevision::new(draft, 1).is_err(), "{field}");
+        }
+    }
+
+    #[test]
+    fn catalog_discovers_exact_revisions_by_all_requested_taxonomy_fields() {
+        let mut revisions = Vec::new();
+        for (id, revision, faction, element, traits, families) in [
+            (
+                "ash-duelist",
+                1,
+                "ember-court",
+                "fire",
+                vec!["soldier", "veteran"],
+                vec!["duelist", "starter"],
+            ),
+            (
+                "ash-duelist",
+                2,
+                "neutral",
+                "fire",
+                vec!["soldier", "veteran"],
+                vec!["duelist", "starter"],
+            ),
+            (
+                "cold-duelist",
+                1,
+                "ember-court",
+                "ice",
+                vec!["soldier", "veteran"],
+                vec!["duelist", "starter"],
+            ),
+            (
+                "new-duelist",
+                1,
+                "ember-court",
+                "fire",
+                vec!["soldier"],
+                vec!["duelist", "starter"],
+            ),
+            (
+                "ash-mage",
+                1,
+                "ember-court",
+                "fire",
+                vec!["soldier", "veteran"],
+                vec!["mage"],
+            ),
+            (
+                "partial-duelist",
+                1,
+                "ember-court",
+                "fire",
+                vec!["soldier", "veteran"],
+                vec!["duelist"],
+            ),
+        ] {
+            let mut definition = unit_definition();
+            definition.id = id.to_string();
+            definition.taxonomy = serde_json::from_value(serde_json::json!({
+                "faction": faction, "element": element, "traits": traits, "families": families
+            }))
+            .unwrap();
+            revisions.push(PublishedCardRevision::new(definition, revision).unwrap());
+        }
+        let catalog = CardCatalog::new(revisions).unwrap();
+        let query: CardTaxonomy = serde_json::from_value(serde_json::json!({
+            "faction": "ember-court", "element": "fire",
+            "traits": ["veteran", "soldier"], "families": ["starter", "duelist"]
+        }))
+        .unwrap();
+        let found: Vec<_> = catalog
+            .discover(&query)
+            .map(|r| r.id().to_string())
+            .collect();
+        assert_eq!(found, ["ash-duelist@1"]);
+        assert_eq!(catalog.latest("ash-duelist").unwrap().id().revision(), 2);
+        assert_eq!(catalog.discover(&CardTaxonomy::default()).count(), 6);
+        let element = CardTaxonomy {
+            element: Some("fire".to_string()),
+            ..Default::default()
+        };
+        let fire: Vec<_> = catalog
+            .discover(&element)
+            .map(|r| r.id().to_string())
+            .collect();
+        assert_eq!(
+            fire,
+            [
+                "ash-duelist@1",
+                "ash-duelist@2",
+                "ash-mage@1",
+                "new-duelist@1",
+                "partial-duelist@1"
+            ]
+        );
+        let unknown = CardTaxonomy {
+            traits: vec!["unknown".to_string()],
+            ..Default::default()
+        };
+        assert_eq!(catalog.discover(&unknown).count(), 0);
+    }
+
+    #[test]
+    fn taxonomy_validation_reports_exact_fields_and_preserves_draft_values() {
+        let mut json = serde_json::to_value(unit_definition()).unwrap();
+        let invalid = serde_json::json!({
+            "faction": " Ember Court ", "element": "fire--storm",
+            "traits": ["soldier", "soldier", ""],
+            "families": ["duelist", "duelist"]
+        });
+        json["taxonomy"] = invalid.clone();
+        let draft: CardDefinition = serde_json::from_value(json).unwrap();
+        let errors = serde_json::to_value(draft.validation_errors()).unwrap();
+        assert_eq!(
+            errors,
+            serde_json::json!([
+                {"code": "invalidTaxonomyTag", "field": "taxonomy.faction", "value": " Ember Court "},
+                {"code": "invalidTaxonomyTag", "field": "taxonomy.element", "value": "fire--storm"},
+                {"code": "duplicateTaxonomyTag", "field": "taxonomy.traits[1]", "value": "soldier"},
+                {"code": "invalidTaxonomyTag", "field": "taxonomy.traits[2]", "value": ""},
+                {"code": "duplicateTaxonomyTag", "field": "taxonomy.families[1]", "value": "duelist"}
+            ])
+        );
+        assert_eq!(serde_json::to_value(&draft).unwrap()["taxonomy"], invalid);
+        let mut valid =
+            serde_json::to_value(PublishedCardRevision::new(unit_definition(), 1).unwrap())
+                .unwrap();
+        valid["definition"]["taxonomy"] = invalid;
+        assert!(serde_json::from_value::<PublishedCardRevision>(valid).is_err());
+    }
+
+    #[test]
+    fn taxonomy_rejects_unknown_fields_and_malformed_shapes() {
+        for taxonomy in [
+            serde_json::json!({"inherits": "parent-card"}),
+            serde_json::json!({"faction": ["ember-court"]}),
+            serde_json::json!({"traits": "soldier"}),
+            serde_json::json!({"families": [42]}),
+        ] {
+            let mut json = serde_json::to_value(unit_definition()).unwrap();
+            json["taxonomy"] = taxonomy;
+            assert!(serde_json::from_value::<CardDefinition>(json).is_err());
+        }
+    }
+
+    #[test]
+    fn legacy_definitions_keep_their_serialized_shape_and_empty_taxonomy() {
+        let legacy = serde_json::json!({
+            "id": "ash-duelist", "name": "Ash Duelist", "rarity": "advanced", "cost": 2,
+            "text": "2 attack / 3 armor / 2 AP.",
+            "kind": {"type": "unit", "attack": 2, "armor": 3, "maxAp": 2}
+        });
+        let restored: CardDefinition = serde_json::from_value(legacy.clone()).unwrap();
+        assert!(restored.taxonomy.is_empty());
+        assert_eq!(serde_json::to_value(restored).unwrap(), legacy);
+        let catalog = crate::starter_card_catalog();
+        assert_eq!(
+            catalog.discover(&CardTaxonomy::default()).count(),
+            catalog.len()
+        );
+        let query = CardTaxonomy {
+            element: Some("fire".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(catalog.discover(&query).count(), 0);
     }
 
     #[test]
@@ -643,6 +943,7 @@ mod tests {
     #[test]
     fn validation_reports_multiple_editor_friendly_errors() {
         let definition = CardDefinition {
+            taxonomy: Default::default(),
             id: " Bad ID ".to_string(),
             name: "   ".to_string(),
             rarity: Rarity::Basic,

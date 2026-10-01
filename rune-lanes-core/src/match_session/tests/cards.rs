@@ -588,6 +588,7 @@ fn extreme_authored_effects_saturate_match_state_arithmetic() {
 fn published_extreme_stat_effects_saturate_and_emit_effective_deltas() {
     let extreme = authored_card(
         CardDefinition {
+            taxonomy: Default::default(),
             id: "limit-break".to_string(),
             name: "Limit Break".to_string(),
             rarity: Rarity::Basic,
@@ -652,6 +653,7 @@ fn published_extreme_stat_effects_saturate_and_emit_effective_deltas() {
 fn authored_stat_penalties_clamp_live_state_emit_effective_deltas_and_cannot_heal() {
     let penalty = authored_card(
         CardDefinition {
+            taxonomy: Default::default(),
             id: "withering-edict".to_string(),
             name: "Withering Edict".to_string(),
             rarity: Rarity::Basic,
@@ -741,6 +743,7 @@ fn authored_stat_penalties_clamp_live_state_emit_effective_deltas_and_cannot_hea
 fn published_item_stat_markers_emit_effective_clamped_deltas() {
     let item = authored_card(
         CardDefinition {
+            taxonomy: Default::default(),
             id: "draining-signet".to_string(),
             name: "Draining Signet".to_string(),
             rarity: Rarity::Basic,
