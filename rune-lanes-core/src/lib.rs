@@ -2,7 +2,7 @@ mod ai_lab_support;
 mod card_catalog;
 mod card_definitions;
 mod card_packs;
-mod deck_library;
+pub mod deck_library;
 mod match_session;
 
 pub mod commands;
