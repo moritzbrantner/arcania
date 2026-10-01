@@ -8,6 +8,12 @@ export type MatchMode = "solo" | "shared";
 
 export type Rarity = "basic" | "advanced" | "rare";
 
+/** The serialized identity of a core-owned published Card revision. */
+export type CardRevisionId = {
+  readonly cardId: string;
+  readonly revision: number;
+};
+
 export type HexCoord = {
   q: number;
   r: number;

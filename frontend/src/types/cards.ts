@@ -3,6 +3,7 @@ export type {
   BuildingEffect,
   Card,
   CardKind,
+  CardRevisionId,
   CardSummary,
   CatalogCard,
   CatalogResponse,
