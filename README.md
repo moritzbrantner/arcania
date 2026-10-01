@@ -2,7 +2,11 @@
 
 Rune Lanes is a small vertical slice for a card game / board game hybrid.
 
-Players control heroes on a radius-3 hex arena. Cards cost mana and hero action points to summon units or cast spells; units then spend their own action points to move across adjacent hexes and attack enemies within their attack range.
+Players control Heroes on a radius-3 hex arena. Cards spend Mana only, including when the Hero has no action points left. Heroes and Units spend their own action points to move across adjacent Hexes, attack, or activate effects.
+
+A turn proceeds through Movement Phase → Attack Phase → Card Play. During Movement, the active side may move pieces and play otherwise-legal Cards; a newly summoned Unit can move with its partial entry action points. Advancing commits to Attack, where proactive Cards are unavailable. Final Card Play lets the side spend remaining Mana on Cards before ending the turn.
+
+Pending stack actions freeze ordinary movement, attacks, proactive Cards, and phase changes. The priority holder may make an eligible higher-priority response or pass; when the stack empties, play resumes in the same phase, subject to normal phase completion. Older matches retain the Card windows pinned to their ruleset.
 
 ## GitHub Pages
 

@@ -1,5 +1,7 @@
 # Turn Phases and Mana-Only Card Play
 
+The turn timing decision is superseded by [ADR 0027](0027-movement-card-interleaving.md). This record preserves the prior decision and the compatibility work that shipped the Movement Card window.
+
 Rune Lanes previously used Hero action points as a shared budget for card play, movement, and attacks, as recorded in ADR 0001. We now separate board tempo from card tempo: turns move through Movement Phase, Attack Phase, and a public Card Play step; Cards spend Mana only; and priority responses stay on the stack because removing them would invalidate the existing reaction-card design. Card Play is exposed as a public match state even though Movement Phase and Attack Phase remain the two main named phases, so clients can gate End Turn and card availability without inferring hidden turn state.
 
 Issue #122 adds Movement Phase as a proactive Card window for new matches. Any otherwise-legal Card may be initiated during Movement or Card Play, using Mana without spending Hero or Unit action points. Its stack and responses retain the underlying phase. Proactive Cards remain illegal during Attack, Movement must advance through Attack before Card Play, and End Turn requires Card Play with an empty stack.

@@ -44,6 +44,18 @@ _Avoid_: hidden buff, invisible stat mutation
 Playing a Card by spending Mana and resolving its card-created effect through the match rules, including target legality, stack entry, and Unit, Spell, or Item effect logic.
 _Avoid_: card handler, play-card plumbing
 
+**Proactive Card play**:
+The active side initiating an otherwise-legal Card with an empty action stack during Movement Phase or the final Card Play step. It spends Mana only, even when the Hero has zero action points, and is unavailable during Attack Phase.
+_Avoid_: main-phase Card, Hero action
+
+**Action stack**:
+The ordered pending actions and responses that resolve from the top. While it is nonempty, ordinary movement, attacks, proactive Card play, phase changes, and End Turn are blocked; eligible responses and priority passing continue. When it empties, play resumes in the phase where it began, subject to normal phase completion.
+_Avoid_: action queue, reaction phase
+
+**Priority**:
+The right of a designated side to add an eligible higher-priority response or pass while the action stack is pending. Spell responses spend Mana only and may be available during Movement Phase, Attack Phase, or Card Play.
+_Avoid_: initiative, active turn
+
 **Mana**:
 The resource spent to play cards. A side refreshes Mana from its Hero and occupied Mana sources at the beginning of that side's turn, while unspent Mana remains available for reactions until that side's next turn begins.
 _Avoid_: energy
@@ -53,11 +65,11 @@ The first step of an active side's turn, when that side may move Heroes and Unit
 _Avoid_: planning phase
 
 **Attack Phase**:
-The turn step after Movement Phase, when the active side may attack with Heroes and Units until choosing to finish attacks or no legal attacks remain.
+The turn step after Movement Phase, when the active side may attack with Heroes and Units until choosing to finish attacks or no legal attacks remain. Proactive Card play is unavailable; eligible stack responses remain available. The side cannot return to Movement Phase.
 _Avoid_: combat phase
 
 **Card Play step**:
-The post-attack turn step when the active side may play Cards and then end the turn.
+The post-attack turn step when the active side may play otherwise-legal Cards using remaining Mana, then end the turn with an empty action stack. The side cannot return to Movement Phase or Attack Phase.
 _Avoid_: main phase, planning phase
 
 **Mana source**:
