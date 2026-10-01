@@ -68,6 +68,17 @@ pub(crate) fn card_workshop_error_response(error: CardWorkshopError) -> axum::re
         CardWorkshopError::Transfer(rune_lanes_core::CardTransferError::Catalog(_)) => {
             StatusCode::INTERNAL_SERVER_ERROR
         }
+        CardWorkshopError::PackTransfer(
+            rune_lanes_core::CardPackTransferError::MissingPack(_)
+            | rune_lanes_core::CardPackTransferError::MissingCard(_),
+        ) => StatusCode::NOT_FOUND,
+        CardWorkshopError::PackTransfer(
+            rune_lanes_core::CardPackTransferError::CardIdentityConflict(_)
+            | rune_lanes_core::CardPackTransferError::PackIdentityConflict(_),
+        ) => StatusCode::CONFLICT,
+        CardWorkshopError::PackTransfer(_) | CardWorkshopError::IncompatibleStoredPack(_) => {
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
         CardWorkshopError::Sqlite(_)
         | CardWorkshopError::Snapshot(_)
         | CardWorkshopError::IncompatibleStoredRevision(_) => StatusCode::INTERNAL_SERVER_ERROR,

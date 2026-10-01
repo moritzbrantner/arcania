@@ -1,6 +1,6 @@
 use super::*;
 
-async fn transfer_request(
+pub(super) async fn transfer_request(
     app: Router,
     token: &str,
     method: &str,
@@ -20,7 +20,7 @@ async fn transfer_request(
     .await
 }
 
-async fn publish_transfer_fixture(
+pub(super) async fn publish_transfer_fixture(
     app: Router,
     token: &str,
 ) -> (serde_json::Value, serde_json::Value) {

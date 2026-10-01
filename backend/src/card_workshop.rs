@@ -12,6 +12,7 @@ use rune_lanes_core::{
     PublishedCardRevisionError,
 };
 
+mod pack_transfers;
 mod transfers;
 
 #[derive(Debug, Serialize)]
@@ -93,6 +94,8 @@ pub enum CardWorkshopError {
     InvalidPublishedRevision(PublishedCardRevisionError),
     Transfer(CardTransferError),
     IncompatibleStoredRevision(rune_lanes_core::CardRevisionId),
+    PackTransfer(rune_lanes_core::CardPackTransferError),
+    IncompatibleStoredPack(rune_lanes_core::CardPackRevisionId),
 }
 
 impl fmt::Display for CardWorkshopError {
@@ -127,6 +130,11 @@ impl fmt::Display for CardWorkshopError {
             ),
             Self::InvalidPublishedRevision(error) => error.fmt(formatter),
             Self::Transfer(error) => error.fmt(formatter),
+            Self::PackTransfer(error) => error.fmt(formatter),
+            Self::IncompatibleStoredPack(id) => write!(
+                formatter,
+                "Stored Card pack {id} has incompatible immutable content."
+            ),
             Self::IncompatibleStoredRevision(id) => write!(
                 formatter,
                 "Stored Card revision {id} has incompatible immutable content."
@@ -158,6 +166,12 @@ impl From<PublishedCardRevisionError> for CardWorkshopError {
 impl From<CardTransferError> for CardWorkshopError {
     fn from(error: CardTransferError) -> Self {
         Self::Transfer(error)
+    }
+}
+
+impl From<rune_lanes_core::CardPackTransferError> for CardWorkshopError {
+    fn from(error: rune_lanes_core::CardPackTransferError) -> Self {
+        Self::PackTransfer(error)
     }
 }
 
@@ -599,5 +613,6 @@ pub fn migrate(connection: &Connection) -> rusqlite::Result<()> {
         ",
     )?;
     transfers::migrate(connection)?;
+    pack_transfers::migrate(connection)?;
     Ok(())
 }

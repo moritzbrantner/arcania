@@ -68,6 +68,12 @@ pub fn create_app(store: SqliteMatchStore) -> Router {
         .route("/api/card-transfers/preview", post(preview_card_transfer))
         .route("/api/card-transfers/import", post(import_card_transfer))
         .route(
+            "/api/card-pack-transfers/{packId}/{version}",
+            get(export_card_pack),
+        )
+        .route("/api/card-pack-transfers/import", post(import_card_pack))
+        .route("/api/card-pack-transfers/preview", post(preview_card_pack))
+        .route(
             "/api/card-revisions/{card_id}/{revision}/fork",
             post(fork_card_revision),
         )
@@ -390,6 +396,75 @@ async fn import_card_transfer(
             .expect("store lock should not be poisoned");
         let mut workshop = CardWorkshop::new(store.connection_mut());
         match workshop.import_transfer_for_user(profile.id, transfer) {
+            Ok(response) => response,
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    Json(response).into_response()
+}
+
+async fn export_card_pack(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Path(id): Path<rune_lanes_core::CardPackRevisionId>,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let response = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.export_pack_for_user(profile.id, &id) {
+            Ok(response) => response,
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    Json(response).into_response()
+}
+
+async fn preview_card_pack(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Json(transfer): Json<rune_lanes_core::CardPackTransfer>,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let response = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.preview_pack_for_user(profile.id, &transfer) {
+            Ok(response) => response,
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    Json(response).into_response()
+}
+
+async fn import_card_pack(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Json(transfer): Json<rune_lanes_core::CardPackTransfer>,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let response = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let mut workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.import_pack_for_user(profile.id, transfer) {
             Ok(response) => response,
             Err(error) => return card_workshop_error_response(error),
         }

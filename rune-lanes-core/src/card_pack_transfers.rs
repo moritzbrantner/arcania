@@ -236,7 +236,8 @@ impl CardPackImport<'_> {
         &self.preview
     }
 
-    pub fn into_catalogs(self) -> Result<CardPackImportResult, CardPackTransferError> {
+    /// Check the cached identity dispositions without constructing result catalogs.
+    pub fn check_conflicts(&self) -> Result<(), CardPackTransferError> {
         if let Some(conflict) = self
             .preview
             .cards
@@ -257,6 +258,11 @@ impl CardPackImport<'_> {
                 conflict.id.clone(),
             ));
         }
+        Ok(())
+    }
+
+    pub fn into_catalogs(self) -> Result<CardPackImportResult, CardPackTransferError> {
+        self.check_conflicts()?;
         let new_cards: BTreeSet<_> = self
             .preview
             .cards
