@@ -405,6 +405,33 @@ pub(super) enum SoloAiActionIntent {
 }
 
 impl MatchState {
+    pub(super) fn solo_ai_response_card(
+        &self,
+        side: Side,
+        policy: &SoloAiPolicy,
+    ) -> Option<(String, ActionTarget)> {
+        if !policy.rules.contains(&SoloAiRuleId::UsefulSpell) {
+            return None;
+        }
+        let commands = self.queries().legal_commands(side);
+        let mut view = self.solo_ai_view_for_side(side);
+        view.opponent_hand.retain(|card| {
+            commands.iter().any(|command| {
+                matches!(command, GameCommand::PlayCard { card_id, .. } if card_id == &card.id)
+            })
+        });
+        let intent = policy.useful_spell(&view)?;
+        let GameCommand::PlayCard { card_id, target } = ai_intent_game_command(intent) else {
+            return None;
+        };
+        commands
+            .contains(&GameCommand::PlayCard {
+                card_id: card_id.clone(),
+                target: target.clone(),
+            })
+            .then_some((card_id, target))
+    }
+
     /// Resolve exactly one deterministic solo-AI step into a concrete domain
     /// command. `None` means the policy has no further card-play action and
     /// the caller should record `AiTurnFinished` instead.
@@ -425,7 +452,12 @@ impl MatchState {
             if self.priority_side != Some(side) {
                 return Err(MatchError::NotPrioritySide);
             }
-            return Ok(Some(GameCommand::PassPriority));
+            return Ok(Some(
+                self.solo_ai_response_card(side, policy)
+                    .map_or(GameCommand::PassPriority, |(card_id, target)| {
+                        GameCommand::PlayCard { card_id, target }
+                    }),
+            ));
         }
         if self.active_side != side {
             return Err(MatchError::AiUnavailable);

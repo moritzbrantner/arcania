@@ -2393,6 +2393,11 @@ impl MatchState {
             if self.priority_side != Some(side) {
                 return Err(MatchError::NotPrioritySide);
             }
+            if let Some((card_id, target)) = self.solo_ai_response_card(side, policy) {
+                self.play_card_for_side(side, card_id, target, frames, action_index)?;
+                self.truncate_log();
+                return Ok(AiAdvanceOutcome::ActionApplied);
+            }
             self.pass_priority_for_side(side, frames, action_index)?;
             return Ok(AiAdvanceOutcome::PriorityPassed);
         }
