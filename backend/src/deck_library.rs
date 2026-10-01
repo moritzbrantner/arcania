@@ -4,7 +4,6 @@ use std::fmt;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
-use crate::card_catalog::card_template_by_id;
 use crate::deck_recipe_legality::{self, DeckRecipeLegalityError, normalize_requested_cards};
 use crate::match_session::{Card, HeroType, Side};
 
@@ -607,12 +606,7 @@ pub fn starter_deck_snapshot() -> DeckRecipeSnapshot {
 }
 
 pub fn starter_recipe_count(template_id: &str) -> u16 {
-    starter_deck_snapshot()
-        .cards
-        .into_iter()
-        .find(|card| card.template_id == template_id)
-        .map(|card| card.count)
-        .unwrap_or(0)
+    rune_lanes_core::deck_library::starter_recipe_count(template_id)
 }
 
 pub fn system_deck_by_id(deck_id: &str) -> Option<SystemDeckRecipe> {
@@ -640,251 +634,41 @@ pub fn deck_from_counts(
     side: Side,
     counts: &[DeckCardCount],
 ) -> Result<Vec<Card>, DeckLibraryError> {
-    let mut cards = Vec::new();
-    for count in counts {
-        let Some(template) = card_template_by_id(&count.template_id) else {
-            return Err(DeckLibraryError::UnknownTemplate(count.template_id.clone()));
-        };
-        for copy in 0..count.count {
-            let mut card = template.clone();
-            card.id = format!("{}-{copy}-{}", side.card_prefix(), card.template_id);
-            cards.push(card);
+    let counts: Vec<_> = counts
+        .iter()
+        .map(|card| rune_lanes_core::deck_library::DeckCardCount {
+            template_id: card.template_id.clone(),
+            count: card.count,
+        })
+        .collect();
+    rune_lanes_core::deck_library::deck_from_counts(side, &counts).map_err(|error| match error {
+        rune_lanes_core::deck_library::DeckLibraryError::UnknownTemplate(id) => {
+            DeckLibraryError::UnknownTemplate(id)
         }
-    }
-    Ok(cards)
+    })
 }
 
 fn system_decks() -> Vec<SystemDeckRecipe> {
-    vec![
-        system_deck(
-            "balanced-starter",
-            "Balanced Starter",
-            HeroType::Runekeeper,
-            &[
-                ("ember-squire", 4),
-                ("swift-familiar", 4),
-                ("stoneguard", 4),
-                ("rune-bruiser", 4),
-                ("quick-salve", 4),
-                ("spark-jolt", 4),
-                ("rune-charm", 2),
-                ("runekeeper-lens", 2),
-                ("rune-runner", 4),
-                ("ash-hound", 4),
-                ("prism-initiate", 4),
-                ("mana-well", 5),
-                ("runic-insight", 5),
-                ("blade-dancer", 1),
-                ("shield-adept", 1),
-                ("mending-rune", 1),
-                ("war-chant", 1),
-                ("ember-lance", 1),
-                ("arcane-parry", 1),
-                ("ember-flask", 1),
-                ("cinder-ring", 1),
-                ("prism-ray", 1),
-                ("iron-colossus", 1),
-            ],
-        ),
-        system_deck(
-            "ember-burn",
-            "Ember Burn",
-            HeroType::Pyromancer,
-            &[
-                ("ember-squire", 4),
-                ("ash-hound", 4),
-                ("spark-jolt", 4),
-                ("quick-salve", 4),
-                ("rune-runner", 4),
-                ("mana-well", 5),
-                ("swift-familiar", 5),
-                ("rune-bruiser", 5),
-                ("prism-initiate", 5),
-                ("runic-insight", 4),
-                ("stoneguard", 3),
-                ("ember-lance", 4),
-                ("cinder-ring", 4),
-                ("pyre-brand", 2),
-                ("meteor-bloom", 3),
-            ],
-        ),
-        system_deck(
-            "tempo-lines",
-            "Tempo Lines",
-            HeroType::Chronomancer,
-            &[
-                ("swift-familiar", 4),
-                ("rune-runner", 4),
-                ("spark-jolt", 4),
-                ("quick-salve", 4),
-                ("prism-initiate", 4),
-                ("mana-well", 5),
-                ("ember-squire", 5),
-                ("ash-hound", 5),
-                ("rune-bruiser", 5),
-                ("warding-sigil", 2),
-                ("stoneguard", 2),
-                ("watchtower", 1),
-                ("overclock-bracers", 1),
-                ("surge-protocol", 1),
-                ("starlit-study", 4),
-                ("prism-ray", 4),
-                ("mending-rune", 2),
-                ("chrono-cog", 2),
-                ("thunder-rail", 1),
-            ],
-        ),
-        system_deck(
-            "rune-fortress",
-            "Rune Fortress",
-            HeroType::Warden,
-            &[
-                ("stoneguard", 4),
-                ("prism-initiate", 4),
-                ("warding-sigil", 4),
-                ("quick-salve", 4),
-                ("ember-squire", 4),
-                ("mana-well", 5),
-                ("rune-bruiser", 2),
-                ("swift-familiar", 5),
-                ("rune-runner", 5),
-                ("runic-insight", 3),
-                ("spark-jolt", 2),
-                ("stone-bastion", 1),
-                ("titan-aegis", 1),
-                ("colossus-oath", 1),
-                ("shield-adept", 4),
-                ("bastion-rune", 3),
-                ("warden-plate", 1),
-                ("mending-rune", 4),
-                ("vanguard-golem", 3),
-            ],
-        ),
-        system_deck(
-            "unit-pressure",
-            "Unit Pressure",
-            HeroType::Battlemage,
-            &[
-                ("rune-bruiser", 4),
-                ("ash-hound", 4),
-                ("rune-runner", 4),
-                ("ember-squire", 4),
-                ("swift-familiar", 4),
-                ("mana-well", 5),
-                ("stoneguard", 2),
-                ("prism-initiate", 5),
-                ("warding-sigil", 4),
-                ("emberbrand-charm", 1),
-                ("spark-jolt", 4),
-                ("quick-salve", 4),
-                ("war-foundry", 1),
-                ("battle-standard", 1),
-                ("surge-protocol", 1),
-                ("glass-duelist", 4),
-                ("prism-ray", 4),
-                ("war-chant", 2),
-                ("phoenix-adept", 2),
-            ],
-        ),
-        system_deck(
-            "barbarian-fury-line",
-            "Barbarian Fury Line",
-            HeroType::Barbarian,
-            &[
-                ("ridge-berserker", 4),
-                ("rune-bruiser", 4),
-                ("ash-hound", 4),
-                ("ember-squire", 4),
-                ("swift-familiar", 4),
-                ("mana-well", 5),
-                ("rune-runner", 5),
-                ("prism-initiate", 5),
-                ("spark-jolt", 2),
-                ("crushing-roar", 4),
-                ("war-chant", 4),
-                ("ember-lance", 4),
-                ("glass-duelist", 4),
-                ("rift-crown", 2),
-                ("rift-gauntlet", 1),
-                ("watchtower", 1),
-                ("colossus-oath", 1),
-                ("phoenix-adept", 1),
-                ("eclipse-strike", 1),
-            ],
-        ),
-        system_deck(
-            "archer-volley-line",
-            "Archer Volley Line",
-            HeroType::Archer,
-            &[
-                ("pathfinder", 4),
-                ("swift-familiar", 4),
-                ("rune-runner", 4),
-                ("ash-hound", 4),
-                ("spark-jolt", 4),
-                ("mana-well", 5),
-                ("runic-insight", 5),
-                ("ember-squire", 5),
-                ("prism-initiate", 5),
-                ("piercing-volley", 4),
-                ("prism-ray", 4),
-                ("temporal-bolt", 2),
-                ("hunter-scope", 2),
-                ("starlit-study", 4),
-                ("deadeye-mark", 2),
-                ("thunder-rail", 2),
-            ],
-        ),
-        system_deck(
-            "builder-worksite",
-            "Builder Worksite",
-            HeroType::Builder,
-            &[
-                ("field-mason", 4),
-                ("stoneguard", 4),
-                ("prism-initiate", 4),
-                ("warding-sigil", 4),
-                ("rune-charm", 4),
-                ("mana-well", 5),
-                ("ember-squire", 1),
-                ("rune-bruiser", 5),
-                ("quick-salve", 5),
-                ("fortify-position", 4),
-                ("arcane-parry", 4),
-                ("bastion-rune", 4),
-                ("shield-adept", 4),
-                ("clockwork-rig", 1),
-                ("starcore-engine", 1),
-                ("stone-bastion", 1),
-                ("healing-font", 1),
-                ("titan-plate", 1),
-                ("builder-toolkit", 1),
-                ("vanguard-golem", 2),
-            ],
-        ),
-    ]
-}
-
-fn system_deck(
-    id: &str,
-    name: &str,
-    hero_type: HeroType,
-    counts: &[(&str, u16)],
-) -> SystemDeckRecipe {
-    let cards = counts
+    rune_lanes_core::deck_library::system_deck_recipes()
         .iter()
-        .map(|(template_id, count)| DeckCardCount {
-            template_id: (*template_id).to_string(),
-            count: *count,
+        .map(|recipe| {
+            let cards: Vec<_> = recipe
+                .cards
+                .iter()
+                .map(|card| DeckCardCount {
+                    template_id: card.template_id.clone(),
+                    count: card.count,
+                })
+                .collect();
+            SystemDeckRecipe {
+                id: recipe.id.clone(),
+                name: recipe.name.clone(),
+                hero_type: recipe.hero_type,
+                legality: validate_recipe(&cards),
+                cards,
+            }
         })
-        .collect::<Vec<_>>();
-    SystemDeckRecipe {
-        id: id.to_string(),
-        name: name.to_string(),
-        hero_type,
-        legality: validate_recipe(&cards),
-        cards,
-    }
+        .collect()
 }
 
 fn normalize_deck_name(name: &str) -> Result<String, DeckLibraryError> {
@@ -1067,6 +851,65 @@ mod tests {
             assert_eq!(deck.legality.total_cards, 60);
         }
         assert!(validate_recipe(&starter_deck_snapshot().cards).legal);
+    }
+
+    #[test]
+    fn player_and_ai_system_loadouts_use_the_same_core_recipes() {
+        let player = system_deck_response().decks;
+        let ai = ai_lab_system_decks();
+        let configured = rune_lanes_core::deck_library::system_deck_recipes();
+        assert_eq!(player.len(), configured.len());
+        assert_eq!(
+            serde_json::to_value(&player).unwrap(),
+            serde_json::to_value(ai).unwrap()
+        );
+        for (projected, recipe) in player.iter().zip(configured) {
+            assert_eq!(projected.id, recipe.id);
+            assert_eq!(projected.name, recipe.name);
+            assert_eq!(projected.hero_type, recipe.hero_type);
+            assert_eq!(
+                serde_json::to_value(&projected.cards).unwrap(),
+                serde_json::to_value(&recipe.cards).unwrap()
+            );
+            assert!(projected.legality.legal);
+            let snapshot = system_deck_snapshot(&recipe.id).unwrap();
+            let hosted_cards = deck_from_snapshot(Side::Player, &snapshot).unwrap();
+            let core_cards =
+                rune_lanes_core::deck_library::deck_from_counts(Side::Player, &recipe.cards)
+                    .unwrap();
+            assert_eq!(
+                serde_json::to_value(hosted_cards).unwrap(),
+                serde_json::to_value(core_cards).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn materialization_preserves_legacy_order_and_unknown_template_errors() {
+        let cards = deck_from_counts(
+            Side::Opponent,
+            &[
+                DeckCardCount {
+                    template_id: "spark-jolt".to_string(),
+                    count: 1,
+                },
+                DeckCardCount {
+                    template_id: "ember-squire".to_string(),
+                    count: 1,
+                },
+            ],
+        )
+        .unwrap();
+        assert_eq!(
+            cards
+                .iter()
+                .map(|card| card.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["o-0-spark-jolt", "o-0-ember-squire"]
+        );
+        assert!(matches!(deck_from_counts(Side::Player, &[
+            DeckCardCount { template_id: "missing".to_string(), count: 1 },
+        ]), Err(DeckLibraryError::UnknownTemplate(id)) if id == "missing"));
     }
 
     #[test]
