@@ -7,9 +7,6 @@ use serde::{Deserialize, Serialize};
 use crate::deck_recipe_legality::{self, DeckRecipeLegalityError, normalize_requested_cards};
 use crate::match_session::{Card, HeroType, Side};
 
-mod recipes;
-mod system_decks;
-
 pub const DECK_LIMIT_PER_ACCOUNT: usize = 30;
 pub use crate::deck_recipe_legality::{
     DeckCardCount, DeckCardCountRequest, DeckLegality, DeckRules, validate_recipe,
@@ -605,10 +602,6 @@ pub fn starter_deck_snapshot() -> DeckRecipeSnapshot {
     }
 }
 
-pub fn starter_recipe_count(template_id: &str) -> u16 {
-    rune_lanes_core::deck_library::starter_recipe_count(template_id)
-}
-
 pub fn system_deck_by_id(deck_id: &str) -> Option<SystemDeckRecipe> {
     system_decks().into_iter().find(|deck| deck.id == deck_id)
 }
@@ -824,7 +817,7 @@ fn load_deck_cards(
 
 #[cfg(test)]
 fn catalog_contains_all_system_recipe_cards() -> bool {
-    let templates: std::collections::HashMap<_, _> = crate::card_catalog::starter_card_templates()
+    let templates: std::collections::HashMap<_, _> = rune_lanes_core::starter_card_templates()
         .into_iter()
         .map(|card| (card.template_id, card.name))
         .collect();

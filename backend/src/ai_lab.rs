@@ -5,10 +5,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use rune_lanes_core::card_template_by_id;
 use rune_lanes_core::rules::CURRENT_RULESET;
 use serde::{Deserialize, Serialize};
 
-use crate::card_catalog::card_template_by_id;
 use crate::deck_library::ai_lab_system_decks;
 use crate::match_session::{
     AiPolicyConfig, Card, CardKind, HeroType, HexBoard, HexCoord, MatchError, MatchState,

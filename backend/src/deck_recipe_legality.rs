@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
+use rune_lanes_core::card_template_by_id;
 use serde::{Deserialize, Serialize};
 
-use crate::card_catalog::card_template_by_id;
 use crate::match_session::Rarity;
 
 pub const MIN_DECK_CARDS: u16 = 60;
