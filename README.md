@@ -145,6 +145,8 @@ The frontend proxies `/api` to `http://localhost:4000`.
   `/login?next=/profile`.
 - `/decks` is the account-only deck library and deck builder. Signed-out
   players are redirected to `/login?next=/decks`.
+- `/workshop/cards` is the Account Card Draft browser with official-Card duplication.
+  Signed-out players are redirected to `/login?next=/workshop/cards`.
 - `/matches` is the account-only match archive. Signed-out players are
   redirected to `/login?next=/matches`.
 - `/match/<match-id>` opens the public playable Rune Lanes board for a persisted
@@ -154,6 +156,10 @@ The frontend proxies `/api` to `http://localhost:4000`.
 - `/matches/<match-id>/replay` opens a public replay route when the backend
   exposes that replay.
 - `/catalog/` opens the public backend-driven starter card catalog.
+
+## Card Drafts
+
+Signed-in players can open **Card Drafts** from navigation or `/workshop/cards` to browse saved Account Drafts, inspect their stored details and validation feedback, or duplicate an official Card. Duplication preserves the complete official definition and saves a new Draft immediately; reopening the route reloads Account content. Request failures offer retry without discarding the current selection.
 
 ## Deck building
 

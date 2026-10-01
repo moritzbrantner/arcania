@@ -11,6 +11,7 @@ const requiredStoryFiles = [
   "../components/match/MatchUxPanels.stories.tsx",
   "../pages/AuthPage.stories.tsx",
   "../pages/CatalogPage.stories.tsx",
+  "../pages/CardDraftsPage.stories.tsx",
   "../pages/DashboardPage.stories.tsx",
   "../pages/DecksPage.stories.tsx",
   "../pages/HeroesPage.stories.tsx",

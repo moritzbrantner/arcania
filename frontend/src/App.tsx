@@ -26,6 +26,7 @@ import {
 } from "./routes";
 import { AuthPage } from "./pages/AuthPage";
 import { CatalogPage } from "./pages/CatalogPage";
+import { CardDraftsPage } from "./pages/CardDraftsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { HeroesPage } from "./pages/HeroesPage";
 import { DecksPage } from "./pages/DecksPage";
@@ -137,6 +138,11 @@ export function App() {
 
   if (authState.status === "loading") {
     return <ShellMessage title="Rune Lanes" message="Checking account" />;
+  }
+
+  if (normalizedPath === "/workshop/cards") {
+    if (!currentUser) return <RouteRedirect to={protectedLoginRoute("/workshop/cards")} onNavigate={replaceRoute} />;
+    return <CardDraftsPage key={currentUser.id} currentUser={currentUser} onNavigate={navigate} onSignOut={handleSignOut} />;
   }
 
   if (normalizedPath === "/workshop" || (pagesMode && ["", "/play"].includes(normalizedPath))) {

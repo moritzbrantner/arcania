@@ -397,7 +397,11 @@ A public client-side interactive demonstration embedded in a Wiki topic to illus
 _Avoid_: match scenario, dev scenario, sandbox match
 
 **Card workshop**:
-The browser-local surface for editing Rule presets and custom cards and trying them in Solo matches. It does not change the hosted catalog, accounts, or progression.
+The surface for authoring custom Cards. Its Account authoring flow browses owned persisted Drafts and duplicates official Cards into new Drafts. Its browser-local flow edits Rule presets and custom Cards for Solo experiments without changing hosted content or progression.
+
+**Card Draft**:
+An Account-owned editable complete Card definition with a version for concurrent-update detection and a stable catalog identity for publication and experiments. A Draft may contain validation errors; publication requires a valid definition.
+_Avoid_: mutable published Card, latest Card revision
 
 **Card taxonomy**:
 Descriptive faction, element, trait and Card family tags attached to an authored Card revision for discovery. Card taxonomy does not grant inherited behavior or change Card interactions.

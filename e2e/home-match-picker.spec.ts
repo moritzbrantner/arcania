@@ -38,7 +38,7 @@ test("desktop navigation exposes core destinations and secondary menu with activ
   await mockHomeApi(page, []);
   await page.goto("/");
   const nav = page.getByRole("navigation", { name: "Primary navigation" });
-  for (const name of ["Dashboard", "Play", "Decks", "Heroes", "Matches"]) {
+  for (const name of ["Dashboard", "Play", "Decks", "Card Drafts", "Heroes", "Matches"]) {
     await expect(nav.getByRole("button", { name, exact: true })).toBeVisible();
   }
   await expect(nav.getByRole("button", { name: "Rune Lanes", exact: true })).toHaveCount(0);
@@ -60,7 +60,7 @@ test("guest navigation exposes essentials without account destinations", async (
   for (const name of ["Dashboard", "Play", "Learn & settings", "Sign In"]) {
     await expect(nav.getByRole("button", { name, exact: true })).toBeVisible();
   }
-  for (const name of ["Decks", "Heroes", "Matches"]) {
+  for (const name of ["Decks", "Card Drafts", "Heroes", "Matches"]) {
     await expect(nav.getByRole("button", { name, exact: true })).toHaveCount(0);
   }
   await expect(nav.getByRole("button", { name: /Account menu for/ })).toHaveCount(0);
@@ -156,7 +156,7 @@ test("mobile navigation contains keyboard focus and restores it on close", async
 
   await trigger.focus();
   await page.keyboard.press("Enter");
-  for (const destination of ["Dashboard", "Play", "Decks", "Heroes"]) {
+  for (const destination of ["Dashboard", "Play", "Decks", "Card Drafts", "Heroes"]) {
     await page.keyboard.press("Tab");
     await expect(dialog.getByRole("button", { name: destination, exact: true })).toBeFocused();
   }

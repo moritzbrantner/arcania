@@ -31,6 +31,8 @@ import type {
   UpdatePreferencesRequest,
 } from "../types";
 import { clearAuthToken, getAuthToken } from "../session";
+import type { CardDefinition, CardDraft, CardRevisionTransfer } from "../types/cardWorkshop";
+import type { CardRevisionId } from "../types";
 
 type ApiError = {
   message?: string;
@@ -335,6 +337,21 @@ export function loadSharedReplay(matchId: string, seatToken: string) {
 export function loadCatalog() {
   if (pagesMode) { return browserCatalog(); }
   return request<CatalogResponse>("/api/catalog/cards");
+}
+
+export function loadCardDrafts() {
+  return request<{ drafts: CardDraft[] }>("/api/card-drafts");
+}
+
+export function createCardDraft(definition: CardDefinition) {
+  return request<CardDraft>("/api/card-drafts", {
+    method: "POST",
+    body: JSON.stringify({ definition }),
+  });
+}
+
+export function loadCardRevisionTransfer(id: CardRevisionId) {
+  return request<CardRevisionTransfer>(`/api/card-transfers/${encodeURIComponent(id.cardId)}/${id.revision}`);
 }
 
 export function playCard(matchId: string, cardId: string, target: ActionTarget) {
