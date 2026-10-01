@@ -8,8 +8,8 @@ use crate::match_session::{
     SpellEffect,
 };
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CardDefinition {
     pub id: String,
     pub name: String,
@@ -194,7 +194,7 @@ pub struct CardRevisionId {
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct UncheckedCardRevisionId {
     card_id: String,
     revision: u32,
@@ -238,7 +238,7 @@ impl fmt::Display for CardRevisionId {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PublishedCardRevision {
     id: CardRevisionId,
@@ -246,7 +246,7 @@ pub struct PublishedCardRevision {
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct UncheckedPublishedCardRevision {
     id: CardRevisionId,
     definition: CardDefinition,
@@ -349,6 +349,11 @@ impl CardCatalog {
         }
 
         Ok(catalog)
+    }
+
+    /// Every exact published revision, in stable identity order.
+    pub fn revisions(&self) -> impl Iterator<Item = &PublishedCardRevision> {
+        self.revisions.values()
     }
 
     pub fn resolve(&self, id: &CardRevisionId) -> Option<&PublishedCardRevision> {
