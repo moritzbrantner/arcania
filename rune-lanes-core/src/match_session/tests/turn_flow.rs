@@ -1,6 +1,105 @@
 use super::*;
 
 #[test]
+fn solo_ai_card_evaluators_use_mana_with_zero_hero_ap_for_both_policies() {
+    use crate::commands::{CommandContext, GameCommand};
+
+    let config =
+        AiPolicyConfig::from_json(include_str!("../../../../backend/config/ai-policies.json"))
+            .unwrap();
+    for policy_id in ["baseline-v1", "candidate-aggressive-v1"] {
+        let policy = SoloAiPolicy::from_definition(config.policy(policy_id).unwrap());
+        for template in [
+            "ember-squire",
+            "runic-insight",
+            "rune-charm",
+            "mana-well",
+            "legacy-mana-source",
+        ] {
+            let mut state = MatchState::new_with_seed(7);
+            state.active_side = Side::Opponent;
+            state.phase = Phase::CardPlay;
+            state.opponent.hero.ap_remaining = 0;
+            state.opponent.mana = 8;
+            if template == "rune-charm" {
+                state.board.units.push(board_unit(
+                    "ai-carrier",
+                    Side::Opponent,
+                    hex(0, -2),
+                    1,
+                    1,
+                    2,
+                ));
+            }
+            let catalog_template = if template == "legacy-mana-source" {
+                "mana-well"
+            } else {
+                template
+            };
+            let mut card = starter_card_templates()
+                .into_iter()
+                .find(|card| card.template_id == catalog_template)
+                .unwrap();
+            if template == "legacy-mana-source" {
+                card.kind = CardKind::ManaSource;
+            }
+            let cost = card.cost;
+            let card_id = card.id.clone();
+            state.opponent.hand = vec![card];
+            let before = state.to_snapshot_json().unwrap();
+            let command = state
+                .next_solo_ai_game_command_with_policy(Side::Opponent, &policy)
+                .unwrap()
+                .unwrap();
+            assert!(
+                matches!(&command, GameCommand::PlayCard { card_id: chosen, .. } if chosen == &card_id),
+                "{policy_id} must consider {template} with zero Hero AP"
+            );
+            let context = CommandContext {
+                side: Side::Opponent,
+                action_index: 0,
+            };
+            assert_eq!(state.to_snapshot_json().unwrap(), before);
+            assert!(
+                state
+                    .queries()
+                    .command_availability(Side::Opponent, &command)
+                    .allowed
+            );
+            let mut paced = state.clone();
+            command.execute_compatibility(&mut state, context).unwrap();
+            assert_eq!(state.opponent.hero.ap_remaining, 0);
+            assert_eq!(state.opponent.mana, 8 - cost);
+            assert!(matches!(
+                paced
+                    .advance_ai_for_side_with_policy_strict(
+                        Side::Opponent,
+                        &policy,
+                        &mut Vec::new(),
+                        Some(0)
+                    )
+                    .unwrap(),
+                AiAdvanceOutcome::ActionApplied
+            ));
+            assert_eq!(
+                paced.to_snapshot_json().unwrap(),
+                state.to_snapshot_json().unwrap()
+            );
+
+            let mut unaffordable = MatchState::from_snapshot_json(&before).unwrap();
+            unaffordable.opponent.mana = cost - 1;
+            assert_eq!(
+                unaffordable
+                    .next_solo_ai_game_command_with_policy(Side::Opponent, &policy)
+                    .unwrap(),
+                None,
+                "{policy_id} must still reject unaffordable {template}"
+            );
+        }
+    }
+}
+
+#[test]
 fn ending_turn_starts_paced_ai_turn() {
     let mut game = MatchState::new_with_seed(7);
     enter_card_play(&mut game);
