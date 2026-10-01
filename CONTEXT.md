@@ -418,3 +418,7 @@ _Avoid_: pack recipe, deck recipe
 **Card pack transfer**:
 A versioned portable document containing one exact root Card pack manifest, its complete dependency closure and every referenced exact published Card definition. Import preview reports Card and pack identity conflicts before the whole transfer can be applied.
 _Avoid_: latest pack export, partial pack installation
+
+**Card test scenario**:
+A seeded experimental setup for trying authored Cards through the core command/query path. It combines the existing Workshop setup with an empty arena, adjacent enemy, clustered enemies, damaged ally or low-HP Hero layout. A prepared scenario owns the validated initial state for independent runs and reproducible resets.
+_Avoid_: client simulator, test match rules

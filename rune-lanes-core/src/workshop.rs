@@ -3,6 +3,8 @@ use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
+pub mod card_scenarios;
+
 use crate::{
     CardDefinition, HeroType, MatchState, Side,
     deck_library::{DeckCardCount, deck_from_counts, system_deck_recipes},
