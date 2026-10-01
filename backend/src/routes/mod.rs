@@ -1,6 +1,7 @@
 use crate::app_state::{AppState, SharedState};
 use crate::auth_context::*;
 use crate::card_catalog::{CatalogResponse, starter_catalog};
+use crate::card_workshop::evidence::CardEvidenceRequest;
 use crate::card_workshop::scenarios::CardDraftScenarioRequest;
 use crate::card_workshop::{
     CardWorkshop, CreateCardDraftRequest, PublishCardDraftRequest, UpdateCardDraftRequest,
@@ -66,6 +67,7 @@ pub fn create_app(store: SqliteMatchStore) -> Router {
             post(run_card_draft_scenario),
         )
         .route("/api/card-revisions/{card_id}", get(card_revision_history))
+        .route("/api/card-evidence/run", post(run_card_evidence))
         .route(
             "/api/card-transfers/{cardId}/{revision}",
             get(export_card_revision),
@@ -343,6 +345,43 @@ async fn run_card_draft_scenario(
     {
         Ok(result) => Json(result).into_response(),
         Err(error) => card_workshop_error_response(error),
+    }
+}
+
+async fn run_card_evidence(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Json(request): Json<CardEvidenceRequest>,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let input = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.resolve_evidence_for_user(profile.id, request) {
+            Ok(input) => input,
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    match tokio::task::spawn_blocking(move || crate::ai_lab::card_evidence::run_comparison(input))
+        .await
+    {
+        Ok(Ok(report)) => Json(report).into_response(),
+        Ok(Err(error)) => {
+            card_workshop_error_response(crate::card_workshop::CardWorkshopError::Evidence(error))
+        }
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ApiError {
+                message: format!("Card evidence task failed: {error}"),
+            }),
+        )
+            .into_response(),
     }
 }
 

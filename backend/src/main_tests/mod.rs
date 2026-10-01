@@ -135,6 +135,7 @@ fn custom_preferences_payload() -> &'static str {
 }
 
 mod auth;
+mod card_evidence;
 mod card_pack_transfers;
 mod card_scenarios;
 mod card_transfers;

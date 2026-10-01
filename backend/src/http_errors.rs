@@ -65,6 +65,10 @@ pub(crate) fn card_workshop_error_response(error: CardWorkshopError) -> axum::re
             ..
         } => StatusCode::BAD_REQUEST,
         CardWorkshopError::Scenario { .. } => StatusCode::INTERNAL_SERVER_ERROR,
+        CardWorkshopError::Evidence(
+            crate::ai_lab::AiLabError::Config(_) | crate::ai_lab::AiLabError::Deck(_),
+        ) => StatusCode::BAD_REQUEST,
+        CardWorkshopError::Evidence(_) => StatusCode::INTERNAL_SERVER_ERROR,
         CardWorkshopError::Transfer(rune_lanes_core::CardTransferError::MissingRevision(_)) => {
             StatusCode::NOT_FOUND
         }

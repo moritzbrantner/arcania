@@ -185,7 +185,18 @@ cargo run -q -p backend --bin ai-lab -- compare-cards \
 
 The example compares exact revisions with costs of one and four Mana at two seeds and writes `card-comparison.json`. Each input includes complete candidate/baseline definitions and source identities, seeded Card test scenarios, the policy configuration and selected policy IDs, the tested Duel side and a positive action limit. Cases must supply an empty authored Card list. The runner adds one input Card to the tested side's hand and uses that exact definition for its matching draw-pile copies.
 
-The report preserves the input, core default ruleset version and compiled built-in definitions. It shows paired play timing/counts, surviving new matching Units, outcomes and event-total deltas. Damage/healing totals are recorded amounts across both sides, and draws include turn draws; none is attributed to a source Card. Timeouts and illegal actions are explicit. There is no balance score or automatic promotion. Rerun `input` from the report with a compatible core/catalog to reproduce it. The dev CLI trusts supplied source provenance; authenticated persisted-source resolution is separate.
+The report preserves the input, core default ruleset version and compiled built-in definitions. It shows paired play timing/counts, surviving new matching Units, outcomes and event-total deltas. Damage/healing totals are recorded amounts across both sides, and draws include turn draws; none is attributed to a source Card. Timeouts and illegal actions are explicit. There is no balance score or automatic promotion. Rerun `input` from the report with a compatible core/catalog to reproduce it. The dev CLI trusts supplied source provenance.
+
+Authenticated Accounts can `POST /api/card-evidence/run` with the same scenario/policy fields, replacing each candidate/baseline snapshot with an exact source reference:
+
+```json
+{
+  "candidate": { "type": "draft", "draftId": 12, "version": 3 },
+  "baseline": { "type": "published", "revisionId": { "cardId": "custom-example", "revision": 1 } }
+}
+```
+
+This source-reference example omits the required `cases`, `policyConfig`, `playerPolicyId`, `opponentPolicyId`, `testedSide` and `maxActions` fields shown in the CLI input. Either source may reference an owned Draft or an accessible exact published revision (including compiled Cards and imported copies). Definitions come from storage. Drafts use their stable catalog ID in the experiment; all other definition fields are preserved. Stale Draft versions return 409, missing or inaccessible sources return 404, invalid experiments return 400, and incompatible stored revisions fail with 500. The application accepts at most eight cases and 300 actions per game, releases storage before self-play, and returns the same report format without changing source content or hosted matches.
 
 ## Shared multiplayer
 
