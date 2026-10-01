@@ -13,6 +13,36 @@ test("dashboard and play page expose tutorial mode", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Tutorial" })).toBeVisible();
 });
 
+test("failed Card artwork keeps the Tutorial Card readable and playable", async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    window.localStorage.setItem("rune-lanes-board-visual-mode", "2d");
+  });
+  await mockApi(page);
+  let failedArtworkRequests = 0;
+  await page.route("**/card-art/ember-squire.svg", async (route) => {
+    failedArtworkRequests += 1;
+    await route.abort("failed");
+  });
+  await page.goto("/tutorial");
+  await expect.poll(() => failedArtworkRequests).toBeGreaterThan(0);
+  await expect(page.getByRole("img", { name: "Ember Squire art", exact: true })).toHaveCount(0);
+  await expectPlayerBudgets(page, 3);
+  await continueIntro(page);
+  await page.getByRole("button", { name: /q 0, r 1, occupied by your hero/i }).click();
+  await continueIntro(page);
+  const card = page.getByRole("button", { name: /Ember Squire/i });
+  await expect(card).toContainText("1 attack / 2 armor / 2 AP.");
+  await card.click();
+  await continueIntro(page);
+  await card.click();
+  const summonHex = page.getByRole("button", { name: /q 0, r 0, empty hex/i });
+  await expect(summonHex).toHaveClass(/\blegal\b/);
+  await page.screenshot({ path: testInfo.outputPath("card-artwork-fallback.png"), fullPage: true });
+  await summonHex.click();
+  await expectPlayerBudgets(page, 2);
+  await expect(page.locator('[data-tutorial-target="tutorial-phase"]')).toHaveText("Opponent priority");
+});
+
 test("runs the tutorial happy path in 2d and stores completion", async ({ page }) => {
   await page.addInitScript(() => {
     window.localStorage.setItem("rune-lanes-board-visual-mode", "2d");

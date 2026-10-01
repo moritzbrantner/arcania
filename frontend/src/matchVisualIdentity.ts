@@ -3,6 +3,7 @@ import type {
   Card,
   CardKind,
   CardSummary,
+  CardRevisionId,
   CatalogCard,
   Rarity,
   Unit,
@@ -10,6 +11,7 @@ import type {
   HeroType,
 } from "./types";
 import { HERO_OPTIONS } from "./heroes";
+import type { CardArtworkCatalog } from "./cardArtworkCatalog";
 
 export type VisualIdentityStatus = "resolved" | "legacyNameFallback" | "unknown";
 
@@ -56,12 +58,21 @@ export type HeroVisualIdentity = {
 };
 
 export type MatchVisualCatalog = {
-  card(card: Card | CatalogCard | CardSummary): CardVisualIdentity;
+  card(card: Card | CatalogCard | CardSummary, artwork?: CardArtworkBinding): CardVisualIdentity;
   unit(unit: Unit): UnitVisualIdentity;
   hero(hero: Hero): HeroVisualIdentity;
 };
 
-export function createMatchVisualCatalog(cards: CatalogCard[]): MatchVisualCatalog {
+/** Presentation selection supplied with the Card's exact published revision. */
+export type CardArtworkBinding = {
+  readonly cardRevision: CardRevisionId;
+  readonly visualIdentityId: string | null;
+};
+
+export function createMatchVisualCatalog(
+  cards: CatalogCard[],
+  artworkCatalog?: CardArtworkCatalog,
+): MatchVisualCatalog {
   const byTemplateId = new Map(cards.map((card) => [card.templateId, card]));
   const unitByName = new Map(
     cards
@@ -71,7 +82,15 @@ export function createMatchVisualCatalog(cards: CatalogCard[]): MatchVisualCatal
   const cardByName = new Map(cards.map((card) => [card.name, card]));
 
   return {
-    card(card) {
+    card(card, artwork) {
+      if (artwork !== undefined) {
+        if (artwork.cardRevision.cardId !== card.templateId) {
+          return cardVisualFromSource(card, null);
+        }
+        const resolved = artworkCatalog?.resolve(artwork.cardRevision, artwork.visualIdentityId);
+        const artPath = resolved?.status === "resolved" ? browserRoutePath(resolved.artPath) : null;
+        return cardVisualFromSource(card, artPath);
+      }
       const templateMatch = byTemplateId.get(card.templateId);
       if (templateMatch) {
         return cardVisualFromCatalog(templateMatch, "resolved");
@@ -82,18 +101,7 @@ export function createMatchVisualCatalog(cards: CatalogCard[]): MatchVisualCatal
         return cardVisualFromCatalog(nameMatch, "legacyNameFallback");
       }
 
-      return {
-        status: "unknown",
-        templateId: card.templateId || null,
-        name: card.name,
-        rarity: card.rarity,
-        kind: card.kind,
-        cost: card.cost,
-        text: textFromSource(card),
-        artPath: null,
-        artAlt: `${card.name} art unavailable`,
-        accentClass: card.rarity,
-      };
+      return cardVisualFromSource(card, null);
     },
     unit(unit) {
       const templateMatch = unit.templateId ? unitByTemplateId(byTemplateId, unit.templateId) : null;
@@ -131,6 +139,24 @@ export function createMatchVisualCatalog(cards: CatalogCard[]): MatchVisualCatal
         fallbackLabel: option.token,
       };
     },
+  };
+}
+
+function cardVisualFromSource(
+  card: Card | CatalogCard | CardSummary,
+  artPath: string | null,
+): CardVisualIdentity {
+  return {
+    status: artPath === null ? "unknown" : "resolved",
+    templateId: card.templateId || null,
+    name: card.name,
+    rarity: card.rarity,
+    kind: card.kind,
+    cost: card.cost,
+    text: textFromSource(card),
+    artPath,
+    artAlt: artPath === null ? `${card.name} art unavailable` : `${card.name} art`,
+    accentClass: card.rarity,
   };
 }
 
