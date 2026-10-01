@@ -135,7 +135,13 @@ test("moves and attacks through the 3D board", async ({ page }) => {
     return matchResponse(match);
   }, () => match);
 
+  const matchLoaded = page.waitForResponse((response) =>
+    new URL(response.url()).pathname === `/api/matches/${MATCH_ID}`
+    && response.request().method() === "GET"
+    && response.ok(),
+  );
   await page.goto(`/match/${MATCH_ID}`);
+  await matchLoaded;
   await expect(page.locator('section[data-board-renderer="3d"]')).toBeVisible();
 
   await tile(page, "q 0, r 1, occupied by your hero").click();
