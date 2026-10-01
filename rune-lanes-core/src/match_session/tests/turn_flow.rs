@@ -1,5 +1,235 @@
 use super::*;
 
+fn pending_solo_response_game(phase: Phase) -> MatchState {
+    use crate::commands::{CommandContext, GameCommand};
+    let mut state = MatchState::new_with_seed(7);
+    state.active_side = Side::Opponent;
+    state.phase = phase.clone();
+    state.player.hero.position = hex(0, 1);
+    state.opponent.hero.position = hex(0, -1);
+    state.opponent.mana = 8;
+    let command = match phase {
+        Phase::Movement => GameCommand::MovePiece {
+            piece_id: state.opponent.hero.id.clone(),
+            to: hex(1, -1),
+        },
+        Phase::Attack => {
+            state.board.units.push(board_unit(
+                "attack-target",
+                Side::Player,
+                hex(0, 0),
+                1,
+                1,
+                4,
+            ));
+            GameCommand::Attack {
+                attacker_id: state.opponent.hero.id.clone(),
+                target_id: "attack-target".into(),
+            }
+        }
+        Phase::CardPlay => {
+            let card = player_unit_card(&state, "runic-insight");
+            let card_id = card.id.clone();
+            state.opponent.hand = vec![card];
+            GameCommand::PlayCard {
+                card_id,
+                target: ActionTarget::Piece {
+                    piece_id: state.opponent.hero.id.clone(),
+                },
+            }
+        }
+        Phase::MatchOver => panic!("response fixture needs a live phase"),
+    };
+    command
+        .execute_compatibility(
+            &mut state,
+            CommandContext {
+                side: Side::Opponent,
+                action_index: 0,
+            },
+        )
+        .unwrap();
+    assert_eq!(state.priority_side, Some(Side::Player));
+    let card = player_unit_card(&state, "spark-jolt");
+    let card_id = card.id.clone();
+    state.player.hand = vec![card];
+    GameCommand::PlayCard {
+        card_id,
+        target: ActionTarget::Piece {
+            piece_id: state.opponent.hero.id.clone(),
+        },
+    }
+    .execute_compatibility(
+        &mut state,
+        CommandContext {
+            side: Side::Player,
+            action_index: 1,
+        },
+    )
+    .unwrap();
+    assert_eq!(state.priority_side, Some(Side::Opponent));
+    state.opponent.hero.ap_remaining = 0;
+    state.opponent.mana = 2;
+    state.opponent.hand.clear();
+    state
+}
+
+#[test]
+fn solo_ai_responds_with_legal_spells_at_zero_hero_ap_in_every_phase() {
+    use crate::commands::{CommandContext, GameCommand};
+    let config =
+        AiPolicyConfig::from_json(include_str!("../../../../backend/config/ai-policies.json"))
+            .unwrap();
+    for policy_id in ["baseline-v1", "candidate-aggressive-v1"] {
+        let policy = SoloAiPolicy::from_definition(config.policy(policy_id).unwrap());
+        for phase in [Phase::Movement, Phase::Attack, Phase::CardPlay] {
+            let mut state = pending_solo_response_game(phase.clone());
+            let card = starter_card_templates()
+                .into_iter()
+                .find(|card| card.template_id == "overload-spark")
+                .unwrap();
+            let card_id = card.id.clone();
+            let blocked_spell = starter_card_templates()
+                .into_iter()
+                .find(|card| card.template_id == "spark-jolt")
+                .unwrap();
+            let blocked_unit = starter_card_templates()
+                .into_iter()
+                .find(|card| card.template_id == "ember-squire")
+                .unwrap();
+            state.opponent.hand = vec![blocked_spell, blocked_unit, card];
+            let before = state.to_snapshot_json().unwrap();
+            let command = state
+                .next_solo_ai_game_command_with_policy(Side::Opponent, &policy)
+                .unwrap()
+                .unwrap();
+            assert!(
+                matches!(&command, GameCommand::PlayCard { card_id: chosen, .. } if chosen == &card_id)
+            );
+            assert!(
+                state
+                    .queries()
+                    .command_availability(Side::Opponent, &command)
+                    .allowed
+            );
+            assert_eq!(state.to_snapshot_json().unwrap(), before);
+            let mut paced = state.clone();
+            command
+                .execute_compatibility(
+                    &mut state,
+                    CommandContext {
+                        side: Side::Opponent,
+                        action_index: 2,
+                    },
+                )
+                .unwrap();
+            let mut frames = Vec::new();
+            assert!(matches!(
+                paced
+                    .advance_ai_for_side_with_policy_strict(
+                        Side::Opponent,
+                        &policy,
+                        &mut frames,
+                        Some(2)
+                    )
+                    .unwrap(),
+                AiAdvanceOutcome::ActionApplied
+            ));
+            assert_eq!(
+                state.to_snapshot_json().unwrap(),
+                paced.to_snapshot_json().unwrap()
+            );
+            assert_eq!(state.opponent.hero.ap_remaining, 0);
+            assert_eq!(state.opponent.mana, 0);
+            assert_eq!(state.phase, phase);
+            assert_eq!(state.priority_side, Some(Side::Player));
+            assert_eq!(state.action_stack.len(), 3);
+        }
+    }
+}
+
+#[test]
+fn solo_ai_passes_without_useful_eligible_responses_and_rejects_wrong_priority() {
+    use crate::commands::GameCommand;
+    let config =
+        AiPolicyConfig::from_json(include_str!("../../../../backend/config/ai-policies.json"))
+            .unwrap();
+    for policy_id in ["baseline-v1", "candidate-aggressive-v1"] {
+        let policy = SoloAiPolicy::from_definition(config.policy(policy_id).unwrap());
+        for unavailable in [
+            "nonSpell",
+            "lowPriority",
+            "unaffordable",
+            "noTarget",
+            "notUseful",
+        ] {
+            let mut state = pending_solo_response_game(Phase::Movement);
+            let template = match unavailable {
+                "nonSpell" => "ember-squire",
+                "notUseful" => "quick-salve",
+                _ => "overload-spark",
+            };
+            let mut card = starter_card_templates()
+                .into_iter()
+                .find(|card| card.template_id == template)
+                .unwrap();
+            match unavailable {
+                "lowPriority" => {
+                    if let CardKind::Spell { priority, .. } = &mut card.kind {
+                        *priority = 1;
+                    }
+                }
+                "notUseful" => {
+                    if let CardKind::Spell { priority, .. } = &mut card.kind {
+                        *priority = 4;
+                    }
+                }
+                "unaffordable" => state.opponent.mana = 0,
+                "noTarget" => {
+                    if let CardKind::Spell { range, .. } = &mut card.kind {
+                        *range = 0;
+                    }
+                }
+                _ => {}
+            }
+            state.opponent.hand = vec![card];
+            assert_eq!(
+                state
+                    .next_solo_ai_game_command_with_policy(Side::Opponent, &policy)
+                    .unwrap(),
+                Some(GameCommand::PassPriority),
+                "{policy_id}: {unavailable}"
+            );
+            let before = state.to_snapshot_json().unwrap();
+            assert_eq!(
+                state.next_solo_ai_game_command_with_policy(Side::Player, &policy),
+                Err(MatchError::NotPrioritySide)
+            );
+            assert_eq!(
+                state.advance_ai_for_side_with_policy_strict(
+                    Side::Player,
+                    &policy,
+                    &mut Vec::new(),
+                    Some(2)
+                ),
+                Err(MatchError::NotPrioritySide)
+            );
+            assert_eq!(state.to_snapshot_json().unwrap(), before);
+            assert!(matches!(
+                state
+                    .advance_ai_for_side_with_policy_strict(
+                        Side::Opponent,
+                        &policy,
+                        &mut Vec::new(),
+                        Some(2)
+                    )
+                    .unwrap(),
+                AiAdvanceOutcome::PriorityPassed
+            ));
+        }
+    }
+}
+
 #[test]
 fn solo_ai_card_evaluators_use_mana_with_zero_hero_ap_for_both_policies() {
     use crate::commands::{CommandContext, GameCommand};
