@@ -508,6 +508,163 @@ mod tests {
     }
 
     #[test]
+    fn shared_actions_persist_in_order_and_rejections_preserve_authoritative_data() {
+        let path = test_db_path("shared-actions");
+        let mut store = SqliteMatchStore::new(&path).expect("store should open");
+        insert_user(&mut store, 101, "player@example.com");
+        insert_user(&mut store, 102, "opponent@example.com");
+        let created = store
+            .create_shared_match(None, SharedMatchFormat::Duel)
+            .expect("shared match should create");
+        for (token, hero_type, user_id) in [
+            (&created.player_token, HeroType::Pyromancer, 101),
+            (&created.opponent_token, HeroType::Runekeeper, 102),
+        ] {
+            store
+                .join_shared_match(
+                    &created.match_id,
+                    token,
+                    hero_type,
+                    starter_deck_snapshot(),
+                    MatchProgressionLoadout::default(),
+                    Some(user_id),
+                )
+                .expect("seat should join");
+        }
+        MatchCommands::new(&mut store)
+            .apply_shared_seat_action(
+                &created.match_id,
+                &created.player_token,
+                MatchActionRequest::StartCardPlay,
+            )
+            .expect("Player should enter Card Play");
+
+        let read_persistence = |store: &mut SqliteMatchStore| {
+            store
+                .connection_mut()
+                .query_row(
+                    "SELECT snapshot_json, completed_at, (SELECT COUNT(*) FROM match_xp_awards WHERE match_id = ?1) FROM matches WHERE id = ?1",
+                    params![created.match_id],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?, row.get::<_, i64>(2)?)),
+                )
+                .expect("snapshot should load")
+        };
+        let persisted_before = read_persistence(&mut store);
+        let (aggregate_before, _) = store
+            .load_event_sourced_match(&created.match_id)
+            .expect("aggregate should load")
+            .expect("aggregate should exist");
+        let replay_before = store
+            .load_replay(&created.match_id)
+            .expect("replay should load")
+            .expect("replay should exist");
+
+        for (token, request) in [
+            (&created.opponent_token, MatchActionRequest::StartCardPlay),
+            (
+                &created.player_token,
+                MatchActionRequest::PlayCard {
+                    card_id: "missing-card".to_string(),
+                    target: crate::match_session::ActionTarget::Hex {
+                        coord: crate::match_session::HexCoord { q: 0, r: 0 },
+                    },
+                },
+            ),
+        ] {
+            let error = MatchCommands::new(&mut store)
+                .apply_shared_seat_action(&created.match_id, token, request)
+                .expect_err("invalid Shared action should fail");
+            assert!(matches!(error, MatchCommandError::Rule(_)));
+            assert_eq!(read_persistence(&mut store), persisted_before);
+            let (aggregate, action_index) = store
+                .load_event_sourced_match(&created.match_id)
+                .expect("aggregate should load")
+                .expect("aggregate should exist");
+            assert_eq!(aggregate.version(), aggregate_before.version());
+            assert_eq!(action_index, 1);
+            let replay = store
+                .load_replay(&created.match_id)
+                .expect("replay should load")
+                .expect("replay should exist");
+            assert_eq!(replay.frames.len(), replay_before.frames.len());
+            let shared = store
+                .load_shared_match_for_seat(&created.match_id, &created.player_token)
+                .expect("Shared match should load")
+                .expect("Shared match should exist");
+            assert_eq!(shared.status, SharedMatchStatus::Active);
+            assert!(shared.state.expect("state should exist").winner.is_none());
+            assert_eq!(total_xp(&mut store, 101), 0);
+            assert_eq!(total_xp(&mut store, 102), 0);
+        }
+
+        let applied = MatchCommands::new(&mut store)
+            .apply_shared_seat_action(
+                &created.match_id,
+                &created.player_token,
+                MatchActionRequest::EndTurn,
+            )
+            .expect("Player should end the turn");
+        assert_eq!(
+            applied
+                .shared_match
+                .state
+                .expect("state should exist")
+                .active_side,
+            Side::Opponent
+        );
+        drop(store);
+        let mut store = SqliteMatchStore::new(&path).expect("store should reopen");
+        assert_eq!(
+            store
+                .next_action_index(&created.match_id)
+                .expect("action index should load"),
+            2
+        );
+        let requests: Vec<serde_json::Value> = store
+            .connection_mut()
+            .prepare(
+                "SELECT request_json FROM match_actions WHERE match_id = ?1 ORDER BY action_index",
+            )
+            .expect("query should prepare")
+            .query_map(params![created.match_id], |row| row.get::<_, String>(0))
+            .expect("requests should load")
+            .map(|row| {
+                serde_json::from_str(&row.expect("request should read"))
+                    .expect("request should parse")
+            })
+            .collect();
+        assert_eq!(
+            requests,
+            vec![
+                serde_json::json!({"type": "startCardPlay"}),
+                serde_json::json!({"type": "endTurn"})
+            ]
+        );
+        let replay = store
+            .load_replay(&created.match_id)
+            .expect("replay should load")
+            .expect("replay should exist");
+        assert_eq!(replay.summary.state.active_side, Side::Opponent);
+        for (index, frame) in replay.frames.iter().enumerate() {
+            assert_eq!(frame.frame_index as usize, index);
+        }
+        assert!(
+            replay
+                .frames
+                .windows(2)
+                .all(|frames| frames[0].action_index <= frames[1].action_index)
+        );
+        assert_eq!(
+            replay
+                .frames
+                .iter()
+                .filter_map(|frame| frame.action_index)
+                .collect::<std::collections::BTreeSet<_>>(),
+            std::collections::BTreeSet::from([0, 1])
+        );
+    }
+
+    #[test]
     fn shared_forfeit_persists_status_winner_and_replay_frame() {
         let path = test_db_path("shared-forfeit");
         let mut store = SqliteMatchStore::new(path).expect("store should open");
