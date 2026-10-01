@@ -10,7 +10,8 @@ test("a fresh browser can play with the default board settings", async ({ page }
   await page.getByRole("button", { name: "Play against bot", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Round 1", exact: true })).toBeVisible();
   await expect(page.getByRole("region", { name: "Hex board", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Play Cards", exact: true }).click();
+  await page.getByRole("button", { name: "Start Attack", exact: true }).click();
+  await page.getByRole("button", { name: "Finish Attacks", exact: true }).click();
   await page.getByRole("button", { name: /Rune Bruiser/ }).first().click();
   await page.getByRole("button", { name: "q 0, r 2, empty hex", exact: true }).click();
   await expect(page.getByRole("button", { name: "q 0, r 2, occupied by your unit", exact: true })).toBeVisible();
