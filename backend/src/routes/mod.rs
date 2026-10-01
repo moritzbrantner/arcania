@@ -1,6 +1,9 @@
 use crate::app_state::{AppState, SharedState};
 use crate::auth_context::*;
 use crate::card_catalog::{CatalogResponse, starter_catalog};
+use crate::card_workshop::{
+    CardWorkshop, CreateCardDraftRequest, PublishCardDraftRequest, UpdateCardDraftRequest,
+};
 use crate::deck_library::{DeckLibrary, SaveDeckRequest, system_deck_response};
 use crate::deck_recipe_legality::DeckLegalityPreviewRequest;
 use crate::http_errors::*;
@@ -24,6 +27,7 @@ use axum::response::IntoResponse;
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use futures_util::StreamExt;
+use game_server::SessionLease;
 use std::sync::Arc;
 use tokio::time::{self, Duration, Instant};
 use tower_http::cors::{Any, CorsLayer};
@@ -42,6 +46,25 @@ pub fn create_app(store: SqliteMatchStore) -> Router {
     let router = Router::new()
         .route("/api/health", get(health))
         .route("/api/catalog/cards", get(catalog_cards))
+        .route(
+            "/api/card-drafts",
+            get(list_card_drafts).post(create_card_draft),
+        )
+        .route(
+            "/api/card-drafts/{draft_id}",
+            get(load_card_draft)
+                .patch(update_card_draft)
+                .delete(delete_card_draft),
+        )
+        .route(
+            "/api/card-drafts/{draft_id}/publish",
+            post(publish_card_draft),
+        )
+        .route("/api/card-revisions/{card_id}", get(card_revision_history))
+        .route(
+            "/api/card-revisions/{card_id}/{revision}/fork",
+            post(fork_card_revision),
+        )
         .route("/api/system-decks", get(system_decks))
         .route("/api/users/{handle}/decks/{deck_id}", get(load_public_deck))
         .route("/api/decks", get(list_decks).post(create_deck))
@@ -124,6 +147,202 @@ async fn catalog_cards() -> impl IntoResponse {
     Json(CatalogResponse {
         cards: starter_catalog(),
     })
+}
+
+async fn list_card_drafts(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let response = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.list_drafts_for_user(profile.id) {
+            Ok(response) => response,
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    Json(response).into_response()
+}
+
+async fn create_card_draft(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Json(request): Json<CreateCardDraftRequest>,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let draft = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let mut workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.create_draft_for_user(profile.id, request) {
+            Ok(draft) => draft,
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    Json(draft).into_response()
+}
+
+async fn load_card_draft(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Path(draft_id): Path<i64>,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let draft = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.load_draft_for_user(profile.id, draft_id) {
+            Ok(Some(draft)) => draft,
+            Ok(None) => {
+                return card_workshop_error_response(
+                    crate::card_workshop::CardWorkshopError::NotFound,
+                );
+            }
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    Json(draft).into_response()
+}
+
+async fn update_card_draft(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Path(draft_id): Path<i64>,
+    Json(request): Json<UpdateCardDraftRequest>,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let draft = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let mut workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.update_draft_for_user(profile.id, draft_id, request) {
+            Ok(draft) => draft,
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    Json(draft).into_response()
+}
+
+async fn delete_card_draft(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Path(draft_id): Path<i64>,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let deleted = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let mut workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.delete_draft_for_user(profile.id, draft_id) {
+            Ok(deleted) => deleted,
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    if !deleted {
+        return card_workshop_error_response(crate::card_workshop::CardWorkshopError::NotFound);
+    }
+    Json(AuthMessageResponse {
+        message: "Card draft deleted",
+    })
+    .into_response()
+}
+
+async fn publish_card_draft(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Path(draft_id): Path<i64>,
+    Json(request): Json<PublishCardDraftRequest>,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let revision = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let mut workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.publish_draft_for_user(profile.id, draft_id, request) {
+            Ok(revision) => revision,
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    Json(revision).into_response()
+}
+
+async fn card_revision_history(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Path(card_id): Path<String>,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let history = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.revision_history_for_user(profile.id, &card_id) {
+            Ok(history) => history,
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    Json(history).into_response()
+}
+
+async fn fork_card_revision(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Path((card_id, revision)): Path<(String, u32)>,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let draft = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let mut workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.fork_revision_for_user(profile.id, &card_id, revision) {
+            Ok(draft) => draft,
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    Json(draft).into_response()
 }
 
 async fn system_decks() -> impl IntoResponse {
@@ -486,7 +705,10 @@ async fn update_preferred_hero(
         Err(response) => return response,
     };
     let updated = {
-        let mut store = state.store.lock().expect("store lock should not be poisoned");
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
         let mut identity = IdentityModule::new(store.connection_mut());
         match identity.update_preferred_hero(profile.id, request.hero_type) {
             Ok(Some(profile)) => profile,
@@ -519,7 +741,10 @@ async fn list_profile_matches(
                         Ok(context) => context,
                         Err(error) => return store_error_response(error),
                     };
-                    let (team, deck_name) = context.unwrap_or((crate::match_session::Team::Player, summary.player_deck_name.clone()));
+                    let (team, deck_name) = context.unwrap_or((
+                        crate::match_session::Team::Player,
+                        summary.player_deck_name.clone(),
+                    ));
                     summaries.push(MatchSummary::for_viewer(summary, team, deck_name));
                 }
                 summaries
@@ -528,10 +753,7 @@ async fn list_profile_matches(
         }
     };
 
-    Json(MatchArchiveResponse {
-        matches,
-    })
-    .into_response()
+    Json(MatchArchiveResponse { matches }).into_response()
 }
 
 async fn load_preferences(
@@ -958,6 +1180,20 @@ async fn handle_shared_socket(
     match_id: String,
     seat_token: String,
 ) {
+    let lease = match state.connect_shared_seat(&match_id, &seat_token) {
+        Ok(lease) => lease,
+        Err(error) => {
+            let _ = send_shared_message(
+                &mut socket,
+                SharedServerMessage::Error {
+                    message: format!("Could not establish shared match session: {error}"),
+                },
+            )
+            .await;
+            return;
+        }
+    };
+
     {
         let mut store = state
             .store
@@ -970,10 +1206,11 @@ async fn handle_shared_socket(
     let mut receiver = sender.subscribe();
     let mut heartbeat_timeout = time::interval(Duration::from_secs(5));
     let mut last_client_message = Instant::now();
-    if let Some(message) = shared_snapshot_message(&state, &match_id, &seat_token, false) {
-        if send_shared_message(&mut socket, message).await.is_err() {
-            return;
-        }
+    if let Some(message) = shared_snapshot_message(&state, &match_id, &seat_token, false)
+        && send_shared_message(&mut socket, message).await.is_err()
+    {
+        finish_shared_socket(&state, &match_id, &seat_token, lease);
+        return;
     }
     state.notify_match(&match_id);
 
@@ -986,31 +1223,62 @@ async fn handle_shared_socket(
                 let Ok(message) = received else {
                     break;
                 };
+                if !state.owns_shared_seat_connection(&match_id, &seat_token, lease) {
+                    break;
+                }
                 last_client_message = Instant::now();
                 match message {
                     Message::Text(text) => {
-                        handle_shared_client_text(&mut socket, &state, &match_id, &seat_token, &text).await;
+                        if !handle_shared_client_text(
+                            &mut socket,
+                            &state,
+                            &match_id,
+                            &seat_token,
+                            lease,
+                            &text,
+                        )
+                        .await
+                        {
+                            break;
+                        }
                     }
                     Message::Close(_) => break,
                     _ => {}
                 }
             }
             _ = heartbeat_timeout.tick() => {
-                if last_client_message.elapsed() > Duration::from_secs(45) {
+                if !state.owns_shared_seat_connection(&match_id, &seat_token, lease)
+                    || last_client_message.elapsed() > Duration::from_secs(45)
+                {
                     break;
                 }
             }
             broadcast = receiver.recv() => {
-                if broadcast.is_err() {
+                if broadcast.is_err()
+                    || !state.owns_shared_seat_connection(&match_id, &seat_token, lease)
+                {
                     break;
                 }
-                if let Some(message) = shared_snapshot_message(&state, &match_id, &seat_token, false) {
-                    if send_shared_message(&mut socket, message).await.is_err() {
-                        break;
-                    }
+                if let Some(message) = shared_snapshot_message(&state, &match_id, &seat_token, false)
+                    && send_shared_message(&mut socket, message).await.is_err()
+                {
+                    break;
                 }
             }
         }
+    }
+
+    finish_shared_socket(&state, &match_id, &seat_token, lease);
+}
+
+fn finish_shared_socket(
+    state: &SharedState,
+    match_id: &str,
+    seat_token: &str,
+    lease: SessionLease,
+) {
+    if !state.disconnect_shared_seat(match_id, seat_token, lease) {
+        return;
     }
 
     {
@@ -1018,9 +1286,9 @@ async fn handle_shared_socket(
             .store
             .lock()
             .expect("store lock should not be poisoned");
-        let _ = store.mark_shared_seat_disconnected(&match_id, &seat_token);
+        let _ = store.mark_shared_seat_disconnected(match_id, seat_token);
     }
-    state.notify_match(&match_id);
+    state.notify_match(match_id);
 }
 
 async fn handle_shared_client_text(
@@ -1028,8 +1296,9 @@ async fn handle_shared_client_text(
     state: &SharedState,
     match_id: &str,
     seat_token: &str,
+    lease: SessionLease,
     text: &str,
-) {
+) -> bool {
     let message = match serde_json::from_str::<SharedClientMessage>(text) {
         Ok(message) => message,
         Err(error) => {
@@ -1040,13 +1309,20 @@ async fn handle_shared_client_text(
                 },
             )
             .await;
-            return;
+            return true;
         }
     };
 
     match message {
         SharedClientMessage::Action { request_id, action } => {
-            match apply_shared_socket_action(state, match_id, seat_token, action) {
+            let Some(result) =
+                state.with_shared_seat_connection(match_id, seat_token, lease, || {
+                    apply_shared_socket_action(state, match_id, seat_token, action)
+                })
+            else {
+                return false;
+            };
+            match result {
                 Ok(payload) => {
                     let _ = send_shared_message(
                         socket,
@@ -1071,7 +1347,14 @@ async fn handle_shared_client_text(
             }
         }
         SharedClientMessage::ClaimForfeit { request_id } => {
-            match claim_shared_forfeit(state, match_id, seat_token) {
+            let Some(result) =
+                state.with_shared_seat_connection(match_id, seat_token, lease, || {
+                    claim_shared_forfeit(state, match_id, seat_token)
+                })
+            else {
+                return false;
+            };
+            match result {
                 Ok(payload) => {
                     let _ = send_shared_message(
                         socket,
@@ -1096,13 +1379,30 @@ async fn handle_shared_client_text(
             }
         }
         SharedClientMessage::Heartbeat => {
-            let mut store = state
-                .store
-                .lock()
-                .expect("store lock should not be poisoned");
-            let _ = store.mark_shared_seat_seen(match_id, seat_token);
+            let Some(result) =
+                state.with_shared_seat_connection(match_id, seat_token, lease, || {
+                    let mut store = state
+                        .store
+                        .lock()
+                        .expect("store lock should not be poisoned");
+                    store.mark_shared_seat_seen(match_id, seat_token)
+                })
+            else {
+                return false;
+            };
+            if let Err(error) = result {
+                let _ = send_shared_message(
+                    socket,
+                    SharedServerMessage::Error {
+                        message: error.to_string(),
+                    },
+                )
+                .await;
+            }
         }
     }
+
+    true
 }
 
 fn apply_shared_socket_action(
@@ -1258,7 +1558,7 @@ async fn load_match_summary(
         Ok(profile) => profile,
         Err(response) => return response,
     };
-    let (summary, viewer_side, reward) = {
+    let (summary, viewer_side, viewer_deck_name, reward) = {
         let mut store = state
             .store
             .lock()
@@ -1288,6 +1588,15 @@ async fn load_match_summary(
         if replay.summary.state.mode == MatchMode::Shared && viewer_side.is_none() {
             return match_summary_not_found_response(&match_id);
         }
+        let viewer_deck_name = match (replay.summary.state.mode, profile.as_ref()) {
+            (MatchMode::Shared, Some(profile)) => {
+                match store.viewer_context_for_user(&match_id, profile.id) {
+                    Ok(context) => context.and_then(|(_, deck_name)| deck_name),
+                    Err(error) => return store_error_response(error),
+                }
+            }
+            _ => replay.summary.player_deck_name.clone(),
+        };
         let reward = if let (Some(profile), Some(viewer_side)) = (profile.as_ref(), viewer_side) {
             let progression = ProgressionModule::new(store.connection_mut());
             match progression.match_reward_summary(profile.id, &match_id, viewer_side) {
@@ -1297,7 +1606,7 @@ async fn load_match_summary(
         } else {
             None
         };
-        (replay.summary, viewer_side, reward)
+        (replay.summary, viewer_side, viewer_deck_name, reward)
     };
 
     let viewer = MatchSummaryViewer {
@@ -1307,7 +1616,13 @@ async fn load_match_summary(
     let match_id = summary.id.clone();
     Json(MatchSummaryResponse {
         match_id,
-        summary: MatchSummary::for_viewer(summary.clone(), viewer_side.map(|side| side.team()).unwrap_or(crate::match_session::Team::Player), summary.player_deck_name.clone()),
+        summary: MatchSummary::for_viewer(
+            summary.clone(),
+            viewer_side
+                .map(|side| side.team())
+                .unwrap_or(crate::match_session::Team::Player),
+            viewer_deck_name,
+        ),
         viewer,
         reward,
     })
@@ -1349,7 +1664,12 @@ async fn load_shared_match_summary(
         } else {
             None
         };
-        (replay.summary, viewer_side, shared.viewer_seat.deck_recipe_name.clone(), reward)
+        (
+            replay.summary,
+            viewer_side,
+            shared.viewer_seat.deck_recipe_name.clone(),
+            reward,
+        )
     };
 
     let viewer = MatchSummaryViewer {
@@ -1404,7 +1724,11 @@ fn replay_response(replay: crate::match_store::StoredReplay) -> axum::response::
         ReplayVisibility::Public
     };
     let match_id = replay.summary.id.clone();
-    let summary = MatchSummary::for_viewer(replay.summary.clone(), crate::match_session::Team::Player, replay.summary.player_deck_name.clone());
+    let summary = MatchSummary::for_viewer(
+        replay.summary.clone(),
+        crate::match_session::Team::Player,
+        replay.summary.player_deck_name.clone(),
+    );
     let frames = replay
         .frames
         .into_iter()
@@ -1422,7 +1746,9 @@ fn replay_response(replay: crate::match_store::StoredReplay) -> axum::response::
 
 fn viewer_result(viewer_side: Option<Side>, winner: Option<Side>) -> ViewerResult {
     match (viewer_side, winner) {
-        (Some(viewer_side), Some(winner)) if viewer_side == winner => ViewerResult::Victory,
+        (Some(viewer_side), Some(winner)) if viewer_side.team() == winner.team() => {
+            ViewerResult::Victory
+        }
         (Some(_), Some(_)) => ViewerResult::Defeat,
         _ => ViewerResult::Spectator,
     }

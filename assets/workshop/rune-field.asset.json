@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "assetId": "rune-lanes.workshop.rune-field",
+  "generator": { "id": "builtin.procedural.svg-scatter", "version": "1" },
+  "randomness": { "mode": "seeded", "seed": "7331" },
+  "inputs": {},
+  "models": {},
+  "parameters": {
+    "width": 640, "height": 640, "count": 200, "minRadius": 1, "maxRadius": 3,
+    "background": "#102b2b", "palette": ["#d9b84f", "#58b7a1", "#367666", "#20524b"]
+  },
+  "output": { "path": ".asset-tooling/rune-field.svg" },
+  "reproducibility": { "expected": "exact" }
+}

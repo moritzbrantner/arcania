@@ -515,7 +515,7 @@ impl From<StoredSharedMatch> for SharedMatchResponse {
         let match_state = shared
             .state
             .as_ref()
-            .map(|state| state.public_value_for_side(shared.viewer_seat.side));
+            .map(|state| state.queries().public_match(shared.viewer_seat.side));
         let opponent_connected = shared
             .seats
             .iter()
@@ -584,7 +584,8 @@ impl MatchSummary {
         viewer_team: match_session::Team,
         viewer_deck_name: Option<String>,
     ) -> Self {
-        let (viewer_hero_types, opposing_hero_types) = hero_types_for_teams(&summary.state, viewer_team);
+        let (viewer_hero_types, opposing_hero_types) =
+            hero_types_for_teams(&summary.state, viewer_team);
         let viewer_result = summary.state.winner.map(|winner| {
             if winner.team() == viewer_team {
                 ViewerResult::Victory

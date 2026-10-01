@@ -32,7 +32,7 @@ test("renders Solo matches as a full-screen board with persistent collapsible ch
 
   await page.goto(`/match/${MATCH_ID}`);
   await expectFullViewportBoard(page, { width: 1280, height: 720 });
-  await expect.poll(() => hasPainted3dCanvas(page)).toBe(true);
+  await expect.poll(() => hasReady3dCanvas(page)).toBe(true);
   await expect(page.getByText("You", { exact: true })).toBeVisible();
   await expect(page.getByText("Opponent", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Enemy hand, 0 cards")).toBeVisible();
@@ -74,7 +74,7 @@ test("renders replays as a full-screen board with persistent collapsible chrome 
 
   await page.goto(`/matches/${MATCH_ID}/replay`);
   await expectFullViewportBoard(page, { width: 1280, height: 720 });
-  await expect.poll(() => hasPainted3dCanvas(page)).toBe(true);
+  await expect.poll(() => hasReady3dCanvas(page)).toBe(true);
   await expect(page.getByText("You", { exact: true })).toBeVisible();
   await expect(page.getByText("Opponent", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Replay frame")).toBeVisible();
@@ -284,7 +284,7 @@ test("shows queued stack targeting indicators and filters them from the board ov
 
   await page.goto(`/match/${MATCH_ID}`);
   await expect(page.locator('section[data-board-renderer="3d"]')).toBeVisible();
-  await expect.poll(() => hasPainted3dCanvas(page)).toBe(true);
+  await expect.poll(() => hasReady3dCanvas(page)).toBe(true);
   await expect(page.getByRole("region", { name: "Board stack targeting" })).toBeVisible();
   await expect(page.locator("[data-targeting-stack-row='pending-attack']")).toBeVisible();
   await expect(page.locator("[data-targeting-stack-row='pending-spell']")).toBeVisible();
@@ -345,7 +345,7 @@ test("keeps projected 3D hit targets usable after viewport resize", async ({ pag
 
   await page.goto(`/match/${MATCH_ID}`);
   await expect(page.locator('section[data-board-renderer="3d"]')).toBeVisible();
-  await expect.poll(() => hasPainted3dCanvas(page)).toBe(true);
+  await expect.poll(() => hasReady3dCanvas(page)).toBe(true);
 
   const destination = tile(page, "q 0, r 0, empty hex");
   await expect(destination).toBeVisible();
@@ -381,7 +381,7 @@ test("zooms and turns the 3D board camera with the mouse", async ({ page }) => {
 
   await page.goto(`/match/${MATCH_ID}`);
   await expect(page.locator('section[data-board-renderer="3d"]')).toBeVisible();
-  await expect.poll(() => hasPainted3dCanvas(page)).toBe(true);
+  await expect.poll(() => hasReady3dCanvas(page)).toBe(true);
 
   const canvasBox = await page.locator(".board-3d-shell canvas").boundingBox();
   expect(canvasBox).not.toBeNull();
@@ -584,7 +584,7 @@ test("uses procedural miniatures without an asset failure notice when no 3D mode
 
   await page.goto(`/match/${MATCH_ID}`);
   await expect(page.locator('section[data-board-renderer="3d"]')).toBeVisible();
-  await expect.poll(() => hasPainted3dCanvas(page)).toBe(true);
+  await expect.poll(() => hasReady3dCanvas(page)).toBe(true);
   await expect(page.getByRole("status").filter({ hasText: "procedural miniatures are shown" })).toHaveCount(0);
   await expect(tile(page, "q 0, r 0, occupied by your unit")).toContainText("1/2 AP 2");
 });
@@ -962,28 +962,14 @@ function ashScout(position) {
   };
 }
 
-async function hasPainted3dCanvas(page) {
+async function hasReady3dCanvas(page) {
   return page.locator(".board-3d-shell canvas").evaluate((canvas) => {
     if (!(canvas instanceof HTMLCanvasElement) || canvas.width === 0 || canvas.height === 0) {
       return false;
     }
 
-    const context = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
-    if (!context) {
-      return false;
-    }
-
-    const pixel = new Uint8Array(4);
-    context.readPixels(
-      Math.floor(canvas.width / 2),
-      Math.floor(canvas.height / 2),
-      1,
-      1,
-      context.RGBA,
-      context.UNSIGNED_BYTE,
-      pixel,
-    );
-    return pixel[3] !== 0;
+    const distance = Number(canvas.dataset.boardCameraDistance);
+    return Number.isFinite(distance) && distance > 0;
   });
 }
 

@@ -4,6 +4,193 @@ const AUTH_TOKEN_STORAGE_KEY = "rune-lanes-auth-token";
 const MATCH_ID = "solo-account-deck";
 const SHARED_MATCH_ID = "shared-home-match";
 
+for (const viewport of [{ width: 1280, height: 420 }, { width: 390, height: 600 }]) {
+  test(`Dashboard overview scrolls normally at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.addInitScript(
+      ({ key }) => localStorage.setItem(key, "existing-token"),
+      { key: AUTH_TOKEN_STORAGE_KEY },
+    );
+    await mockHomeApi(page, []);
+    await page.goto("/");
+    const lowerOverview = page.getByRole("button", { name: "View all Matches", exact: true });
+    await expect(page.getByRole("region", { name: "Current loadout" }).getByRole("heading", { name: "Default Legal" })).toBeVisible();
+    await expect(page.getByText("Next level in 140 XP")).toBeVisible();
+    await expect(page.getByText("No matches yet.")).toBeVisible();
+    await expect(lowerOverview).not.toBeInViewport();
+
+    await page.mouse.wheel(0, 5000);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+    await expect(lowerOverview).toBeInViewport();
+    await page.keyboard.press("Home");
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+    await page.keyboard.press("End");
+    await expect(lowerOverview).toBeInViewport();
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  });
+}
+
+test("desktop navigation exposes core destinations and secondary menu with active routes", async ({ page }) => {
+  await page.addInitScript(
+    ({ key }) => localStorage.setItem(key, "existing-token"),
+    { key: AUTH_TOKEN_STORAGE_KEY },
+  );
+  await mockHomeApi(page, []);
+  await page.goto("/");
+  const nav = page.getByRole("navigation", { name: "Primary navigation" });
+  for (const name of ["Dashboard", "Play", "Decks", "Heroes", "Matches"]) {
+    await expect(nav.getByRole("button", { name, exact: true })).toBeVisible();
+  }
+  await expect(nav.getByRole("button", { name: "Rune Lanes", exact: true })).toHaveCount(0);
+  await expect(nav.getByRole("button", { name: "Dashboard", exact: true })).toHaveAttribute("aria-current", "page");
+  await nav.getByRole("button", { name: "Learn & settings", exact: true }).click();
+  for (const name of ["Catalog", "Rules", "Tutorial", "Settings"]) {
+    await expect(nav.getByRole("menuitem", { name, exact: true })).toBeVisible();
+  }
+  await nav.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(page).toHaveURL(/\/play$/);
+  await expect(nav.getByRole("button", { name: "Play", exact: true })).toHaveAttribute("aria-current", "page");
+  await expect(nav.getByRole("button", { name: "Dashboard", exact: true })).not.toHaveAttribute("aria-current", "page");
+});
+
+test("guest navigation exposes essentials without account destinations", async ({ page }) => {
+  await mockHomeApi(page, [], { signedIn: false });
+  await page.goto("/");
+  const nav = page.getByRole("navigation", { name: "Primary navigation" });
+  for (const name of ["Dashboard", "Play", "Learn & settings", "Sign In"]) {
+    await expect(nav.getByRole("button", { name, exact: true })).toBeVisible();
+  }
+  for (const name of ["Decks", "Heroes", "Matches"]) {
+    await expect(nav.getByRole("button", { name, exact: true })).toHaveCount(0);
+  }
+  await expect(nav.getByRole("button", { name: /Account menu for/ })).toHaveCount(0);
+});
+
+test("Dashboard and account navigation reach Heroes and Progression while Profile edits identity", async ({ page }) => {
+  await page.addInitScript(
+    ({ key }) => localStorage.setItem(key, "existing-token"),
+    { key: AUTH_TOKEN_STORAGE_KEY },
+  );
+  await mockHomeApi(page, []);
+  await page.goto("/");
+  await page.getByRole("button", { name: "View all Heroes", exact: true }).click();
+  await expect(page).toHaveURL(/\/heroes$/);
+  await expect(page.getByRole("list", { name: "Hero roster" }).getByRole("listitem")).toHaveCount(8);
+  const nav = page.getByRole("navigation", { name: "Primary navigation" });
+  await expect(nav.getByRole("button", { name: "Heroes", exact: true })).toHaveAttribute("aria-current", "page");
+  await nav.getByRole("button", { name: "Dashboard", exact: true }).click();
+  await page.getByRole("button", { name: "View progression", exact: true }).click();
+  await expect(page).toHaveURL(/\/progression$/);
+  await expect(page.getByText("Next level in 140 XP")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Unlocked runes" }).getByText("Spark Stone", { exact: true })).toBeVisible();
+
+  await nav.getByRole("button", { name: "Account menu for Rune Player" }).click();
+  await nav.getByRole("menuitem", { name: "Profile", exact: true }).click();
+  await expect(page).toHaveURL(/\/profile$/);
+  await expect(page.getByLabel("Display Name")).toHaveValue("Rune Player");
+  await expect(page.getByLabel("Public Handle")).toHaveValue("rune-player");
+  await expect(page.getByRole("button", { name: "Save Profile", exact: true })).toBeVisible();
+  await expect(page.getByRole("list", { name: "Hero roster" })).toHaveCount(0);
+  await expect(page.getByRole("tablist", { name: "Hero mastery" })).toHaveCount(0);
+  await nav.getByRole("button", { name: "Account menu for Rune Player" }).click();
+  await nav.getByRole("menuitem", { name: "Progression", exact: true }).click();
+  await expect(page).toHaveURL(/\/progression$/);
+});
+
+test("account Progression groups runes and keeps its catalog read-only", async ({ page }) => {
+  await page.addInitScript(
+    ({ key }) => localStorage.setItem(key, "existing-token"),
+    { key: AUTH_TOKEN_STORAGE_KEY },
+  );
+  await mockHomeApi(page, []);
+  await page.route("**/api/progression", (route) => route.fulfill({ json: {
+    ...progression(),
+    runes: [...progression().runes, {
+      id: "chrono-rune", name: "Chrono Rune", text: "Start round two with +1 AP.", unlockLevel: 5, unlocked: false,
+    }],
+  } }));
+  await page.goto("/progression");
+
+  const unlocked = page.getByRole("region", { name: "Unlocked runes" });
+  const locked = page.getByRole("region", { name: "Locked runes" });
+  await expect(unlocked.getByText("Spark Stone", { exact: true })).toBeVisible();
+  await expect(unlocked.getByText("Start with a brighter spark.")).toBeVisible();
+  await expect(locked.getByText("Chrono Rune", { exact: true })).toBeVisible();
+  await expect(locked.getByText("Unlocks at level 5")).toBeVisible();
+  await expect(page.getByText("Next level in 140 XP")).toBeVisible();
+  await expect(page.getByText("Next rune: Chrono Rune at level 5")).toBeVisible();
+  await expect(unlocked.getByRole("button")).toHaveCount(0);
+  await expect(locked.getByRole("button")).toHaveCount(0);
+});
+
+test("mobile navigation contains keyboard focus and restores it on close", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 600 });
+  await page.addInitScript(
+    ({ key }) => localStorage.setItem(key, "existing-token"),
+    { key: AUTH_TOKEN_STORAGE_KEY },
+  );
+  await mockHomeApi(page, []);
+  await page.goto("/");
+  const trigger = page.getByRole("button", { name: "Open navigation menu" });
+  const dialog = page.getByRole("dialog", { name: "Navigation menu" });
+  const close = dialog.getByRole("button", { name: "Close navigation menu" });
+
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(dialog.getByRole("button").last()).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+
+  await page.keyboard.press("Enter");
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+  await page.mouse.wheel(0, 1200);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+  for (const destination of ["Dashboard", "Play", "Decks", "Heroes"]) {
+    await page.keyboard.press("Tab");
+    await expect(dialog.getByRole("button", { name: destination, exact: true })).toBeFocused();
+  }
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/heroes$/);
+  await expect(page.getByRole("heading", { name: "Heroes", exact: true })).toBeVisible();
+  await expect(dialog).toHaveCount(0);
+});
+
+test("Dashboard continues the newest active match when the deck library fails", async ({ page }) => {
+  const matchRequests = [];
+  await page.addInitScript(
+    ({ key }) => localStorage.setItem(key, "existing-token"),
+    { key: AUTH_TOKEN_STORAGE_KEY },
+  );
+  await mockHomeApi(page, matchRequests);
+  await page.route("**/api/decks", (route) => route.fulfill({ status: 503, json: { message: "Deck library unavailable" } }));
+  await page.route("**/api/profile/matches", (route) => route.fulfill({ json: { matches: [
+    { matchId: "older-active", mode: "solo", createdAt: 1, updatedAt: 10, round: 1, phase: "movement", winner: null, frameCount: 1 },
+    { matchId: MATCH_ID, mode: "solo", createdAt: 1, updatedAt: 20, round: 2, phase: "cardPlay", winner: null, frameCount: 2 },
+  ] } }));
+
+  await page.goto("/");
+  const loadout = page.getByRole("region", { name: "Current loadout" });
+  await expect(loadout.getByRole("heading", { name: "Deck library unavailable" })).toBeVisible();
+  await expect(page.getByText("Loading decks.", { exact: true })).toHaveCount(0);
+  await expect(loadout.getByRole("button", { name: "2 active matches" })).toBeVisible();
+  await expect(loadout.getByRole("button", { name: "Start match" })).toHaveCount(0);
+  await loadout.getByRole("button", { name: "Continue match" }).click();
+  await expect(page).toHaveURL(new RegExp(`/match/${MATCH_ID}$`));
+  await expect(page.getByRole("region", { name: "Hex board" })).toBeVisible();
+  expect(matchRequests).toEqual([]);
+});
+
 test("AI deck selection remains visible with system and legal account deck recipes", async ({ page }) => {
   const matchRequests = [];
   await page.addInitScript(
@@ -261,6 +448,7 @@ async function openAdvancedSetup(page) {
 function authUser() {
   return {
     id: 1,
+    handle: "rune-player",
     email: "player@local.dev",
     displayName: "Rune Player",
     avatar: { symbol: "sparkles", color: "emerald" },

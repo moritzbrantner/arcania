@@ -76,12 +76,20 @@ test("saved action hotkeys submit only when the viewer may act", async ({ page }
       document.activeElement.blur();
     }
   });
+  await recordKeydownConsumption(page);
   await page.keyboard.press("y");
   await expect.poll(() => actions.map((action) => action.type)).toEqual(["endTurn"]);
 
   await page.keyboard.press("y");
   await page.waitForTimeout(150);
   expect(actions.map((action) => action.type)).toEqual(["endTurn"]);
+  // Only the handled End Turn press prevents the browser default.
+  await expect
+    .poll(() => page.evaluate(() => window.__keydownConsumption))
+    .toEqual([
+      { key: "y", defaultPrevented: true },
+      { key: "y", defaultPrevented: false },
+    ]);
 
   match = playableMatch({
     activeSide: "player",
@@ -423,4 +431,16 @@ function radiusThreeTiles() {
     }
   }
   return tiles;
+}
+
+async function recordKeydownConsumption(page) {
+  await page.evaluate(() => {
+    window.__keydownConsumption = [];
+    window.addEventListener("keydown", (event) => {
+      // Read the outcome after every keydown listener has run, whatever their order.
+      setTimeout(() => {
+        window.__keydownConsumption.push({ key: event.key, defaultPrevented: event.defaultPrevented });
+      });
+    });
+  });
 }

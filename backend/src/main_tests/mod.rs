@@ -72,6 +72,9 @@ async fn advance_solo_match_to_player_turn(app: Router, match_id: &str) -> serde
 }
 
 async fn end_turn_from_card_play(app: Router, match_id: &str) -> serde_json::Value {
+    let (status, _) =
+        post_match_action(app.clone(), match_id, r#"{"type":"startAttackPhase"}"#).await;
+    assert_eq!(status, StatusCode::OK);
     let (status, _) = post_match_action(app.clone(), match_id, r#"{"type":"startCardPlay"}"#).await;
     assert_eq!(status, StatusCode::OK);
     let (status, acted) = post_match_action(app, match_id, r#"{"type":"endTurn"}"#).await;
@@ -91,7 +94,7 @@ fn complete_match_by_forfeit(path: &std::path::Path, match_id: &str, winner: Sid
         .load_match(match_id)
         .expect("match lookup should succeed")
         .expect("match should exist");
-    let frames = stored.state.forfeit_recording(winner, 0);
+    let frames = rune_lanes_core::test_support::forfeit_match(&mut stored.state, winner, 0);
     store
         .save_custom_action_and_replay_frames(
             match_id,
@@ -132,6 +135,7 @@ fn custom_preferences_payload() -> &'static str {
 }
 
 mod auth;
+mod card_workshop;
 mod decks;
 mod loadout_resolution;
 mod matches;

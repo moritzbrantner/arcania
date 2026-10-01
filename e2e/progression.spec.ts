@@ -56,6 +56,33 @@ test("selects and replaces default rune loadout within slot limit", async ({ pag
   await expect(force).toHaveAttribute("aria-pressed", "true");
 });
 
+test("retries a failed preferred-Hero save without losing the account preference", async ({ page }) => {
+  await mockExperiencedAccountApi(page);
+  let attempts = 0;
+  await page.route("**/api/profile/preferred-hero", async (route) => {
+    expect(route.request().method()).toBe("PATCH");
+    expect(route.request().postDataJSON()).toEqual({ heroType: "pyromancer" });
+    attempts += 1;
+    if (attempts === 1) {
+      await route.fulfill({ status: 503, json: { message: "Could not save your preferred Hero." } });
+    } else {
+      await route.fulfill({ json: { ...experiencedUser(), preferredHeroType: "pyromancer" } });
+    }
+  });
+  await signInExperiencedAccount(page);
+  await page.getByRole("button", { name: "Pyromancer", exact: true }).click();
+  await page.getByRole("button", { name: "Make preferred" }).click();
+  await expect(page.getByRole("alert")).toHaveText("Could not save your preferred Hero.");
+  await expect(page.getByRole("button", { name: "Make preferred" })).toBeEnabled();
+  await page.getByRole("button", { name: "Runekeeper", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Preferred Hero" })).toBeDisabled();
+  await page.getByRole("button", { name: "Pyromancer", exact: true }).click();
+  await page.getByRole("button", { name: "Make preferred" }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Preferred Hero" })).toBeDisabled();
+  expect(attempts).toBe(2);
+});
+
 async function signInExperiencedAccount(page) {
   await page.goto("/heroes");
   await page.getByLabel("Email").fill(EXPERIENCED_EMAIL);

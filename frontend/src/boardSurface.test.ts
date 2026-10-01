@@ -11,7 +11,7 @@ import { deriveBoardSurface } from "./boardSurface";
 
 describe("board surface", () => {
   it("exposes selected Card targets and their targeting indicators", () => {
-    const match = storyMatch({ hand: [cinderRingCard] });
+    const match = storyMatch({ hand: [cinderRingCard], phase: "cardPlay" });
 
     const surface = deriveBoardSurface({
       match,
@@ -43,15 +43,16 @@ describe("board surface", () => {
     expect(surface.targetingIndicators[0]?.secondaryFootprintCoords.length).toBeGreaterThan(0);
   });
 
-  it("exposes selected Piece move and attack targets", () => {
-    const match = storyMatch({
+  it("exposes selected Piece targets for the active phase", () => {
+    const movementMatch = storyMatch({
       units: [storyUnit({ q: 0, r: 0 }, { id: "friendly-unit" })],
       opponentHero: { q: 1, r: 0 },
+      phase: "movement",
     });
-    const selectedPiece = pieceById(match, "friendly-unit");
+    const selectedPiece = pieceById(movementMatch, "friendly-unit");
 
-    const surface = deriveBoardSurface({
-      match,
+    const movementSurface = deriveBoardSurface({
+      match: movementMatch,
       viewerSide: "player",
       selectedCard: null,
       selectedPiece,
@@ -64,13 +65,34 @@ describe("board surface", () => {
       activeStackItemId: null,
     });
 
-    expect(tileAt(surface, 0, 0)).toMatchObject({ isSelected: true, isLegal: false });
-    expect(tileAt(surface, -1, 0)).toMatchObject({ isLegal: true, piece: null });
-    expect(tileAt(surface, 1, 0)).toMatchObject({
+    expect(tileAt(movementSurface, 0, 0)).toMatchObject({ isSelected: true, isLegal: false });
+    expect(tileAt(movementSurface, -1, 0)).toMatchObject({ isLegal: true, piece: null });
+    expect(tileAt(movementSurface, 1, 0)).toMatchObject({
+      isLegal: false,
+      piece: { id: "opponent-hero" },
+    });
+
+    const attackMatch = { ...movementMatch, phase: "attack" as const };
+    const attackSurface = deriveBoardSurface({
+      match: attackMatch,
+      viewerSide: "player",
+      selectedCard: null,
+      selectedPiece,
+      focusedCoord: null,
+      hoveredCoord: null,
+      readOnly: false,
+      disabled: false,
+      tutorialHighlights: [],
+      animation: null,
+      activeStackItemId: null,
+    });
+
+    expect(tileAt(attackSurface, -1, 0)).toMatchObject({ isLegal: false, piece: null });
+    expect(tileAt(attackSurface, 1, 0)).toMatchObject({
       isLegal: true,
       piece: { id: "opponent-hero" },
     });
-    expect(surface.targetingIndicators).toEqual([
+    expect(attackSurface.targetingIndicators).toEqual([
       expect.objectContaining({
         actionType: "attack",
         sourcePieceId: "friendly-unit",

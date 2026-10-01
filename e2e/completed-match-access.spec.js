@@ -37,6 +37,15 @@ test("shared seat-link summary still loads without account login", async ({ page
   await expect(page.getByText("Sign in to view this match summary")).toHaveCount(0);
 });
 
+test("winning teammate seat-link summary shows Victory without account login", async ({ page }) => {
+  await mockCompletedMatchAccessApi(page);
+
+  await page.goto("/match/rl-shared/player-two-seat/summary");
+
+  await expect(page.getByRole("heading", { name: "Victory" })).toBeVisible();
+  await expect(page.getByText("Sign in to view this match summary")).toHaveCount(0);
+});
+
 async function mockCompletedMatchAccessApi(page) {
   await page.addInitScript(
     ({ key }) => localStorage.removeItem(key),
@@ -82,11 +91,16 @@ async function mockCompletedMatchAccessApi(page) {
       return;
     }
 
+    if (url.pathname === "/api/shared-matches/rl-shared/seats/player-two-seat/summary") {
+      await route.fulfill({ json: summaryResponse("rl-shared", "shared", "playerTwo") });
+      return;
+    }
+
     await route.fulfill({ status: 404, json: { message: "Not found" } });
   });
 }
 
-function summaryResponse(matchId, mode) {
+function summaryResponse(matchId, mode, viewerSide = "player") {
   return {
     matchId,
     summary: {
@@ -100,7 +114,7 @@ function summaryResponse(matchId, mode) {
       frameCount: 18,
     },
     viewer: {
-      side: "player",
+      side: viewerSide,
       result: "victory",
     },
     reward: null,

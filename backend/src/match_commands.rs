@@ -1,14 +1,23 @@
 use std::error::Error;
 use std::fmt;
 
+use rand::random;
+use rune_lanes_core::commands::{CommandConversionError, GameCommand};
+use rune_lanes_core::event_sourcing::{
+    CommandDecision, CommandId, CommandMetadata, EventSourcedMatch, EventSourcingError,
+};
+
 use crate::match_access::{Actor, MatchAccess};
-use crate::match_session::{MatchActionRequest, MatchError, RecordedReplayFrame};
+use crate::match_session::{
+    MatchActionRequest, MatchError, RecordedReplayFrame, Side, SoloAiPolicy,
+};
 use crate::match_store::{
     MatchStoreError, SharedMatchStatus, SqliteMatchStore, StoredMatch, StoredSharedMatch,
 };
 
 pub struct MatchCommands<'a> {
     store: &'a mut SqliteMatchStore,
+    solo_ai_policy: SoloAiPolicy,
 }
 
 #[derive(Clone, Debug)]
@@ -63,9 +72,21 @@ impl From<MatchError> for MatchCommandError {
     }
 }
 
+impl From<EventSourcingError> for MatchCommandError {
+    fn from(error: EventSourcingError) -> Self {
+        match error {
+            EventSourcingError::Rule(error) => Self::Rule(error),
+            other => Self::Store(MatchStoreError::EventSourcing(other)),
+        }
+    }
+}
+
 impl<'a> MatchCommands<'a> {
     pub fn new(store: &'a mut SqliteMatchStore) -> Self {
-        Self { store }
+        Self {
+            store,
+            solo_ai_policy: SoloAiPolicy::default(),
+        }
     }
 
     pub fn apply_solo_action(
@@ -74,31 +95,77 @@ impl<'a> MatchCommands<'a> {
         match_id: &str,
         request: MatchActionRequest,
     ) -> Result<AppliedSoloAction, MatchCommandError> {
-        let mut stored_match = self
-            .store
-            .load_match(match_id)?
-            .ok_or(MatchCommandError::NotFound)?;
+        self.apply_solo_action_inner(actor, match_id, request, None)
+    }
 
+    fn apply_solo_action_inner(
+        &mut self,
+        actor: Actor,
+        match_id: &str,
+        request: MatchActionRequest,
+        command_id: Option<CommandId>,
+    ) -> Result<AppliedSoloAction, MatchCommandError> {
+        if self.store.load_match(match_id)?.is_none() {
+            return Err(MatchCommandError::NotFound);
+        }
         if !MatchAccess::new(self.store).can_apply_solo_action(&actor, match_id) {
             return Err(MatchCommandError::Forbidden);
         }
 
-        let action_index = self.store.next_action_index(match_id)?;
-        let replay_frames = stored_match
-            .state
-            .apply_action_recording(request.clone(), action_index)?;
-        self.store.save_action_and_replay_frames(
-            &stored_match.id,
-            action_index,
-            &request,
-            &stored_match.state,
-            &replay_frames,
-        )?;
+        let (aggregate, action_index) = self
+            .store
+            .load_event_sourced_match(match_id)?
+            .ok_or(MatchCommandError::NotFound)?;
+        let command_id = command_id.unwrap_or_else(|| fresh_command_id(match_id, action_index));
+        let request_json = serde_json::to_string(&request).map_err(MatchStoreError::from)?;
+
+        let decision = match GameCommand::try_from(request.clone()) {
+            Ok(command) => aggregate.decide(
+                CommandMetadata {
+                    command_id,
+                    expected_version: aggregate.version(),
+                    side: Side::Player,
+                    action_index,
+                },
+                command,
+            )?,
+            Err(CommandConversionError::AdvanceAiIsApplicationOrchestration) => {
+                let metadata = CommandMetadata {
+                    command_id,
+                    expected_version: aggregate.version(),
+                    side: Side::Opponent,
+                    action_index,
+                };
+                match aggregate
+                    .state()
+                    .next_solo_ai_game_command_with_policy(Side::Opponent, &self.solo_ai_policy)?
+                {
+                    Some(command) => aggregate.decide(metadata, command)?,
+                    None => aggregate.decide_ai_turn_finished(metadata)?,
+                }
+            }
+        };
+        let (aggregate, replay_frames) =
+            self.persist_decision(match_id, &request_json, aggregate, decision, None)?;
 
         Ok(AppliedSoloAction {
-            stored_match,
+            stored_match: StoredMatch {
+                id: match_id.to_string(),
+                state: aggregate.state().clone(),
+            },
             replay_frames,
         })
+    }
+
+    #[cfg(test)]
+    fn apply_solo_action_with_command_id(
+        &mut self,
+        actor: Actor,
+        match_id: &str,
+        request: MatchActionRequest,
+        command_id: CommandId,
+    ) -> Result<AppliedSoloAction, MatchCommandError> {
+        self.apply_solo_action_inner(actor, match_id, request, Some(command_id))
     }
 
     pub fn apply_shared_seat_action(
@@ -115,22 +182,30 @@ impl<'a> MatchCommands<'a> {
         if shared.status != SharedMatchStatus::Active {
             return Err(MatchCommandError::NotActiveSharedMatch);
         }
-        let mut match_state = shared
-            .state
-            .ok_or(MatchCommandError::SharedMatchNotStarted)?;
-        let action_index = self.store.next_action_index(match_id)?;
-        let frames = match_state.apply_action_recording_for_side(
-            shared.viewer_seat.side,
-            request.clone(),
-            action_index,
+        if shared.state.is_none() {
+            return Err(MatchCommandError::SharedMatchNotStarted);
+        }
+
+        let command = GameCommand::try_from(request.clone()).map_err(|error| match error {
+            CommandConversionError::AdvanceAiIsApplicationOrchestration => {
+                MatchCommandError::Rule(MatchError::AiUnavailable)
+            }
+        })?;
+        let (aggregate, action_index) = self
+            .store
+            .load_event_sourced_match(match_id)?
+            .ok_or(MatchCommandError::NotFound)?;
+        let request_json = serde_json::to_string(&request).map_err(MatchStoreError::from)?;
+        let decision = aggregate.decide(
+            CommandMetadata {
+                command_id: fresh_command_id(match_id, action_index),
+                expected_version: aggregate.version(),
+                side: shared.viewer_seat.side,
+                action_index,
+            },
+            command,
         )?;
-        self.store.save_action_and_replay_frames(
-            match_id,
-            action_index,
-            &request,
-            &match_state,
-            &frames,
-        )?;
+        self.persist_decision(match_id, &request_json, aggregate, decision, None)?;
 
         let shared_match = self
             .store
@@ -171,18 +246,25 @@ impl<'a> MatchCommands<'a> {
             return Err(MatchCommandError::ForfeitNotClaimable);
         }
 
-        let mut match_state = shared
-            .state
+        let (aggregate, action_index) = self
+            .store
+            .load_event_sourced_match(match_id)?
             .ok_or(MatchCommandError::SharedMatchNotStarted)?;
-        let action_index = self.store.next_action_index(match_id)?;
-        let frames = match_state.forfeit_recording(shared.viewer_seat.side, action_index);
-        self.store.save_forfeit_action_and_replay_frames(
-            match_id,
-            action_index,
-            r#"{"type":"claimForfeit"}"#,
-            &match_state,
-            &frames,
+        let decision = aggregate.decide_forfeit(
+            CommandMetadata {
+                command_id: fresh_command_id(match_id, action_index),
+                expected_version: aggregate.version(),
+                side: shared.viewer_seat.side,
+                action_index,
+            },
             shared.viewer_seat.side,
+        )?;
+        self.persist_decision(
+            match_id,
+            r#"{"type":"claimForfeit"}"#,
+            aggregate,
+            decision,
+            Some(shared.viewer_seat.side),
         )?;
 
         let shared_match = self
@@ -191,6 +273,49 @@ impl<'a> MatchCommands<'a> {
             .ok_or(MatchCommandError::NotFound)?;
         Ok(AppliedSharedAction { shared_match })
     }
+
+    fn persist_decision(
+        &mut self,
+        match_id: &str,
+        request_json: &str,
+        aggregate: EventSourcedMatch,
+        decision: CommandDecision,
+        forfeit_winner: Option<Side>,
+    ) -> Result<(EventSourcedMatch, Vec<RecordedReplayFrame>), MatchCommandError> {
+        let CommandDecision::Append(event) = decision else {
+            return Ok((aggregate, Vec::new()));
+        };
+
+        let mut candidate = aggregate.clone();
+        let outcome = candidate.evolve(&event)?;
+        let snapshot = candidate.snapshot()?;
+        let duplicate_version = self.store.append_event_and_projection(
+            match_id,
+            &event,
+            &snapshot,
+            request_json,
+            candidate.state(),
+            &outcome.replay_frames,
+            forfeit_winner,
+        )?;
+        if duplicate_version.is_some() {
+            let (latest, _) = self
+                .store
+                .load_event_sourced_match(match_id)?
+                .ok_or(MatchCommandError::NotFound)?;
+            return Ok((latest, Vec::new()));
+        }
+
+        Ok((candidate, outcome.replay_frames))
+    }
+}
+
+fn fresh_command_id(match_id: &str, action_index: u32) -> CommandId {
+    CommandId::new(format!(
+        "backend:{match_id}:{action_index}:{:032x}",
+        random::<u128>()
+    ))
+    .expect("generated command id is never empty")
 }
 
 #[cfg(test)]
@@ -201,7 +326,7 @@ mod tests {
 
     use super::*;
     use crate::deck_library::starter_deck_snapshot;
-    use crate::match_session::{HeroType, MatchProgressionLoadout, ReplayEvent, Side};
+    use crate::match_session::{HeroType, MatchProgressionLoadout, ReplayEvent};
     use crate::match_store::SharedMatchFormat;
 
     fn test_db_path(name: &str) -> std::path::PathBuf {
@@ -256,6 +381,88 @@ mod tests {
     }
 
     #[test]
+    fn solo_ai_uses_the_configured_default_policy_and_persists_its_command() {
+        let config = crate::match_session::AiPolicyConfig::from_json(
+            r#"{"defaultPolicyId":"movement-only","policies":[{"id":"movement-only","rules":["moveTowardPlayerHero"]}]}"#,
+        )
+        .expect("alternate default policy should parse");
+        let mut store = SqliteMatchStore::new(test_db_path("solo-configured-policy"))
+            .expect("store should open");
+        let cards = [crate::deck_library::DeckCardCount {
+            template_id: "ember-squire".to_string(),
+            count: 1,
+        }];
+        let created = store
+            .create_match_for_user_with_decks(
+                HeroType::Pyromancer,
+                HeroType::Runekeeper,
+                crate::deck_library::deck_from_counts(Side::Player, &cards)
+                    .expect("player cards should materialize"),
+                crate::deck_library::deck_from_counts(Side::Opponent, &cards)
+                    .expect("opponent cards should materialize"),
+                MatchProgressionLoadout::default(),
+                MatchProgressionLoadout::default(),
+                "Policy test".to_string(),
+                None,
+            )
+            .expect("match should create");
+        let mut commands = MatchCommands::new(&mut store);
+        commands.solo_ai_policy = config.default_policy().expect("default should resolve");
+        for request in [
+            MatchActionRequest::StartAttackPhase,
+            MatchActionRequest::StartCardPlay,
+            MatchActionRequest::EndTurn,
+        ] {
+            commands
+                .apply_solo_action(Actor::Anonymous, &created.id, request)
+                .expect("player should finish the turn");
+        }
+        let queued = commands
+            .apply_solo_action(Actor::Anonymous, &created.id, MatchActionRequest::AdvanceAi)
+            .expect("selected policy command should apply");
+
+        assert_eq!(
+            queued.stored_match.state.phase,
+            crate::match_session::Phase::Movement
+        );
+        assert!(matches!(
+            queued.stored_match.state.action_stack.as_slice(),
+            [crate::match_session::StackItem {
+                side: Side::Opponent,
+                action: crate::match_session::StackAction::MovePiece { .. },
+                ..
+            }]
+        ));
+        let applied = commands
+            .apply_solo_action(
+                Actor::Anonymous,
+                &created.id,
+                MatchActionRequest::PassPriority,
+            )
+            .expect("player should pass the response window");
+        assert!(applied.replay_frames.iter().any(|frame| matches!(
+            frame.event,
+            ReplayEvent::PieceMoved { side: Side::Opponent, from, to, .. } if from != to
+        )));
+        let recovered = store
+            .load_event_sourced_match(&created.id)
+            .expect("event stream should load")
+            .expect("match should exist")
+            .0;
+        assert_eq!(
+            recovered
+                .state()
+                .to_snapshot_json()
+                .expect("recovered snapshot should serialize"),
+            applied
+                .stored_match
+                .state
+                .to_snapshot_json()
+                .expect("applied snapshot should serialize")
+        );
+    }
+
+    #[test]
     fn account_owned_solo_action_rejects_anonymous_actor() {
         let path = test_db_path("solo-forbidden");
         let mut store = SqliteMatchStore::new(path).expect("store should open");
@@ -307,6 +514,347 @@ mod tests {
             .expect("replay should load")
             .expect("replay should exist");
         assert_eq!(replay.frames.len(), 1);
+    }
+
+    #[test]
+    fn shared_actions_persist_in_order_and_rejections_preserve_authoritative_data() {
+        let path = test_db_path("shared-actions");
+        let mut store = SqliteMatchStore::new(&path).expect("store should open");
+        insert_user(&mut store, 101, "player@example.com");
+        insert_user(&mut store, 102, "opponent@example.com");
+        let created = store
+            .create_shared_match(None, SharedMatchFormat::Duel)
+            .expect("shared match should create");
+        for (token, hero_type, user_id) in [
+            (&created.player_token, HeroType::Pyromancer, 101),
+            (&created.opponent_token, HeroType::Runekeeper, 102),
+        ] {
+            store
+                .join_shared_match(
+                    &created.match_id,
+                    token,
+                    hero_type,
+                    starter_deck_snapshot(),
+                    MatchProgressionLoadout::default(),
+                    Some(user_id),
+                )
+                .expect("seat should join");
+        }
+        MatchCommands::new(&mut store)
+            .apply_shared_seat_action(
+                &created.match_id,
+                &created.player_token,
+                MatchActionRequest::StartAttackPhase,
+            )
+            .expect("Player should enter Attack");
+        MatchCommands::new(&mut store)
+            .apply_shared_seat_action(
+                &created.match_id,
+                &created.player_token,
+                MatchActionRequest::StartCardPlay,
+            )
+            .expect("Player should enter Card Play");
+
+        let read_persistence = |store: &mut SqliteMatchStore| {
+            store
+                .connection_mut()
+                .query_row(
+                    "SELECT snapshot_json, completed_at, (SELECT COUNT(*) FROM match_xp_awards WHERE match_id = ?1) FROM matches WHERE id = ?1",
+                    params![created.match_id],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?, row.get::<_, i64>(2)?)),
+                )
+                .expect("snapshot should load")
+        };
+        let persisted_before = read_persistence(&mut store);
+        let (aggregate_before, _) = store
+            .load_event_sourced_match(&created.match_id)
+            .expect("aggregate should load")
+            .expect("aggregate should exist");
+        let replay_before = store
+            .load_replay(&created.match_id)
+            .expect("replay should load")
+            .expect("replay should exist");
+
+        for (token, request) in [
+            (&created.opponent_token, MatchActionRequest::StartCardPlay),
+            (
+                &created.player_token,
+                MatchActionRequest::PlayCard {
+                    card_id: "missing-card".to_string(),
+                    target: crate::match_session::ActionTarget::Hex {
+                        coord: crate::match_session::HexCoord { q: 0, r: 0 },
+                    },
+                },
+            ),
+        ] {
+            let error = MatchCommands::new(&mut store)
+                .apply_shared_seat_action(&created.match_id, token, request)
+                .expect_err("invalid Shared action should fail");
+            assert!(matches!(error, MatchCommandError::Rule(_)));
+            assert_eq!(read_persistence(&mut store), persisted_before);
+            let (aggregate, action_index) = store
+                .load_event_sourced_match(&created.match_id)
+                .expect("aggregate should load")
+                .expect("aggregate should exist");
+            assert_eq!(aggregate.version(), aggregate_before.version());
+            assert_eq!(action_index, 2);
+            let replay = store
+                .load_replay(&created.match_id)
+                .expect("replay should load")
+                .expect("replay should exist");
+            assert_eq!(replay.frames.len(), replay_before.frames.len());
+            let shared = store
+                .load_shared_match_for_seat(&created.match_id, &created.player_token)
+                .expect("Shared match should load")
+                .expect("Shared match should exist");
+            assert_eq!(shared.status, SharedMatchStatus::Active);
+            assert!(shared.state.expect("state should exist").winner.is_none());
+            assert_eq!(total_xp(&mut store, 101), 0);
+            assert_eq!(total_xp(&mut store, 102), 0);
+        }
+
+        let applied = MatchCommands::new(&mut store)
+            .apply_shared_seat_action(
+                &created.match_id,
+                &created.player_token,
+                MatchActionRequest::EndTurn,
+            )
+            .expect("Player should end the turn");
+        assert_eq!(
+            applied
+                .shared_match
+                .state
+                .expect("state should exist")
+                .active_side,
+            Side::Opponent
+        );
+        drop(store);
+        let mut store = SqliteMatchStore::new(&path).expect("store should reopen");
+        assert_eq!(
+            store
+                .next_action_index(&created.match_id)
+                .expect("action index should load"),
+            3
+        );
+        let requests: Vec<serde_json::Value> = store
+            .connection_mut()
+            .prepare(
+                "SELECT request_json FROM match_actions WHERE match_id = ?1 ORDER BY action_index",
+            )
+            .expect("query should prepare")
+            .query_map(params![created.match_id], |row| row.get::<_, String>(0))
+            .expect("requests should load")
+            .map(|row| {
+                serde_json::from_str(&row.expect("request should read"))
+                    .expect("request should parse")
+            })
+            .collect();
+        assert_eq!(
+            requests,
+            vec![
+                serde_json::json!({"type": "startAttackPhase"}),
+                serde_json::json!({"type": "startCardPlay"}),
+                serde_json::json!({"type": "endTurn"})
+            ]
+        );
+        let replay = store
+            .load_replay(&created.match_id)
+            .expect("replay should load")
+            .expect("replay should exist");
+        assert_eq!(replay.summary.state.active_side, Side::Opponent);
+        for (index, frame) in replay.frames.iter().enumerate() {
+            assert_eq!(frame.frame_index as usize, index);
+        }
+        assert!(
+            replay
+                .frames
+                .windows(2)
+                .all(|frames| frames[0].action_index <= frames[1].action_index)
+        );
+        assert_eq!(
+            replay
+                .frames
+                .iter()
+                .filter_map(|frame| frame.action_index)
+                .collect::<std::collections::BTreeSet<_>>(),
+            std::collections::BTreeSet::from([0, 1, 2])
+        );
+    }
+
+    #[test]
+    fn movement_cards_survive_shared_seat_recovery_and_completed_replays() {
+        for format in [SharedMatchFormat::Duel, SharedMatchFormat::TwoVTwo] {
+            let path = test_db_path("shared-movement-card");
+            let mut store = SqliteMatchStore::new(&path).unwrap();
+            let created = store.create_shared_match(None, format).unwrap();
+            let mut seats = vec![
+                (Side::Player, created.player_token.clone()),
+                (Side::Opponent, created.opponent_token.clone()),
+            ];
+            if let (Some(player_two), Some(opponent_two)) =
+                (&created.player_two_token, &created.opponent_two_token)
+            {
+                seats.extend([
+                    (Side::PlayerTwo, player_two.clone()),
+                    (Side::OpponentTwo, opponent_two.clone()),
+                ]);
+            }
+            // A single-template frozen deck makes opening Card selection deterministic.
+            let deck = crate::deck_library::DeckRecipeSnapshot {
+                name: "Movement fixture".into(),
+                cards: vec![crate::deck_library::DeckCardCount {
+                    template_id: "ember-squire".into(),
+                    count: 8,
+                }],
+            };
+            for (_, token) in &seats {
+                store
+                    .join_shared_match(
+                        &created.match_id,
+                        token,
+                        HeroType::Runekeeper,
+                        deck.clone(),
+                        MatchProgressionLoadout::default(),
+                        None,
+                    )
+                    .unwrap();
+            }
+            let initial = store
+                .load_shared_match_for_seat(&created.match_id, &created.player_token)
+                .unwrap()
+                .unwrap()
+                .state
+                .unwrap();
+            let card_id = initial.player.hand[0].id.clone();
+            let coord = crate::match_session::HexCoord {
+                q: initial.player.hero.position.q,
+                r: initial.player.hero.position.r - 1,
+            };
+            let request = MatchActionRequest::PlayCard {
+                card_id,
+                target: crate::match_session::ActionTarget::Hex { coord },
+            };
+            let encoded = serde_json::to_value(&request).unwrap();
+            for (side, token) in seats.iter().skip(1) {
+                let player = match side {
+                    Side::Player => &initial.player,
+                    Side::Opponent => &initial.opponent,
+                    Side::PlayerTwo => initial.player_two.as_ref().unwrap(),
+                    Side::OpponentTwo => initial.opponent_two.as_ref().unwrap(),
+                };
+                let inactive_request = MatchActionRequest::PlayCard {
+                    card_id: player.hand[0].id.clone(),
+                    target: crate::match_session::ActionTarget::Hex { coord },
+                };
+                assert!(matches!(
+                    MatchCommands::new(&mut store).apply_shared_seat_action(
+                        &created.match_id,
+                        token,
+                        inactive_request
+                    ),
+                    Err(MatchCommandError::Rule(
+                        crate::match_session::MatchError::NotActiveSide
+                    ))
+                ));
+            }
+            let queued = MatchCommands::new(&mut store)
+                .apply_shared_seat_action(&created.match_id, &created.player_token, request)
+                .unwrap();
+            let state = queued.shared_match.state.unwrap();
+            assert_eq!(state.phase, crate::match_session::Phase::Movement);
+            assert_eq!(
+                state.player.hero.ap_remaining,
+                initial.player.hero.ap_remaining
+            );
+            assert_eq!(state.player.mana, initial.player.mana - 1);
+            assert_eq!(state.action_stack.len(), 1);
+            drop(store);
+            let mut store = SqliteMatchStore::new(&path).unwrap();
+            for _ in 0..seats.len() {
+                let state = store
+                    .load_shared_match_for_seat(&created.match_id, &created.player_token)
+                    .unwrap()
+                    .unwrap()
+                    .state
+                    .unwrap();
+                let Some(priority_side) = state.priority_side else {
+                    break;
+                };
+                let token = &seats
+                    .iter()
+                    .find(|(side, _)| *side == priority_side)
+                    .unwrap()
+                    .1;
+                MatchCommands::new(&mut store)
+                    .apply_shared_seat_action(
+                        &created.match_id,
+                        token,
+                        MatchActionRequest::PassPriority,
+                    )
+                    .unwrap();
+            }
+            let state = store
+                .load_shared_match_for_seat(&created.match_id, &created.player_token)
+                .unwrap()
+                .unwrap()
+                .state
+                .unwrap();
+            assert!(state.action_stack.is_empty());
+            assert_eq!(state.phase, crate::match_session::Phase::Movement);
+            assert!(
+                state
+                    .board
+                    .units
+                    .iter()
+                    .any(|unit| unit.template_id.as_deref() == Some("ember-squire")
+                        && unit.side == Side::Player)
+            );
+            let stored_request: String = store.connection_mut().query_row("SELECT request_json FROM match_actions WHERE match_id = ?1 AND action_index = 0", params![created.match_id], |row| row.get(0)).unwrap();
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&stored_request).unwrap(),
+                encoded
+            );
+            for (side, token) in &seats {
+                if side.team() == Side::Opponent.team() {
+                    store
+                        .mark_shared_seat_disconnected(&created.match_id, token)
+                        .unwrap();
+                }
+            }
+            store.connection_mut().execute("UPDATE match_seats SET disconnected_at = 100 WHERE match_id = ?1 AND side IN ('opponent', 'opponentTwo')", params![created.match_id]).unwrap();
+            MatchCommands::new(&mut store)
+                .claim_shared_forfeit(&created.match_id, &created.player_token, 220)
+                .unwrap();
+            drop(store);
+            let mut store = SqliteMatchStore::new(&path).unwrap();
+            let replay = store.load_replay(&created.match_id).unwrap().unwrap();
+            assert_eq!(replay.summary.state.winner, Some(Side::Player));
+            assert!(replay.frames.iter().any(|frame| matches!(
+                frame.event,
+                ReplayEvent::CardPlayed {
+                    side: Side::Player,
+                    ..
+                }
+            )));
+            for (index, frame) in replay.frames.iter().enumerate() {
+                assert_eq!(frame.frame_index as usize, index);
+            }
+            assert!(
+                replay
+                    .frames
+                    .windows(2)
+                    .all(|frames| frames[0].action_index <= frames[1].action_index)
+            );
+            let aggregate = store
+                .load_event_sourced_match(&created.match_id)
+                .unwrap()
+                .unwrap()
+                .0;
+            assert_eq!(
+                aggregate.state().to_snapshot_json().unwrap(),
+                replay.summary.state.to_snapshot_json().unwrap()
+            );
+        }
     }
 
     #[test]
@@ -380,6 +928,53 @@ mod tests {
         );
         assert_eq!(total_xp(&mut store, 101), 150);
         assert_eq!(total_xp(&mut store, 102), 100);
+    }
+
+    #[test]
+    fn duplicate_command_id_is_not_reappended_or_reprojected() {
+        let path = test_db_path("solo-idempotent");
+        let mut store = SqliteMatchStore::new(path).expect("store should open");
+        let created = store
+            .create_match_for_user(HeroType::Pyromancer, None)
+            .expect("match should create");
+        let command_id = CommandId::new("same-http-command").unwrap();
+
+        MatchCommands::new(&mut store)
+            .apply_solo_action_with_command_id(
+                Actor::Anonymous,
+                &created.id,
+                MatchActionRequest::StartAttackPhase,
+                command_id.clone(),
+            )
+            .expect("first command should apply");
+        let duplicate = MatchCommands::new(&mut store)
+            .apply_solo_action_with_command_id(
+                Actor::Anonymous,
+                &created.id,
+                MatchActionRequest::StartAttackPhase,
+                command_id,
+            )
+            .expect("duplicate command should be idempotent");
+
+        assert!(duplicate.replay_frames.is_empty());
+        let event_count: i64 = store
+            .connection_mut()
+            .query_row(
+                "SELECT COUNT(*) FROM match_events WHERE match_id = ?1",
+                params![created.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let action_count: i64 = store
+            .connection_mut()
+            .query_row(
+                "SELECT COUNT(*) FROM match_actions WHERE match_id = ?1",
+                params![created.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(event_count, 2);
+        assert_eq!(action_count, 1);
     }
 
     fn insert_user(store: &mut SqliteMatchStore, user_id: i64, email: &str) {

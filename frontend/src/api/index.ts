@@ -1,3 +1,4 @@
+import { BROWSER_MATCH_ID, browserAction, browserCatalog, loadBrowserMatch, pagesMode } from "../browser/engine";
 import type {
   ActionTarget,
   AuthSessionResponse,
@@ -227,6 +228,7 @@ export function logoutAccount() {
 }
 
 function matchAction(matchId: string, action: MatchActionRequest) {
+  if (matchId === BROWSER_MATCH_ID) { return browserAction(action); }
   return request<MatchResponse>(`/api/matches/${encodeURIComponent(matchId)}/actions`, {
     method: "POST",
     body: JSON.stringify(action),
@@ -291,6 +293,7 @@ export function sharedMatchWebSocketUrl(matchId: string, seatToken: string) {
 }
 
 export function loadMatch(matchId: string) {
+  if (matchId === BROWSER_MATCH_ID) { return loadBrowserMatch(); }
   return request<MatchResponse>(`/api/matches/${encodeURIComponent(matchId)}`);
 }
 
@@ -330,6 +333,7 @@ export function loadSharedReplay(matchId: string, seatToken: string) {
 }
 
 export function loadCatalog() {
+  if (pagesMode) { return browserCatalog(); }
   return request<CatalogResponse>("/api/catalog/cards");
 }
 

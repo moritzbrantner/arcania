@@ -1,20 +1,21 @@
 [workspace]
-members = ["backend"]
+members = ["backend", "rune-lanes-cli", "rune-lanes-core", "rune-lanes-browser"]
 resolver = "2"
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.98"
 
 [workspace.dependencies]
-argon2 = "0.5"
+argon2 = "0.6"
 axum = { version = "0.8", features = ["ws"] }
 futures-util = "0.3"
-rand = "0.8"
-rand_core = { version = "0.6", features = ["getrandom"] }
-rusqlite = { version = "0.32", features = ["bundled"] }
+game-server = { git = "https://github.com/moritzbrantner/game-server.git", rev = "a3851dab9c1fb25dd31b465fb554ca475769caab" }
+rand = "0.10"
+rune-lanes-core = { path = "rune-lanes-core" }
+rusqlite = { version = "0.40", features = ["bundled", "fallible_uint"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
+tokio = { version = "1.53.1", features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "fs"] }
+tower-http = { version = "0.7", features = ["cors", "fs"] }

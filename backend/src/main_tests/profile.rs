@@ -578,9 +578,18 @@ async fn profile_matches_list_owned_solo_matches_only() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(profile_matches["matches"].as_array().unwrap().len(), 1);
     assert_eq!(profile_matches["matches"][0]["matchId"], first_match_id);
-    assert_eq!(profile_matches["matches"][0]["viewerHeroTypes"][0], "runekeeper");
-    assert_eq!(profile_matches["matches"][0]["opposingHeroTypes"][0], "runekeeper");
-    assert_eq!(profile_matches["matches"][0]["viewerDeckName"], "Balanced Starter");
+    assert_eq!(
+        profile_matches["matches"][0]["viewerHeroTypes"][0],
+        "runekeeper"
+    );
+    assert_eq!(
+        profile_matches["matches"][0]["opposingHeroTypes"][0],
+        "runekeeper"
+    );
+    assert_eq!(
+        profile_matches["matches"][0]["viewerDeckName"],
+        "Balanced Starter"
+    );
 
     let _ = fs::remove_file(path);
 }

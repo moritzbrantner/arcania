@@ -1,0 +1,9 @@
+# The Opponent's Hero attack is pending; the Player answers with a higher-priority response.
+{"setup": "priority-response"}
+{"expect": {"activeSide": "opponent", "prioritySide": "player", "illegal": [{"command": {"type": "endTurn"}, "rejection": "stackPending"}]}}
+{"type": "playCard", "cardId": "scenario-arcane-parry", "target": {"type": "piece", "pieceId": "player-unit"}}
+{"expect": {"prioritySide": "opponent", "state": {"actionStack": [{"id": "scenario-stack-1"}, {"side": "player"}]}}}
+{"advanceAi": "opponent"}
+{"expect": {"pieces": {"player-unit": {"armor": 4, "maxArmor": 4}}, "state": {"actionStack": [{"id": "scenario-stack-1"}]}}}
+{"type": "passPriority"}
+{"expect": {"state": {"actionStack": []}, "prioritySide": null}}

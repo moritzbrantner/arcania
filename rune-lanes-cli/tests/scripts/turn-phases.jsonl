@@ -1,0 +1,11 @@
+# Movement, then Attack, then Card Play (entered automatically once no attack remains), then the turn passes to the Opponent.
+{"setup": "adjacent-attack"}
+{"expect": {"phase": "movement", "activeSide": "player"}}
+{"type": "movePiece", "pieceId": "player-hero", "to": {"q": -1, "r": 1}}
+{"type": "startAttackPhase"}
+{"expect": {"phase": "attack", "legal": [{"type": "attack", "attackerId": "player-unit", "targetId": "opponent-unit"}]}}
+{"type": "attack", "attackerId": "player-unit", "targetId": "opponent-unit"}
+# The counter destroys the Rune Runner; with no legal attacks left the turn moves on to Card Play.
+{"expect": {"lastResult": "accepted", "phase": "cardPlay", "pieces": {"opponent-unit": {"armor": 1, "maxArmor": 2}, "player-unit": null}}}
+{"type": "endTurn"}
+{"expect": {"activeSide": "opponent", "phase": "movement"}}

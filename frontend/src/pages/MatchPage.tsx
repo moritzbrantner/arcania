@@ -1,3 +1,4 @@
+import { BROWSER_MATCH_ID, browserCatalog } from "../browser/engine";
 import { Activity, Archive, Eye, EyeOff, Layers, Play, Plus, RotateCcw, Sword, Zap } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DragEvent as ReactDragEvent } from "react";
@@ -118,7 +119,7 @@ export function MatchPage({
   }, [matchId]);
 
   useEffect(() => {
-    loadCatalog()
+    (matchId === BROWSER_MATCH_ID ? browserCatalog(true) : loadCatalog())
       .then((response) => setCatalogCards(response.cards))
       .catch(() => setCatalogCards([]));
   }, []);
@@ -319,6 +320,7 @@ export function MatchPage({
   useHotkeyHandlers(visualPreferences.preferences.hotkeys, matchHotkeyHandlers);
 
   async function handleCreateSeparateMatch() {
+    if (matchId === BROWSER_MATCH_ID) { onNavigate("/workshop"); return; }
     setBusy(true);
     setNotice(null);
     try {
@@ -410,15 +412,17 @@ export function MatchPage({
   }
 
   return (
-    <main className={`app-shell match-app-shell ${matchChromeMinimized ? "match-chrome-minimized" : ""}`}>
+    <main className={`app-shell match-app-shell ${matchId === BROWSER_MATCH_ID ? "browser-match" : ""} ${matchChromeMinimized ? "match-chrome-minimized" : ""}`}>
       <section className="table match-table">
         <header className="top-bar match-chrome">
           <div>
             <p className="eyebrow">Rune Lanes</p>
             <h1>Round {match.round}</h1>
-            <p className="match-id">Match {matchId}</p>
+            <p className="match-id">{matchId === BROWSER_MATCH_ID ? "Solo match · saved in this browser" : `Match ${matchId}`}</p>
           </div>
           <div className="actions">
+            <button className="secondary-link" type="button" onClick={() => onNavigate("/workshop")}>Workshop</button>
+            <button className="secondary-link" type="button" onClick={() => onNavigate("/settings")}>Settings</button>
             <AccountActions
               currentUser={currentUser}
               onNavigate={onNavigate}
@@ -646,7 +650,8 @@ export function MatchPage({
         <MatchEndOverlay
           winner={match.winner}
           viewerSide={viewerSide}
-          onOpenSummary={() => onNavigate(`/matches/${matchId}/summary`)}
+          onOpenSummary={() => onNavigate(matchId === BROWSER_MATCH_ID ? "/workshop" : `/matches/${matchId}/summary`)}
+          actionLabel={matchId === BROWSER_MATCH_ID ? "Back to workshop" : "Match Summary"}
         />
       ) : null}
     </main>

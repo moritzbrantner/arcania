@@ -4,11 +4,105 @@ Rune Lanes is a small vertical slice for a card game / board game hybrid.
 
 Players control heroes on a radius-3 hex arena. Cards cost mana and hero action points to summon units or cast spells; units then spend their own action points to move across adjacent hexes and attack enemies within their attack range.
 
+## GitHub Pages
+
+The Pages workflow publishes the frontend as a static preview at
+`https://moritzbrantner.github.io/arcania/`.
+
+The public dashboard, rules/wiki, and fully local tutorial work without the Rust
+backend. Account authentication, the backend-driven catalog, persisted matches,
+and shared multiplayer still require the backend and are intentionally not
+reimplemented in the Pages build.
+
 ## Stack
 
 - Rust backend with Axum
 - React frontend with Vite and TypeScript
 - Bun for frontend package scripts
+
+## Commands, queries, and rules
+
+Rune Lanes uses CQRS as an in-process domain boundary around the event-sourced
+match aggregate. It does not use a generic command bus, mediator, repository
+layer, or separate read service.
+
+- Player/application writes are typed `GameCommand` values in
+  `rune-lanes-core/src/commands.rs`. Persisted matches enter through
+  `EventSourcedMatch::decide`, append a domain event, and change authoritative
+  state only through `evolve`.
+- Reads live in `rune-lanes-core/src/queries.rs`. Call `state.queries()` or
+  `aggregate.queries()` for the read-only facade, or dispatch a serializable
+  `GameQuery`. The same query side owns viewer-scoped match projection and
+  command-availability checks.
+- Global arena/turn rules and Hero base stats live together in
+  `rune-lanes-core/src/rules.rs`. Card/template balance remains in the card
+  catalog. These typed files are the normal places to edit when experimenting
+  with gameplay rather than scattering numeric rules through handlers.
+- `GameQuery::CommandAvailability` evaluates the real command rules against a
+  cloned state. Frontend/backend adapters should use that instead of recreating
+  legality rules for buttons, hints, or AI tooling.
+- `GameQuery::LegalCommands` lists every concrete command a side could submit
+  now. It enumerates candidates structurally (Cards against every Hex and
+  piece, pieces against every Hex and piece, Items, Buildings, turn-flow
+  commands) and keeps only those that `CommandAvailability` accepts.
+- AI-lab rule presets remain an experiment/scenario layer. They consume the core
+  ruleset defaults and may override a test setup without becoming a second
+  production rules authority.
+
+For a quick rules experiment, edit `CURRENT_RULESET` in
+`rune-lanes-core/src/rules.rs`, run the core tests, and use the ruleset and
+command-availability queries to inspect the resulting behavior.
+
+## Match scripts
+
+`rune-lanes play` runs a few lines of JSON against the real rules engine, which
+is quicker than clicking through the UI to check a rule:
+
+```sh
+cargo run -q -p rune-lanes-cli --bin rune-lanes -- play move-unit script.jsonl
+cargo run -q -p rune-lanes-cli --bin rune-lanes -- play script.jsonl --json
+cargo run -q -p rune-lanes-cli --bin rune-lanes -- setups
+```
+
+The setup is a dev match scenario id (`move-unit`, `adjacent-attack`,
+`play-unit-card`, ...; ADR 0010) or `seed:<n>` for a fresh seeded Solo match. A
+script can name its own setup on its first line (`{"setup": "move-unit"}`). A
+setup given on the command line takes precedence.
+
+Each remaining line is one of:
+
+- a `GameCommand` in its normal serde form, for example
+  `{"type": "movePiece", "pieceId": "player-unit", "to": {"q": -1, "r": 0}}`.
+  It is submitted for the acting side (the priority holder while a stack is
+  pending, otherwise the Active side). Add `"side": "opponent"` to submit it as
+  another side.
+- `{"advanceAi": "opponent"}`, which takes one baseline Solo AI policy step the
+  way the backend's `advanceAi` does. Add `"untilDone": true` to repeat until
+  the AI finishes its turn or has to wait for another side.
+- `{"expect": {...}}`, an assertion. Supported checks: `phase`, `activeSide`,
+  `prioritySide`, `round`, `winner`, `mana` (`{"player": 7}`), `pieces` (by
+  Hero or Unit id, a subset of its fields, or `null` when it should be gone),
+  `state` (a subset of the authoritative snapshot JSON), `legal` / `illegal`
+  (commands, optionally `{"command": ..., "rejection": "wrongPhase"}`),
+  `lastResult` (`"accepted"` or an error code), and `side` (the side used for
+  `legal`/`illegal`).
+- blank lines and `#` or `//` comments.
+
+Commands go through `EventSourcedMatch::decide`/`evolve`, the same path the
+backend persists. Legality comes from the query facade
+(`command_availability` / `legal_commands`). The runner owns no rules. For
+each step the output shows the command, whether it was accepted (with the
+domain event) or rejected (with the `MatchError`), the replay events it
+produced, and a short state digest. The legal commands for the acting side are
+listed at the end. Output has no timestamps, and it is deterministic for a
+given setup and script. Exit codes: `0` means every expectation passed, `1`
+means an expectation failed, and `2` means a usage, script, or setup error.
+
+Example scripts and their expected output are in
+`rune-lanes-cli/tests/scripts/`. `cargo test --workspace` replays them. After
+an intentional rules or format change, regenerate the expected output with
+`UPDATE_EXPECT=1 cargo test -p rune-lanes-cli --test scripts` and review the
+diff.
 
 ## Run
 
@@ -34,9 +128,10 @@ The frontend proxies `/api` to `http://localhost:4000`.
 
 ## Routes
 
-- `/` opens the public match picker. Signed-out players can create anonymous
+- `/` opens the public dashboard.
+- `/play` opens the public match picker. Signed-out players can create anonymous
   solo matches, open a match by ID, create private shared-match seat links, or
-  link to `/catalog/`.
+  link to `/catalog/` when the backend is available.
 - `/login` opens the public sign-in route. `/login/` is treated equivalently,
   and successful sign-in returns to a safe same-origin `next` path or `/profile`.
 - `/register` opens the public account creation route. `/register/` is treated
@@ -106,3 +201,30 @@ bun run ci:local
 same local CI script before a push reaches GitHub. If GitHub Actions cannot run
 because of a billing or spending limit, a passing `bun run ci:local` is the
 project's local signal that the shared CI workflow would have passed.
+
+## GitHub Pages Solo play and card workshop
+
+Open the Pages site to play against a bot without an account or backend. The workshop offers all eight Heroes, editable match/Hero rules, a card editor (Unit/Spell fields plus an advanced editor for existing effects), preset import/export, and automatic resume of the latest match. Settings links to match rules and the card editor. Custom cards appear in both opening hands. Saved presets affect new matches; hosted matches and account progression remain separate.
+
+```sh
+rustup target add wasm32-unknown-unknown
+cargo install wasm-bindgen-cli --version 0.2.129 --locked
+bun install --frozen-lockfile
+bun run build:pages
+VITE_BASE_PATH=/arcania/ bun run --cwd frontend dev:preview
+bun run test:pages
+```
+
+For local frontend development, run `bun run build:browser-engine` once and open `/workshop`. Rebuild the engine after Rust changes. `build:pages` targets `/arcania/`; the Pages workflow derives the repository name automatically and includes its own WASM build and browser tests. The workflow deploys only from `main`.
+
+The workflow also tests the public site after deployment on desktop and mobile, including bot turns, custom cards, rule persistence, reload, and victory. Run the same checks without a local server:
+
+```sh
+ARCANIA_PAGES_URL=https://moritzbrantner.github.io/arcania/ bun run test:pages
+```
+
+Set `ARCANIA_PAGES_REVISION` to a full commit SHA to also verify `deployment.json` before testing. GitHub Pages serves the app's `404.html` for client routes; reload checks allow that document status while still rejecting failed assets and requiring the saved match to render.
+
+Browser storage is local to the current browser/origin. Export a preset to keep a portable backup of rules and cards. A new match replaces the previous browser match; malformed or incompatible saves fail visibly. Clear site data only if you intend to remove local saves.
+
+Visual asset provenance and regeneration instructions: [assets/workshop](assets/workshop/README.md). Architecture: [ADR 0026](docs/adr/0026-browser-solo-workshop.md).

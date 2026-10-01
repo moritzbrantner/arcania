@@ -1,0 +1,44 @@
+setup move-unit
+  state round=1 phase=movement active=player priority=-
+  player mana 8/8 hand 0 deck 0 discard 0 | player-hero (0,1) hp 20/20 atk 1 ap 3/3 | player-unit (0,0) atk 1 arm 1/1 ap 4/4
+  opponent mana 8/8 hand 0 deck 0 discard 0 | opponent-hero (1,-1) hp 20/20 atk 1 ap 3/3
+  buildings natural-mana-2 (0,0)
+
+#3 player {"type":"movePiece","pieceId":"player-unit","to":{"q":-1,"r":0}}
+  accepted: v2 commandAccepted
+  event actionQueued player stack-1 player p0 movePiece player-unit (0,0)->(-1,0)
+  event pieceMoved player player-unit (0,0)->(-1,0)
+  state round=1 phase=movement active=player priority=-
+  player mana 8/8 hand 0 deck 0 discard 0 | player-hero (0,1) hp 20/20 atk 1 ap 3/3 | player-unit (-1,0) atk 1 arm 1/1 ap 3/4
+  opponent mana 8/8 hand 0 deck 0 discard 0 | opponent-hero (1,-1) hp 20/20 atk 1 ap 3/3
+  buildings natural-mana-2 (0,0)
+
+#4 expect ok (1 checks)
+
+#5 expect FAILED
+  - illegal {"type":"startAttackPhase"}: allowed
+  - phase: expected "attack", got "movement"
+  - pieces.player-unit.armor: expected 5, got 1
+
+#6 opponent {"type":"movePiece","pieceId":"opponent-hero","to":{"q":1,"r":-2}}
+  rejected: notActiveSide (it is not your turn)
+
+#7 expect FAILED
+  - lastResult: expected "accepted", got "notActiveSide"
+
+legal commands for player (13):
+  {"type":"movePiece","pieceId":"player-hero","to":{"q":0,"r":0}}
+  {"type":"movePiece","pieceId":"player-hero","to":{"q":1,"r":0}}
+  {"type":"movePiece","pieceId":"player-hero","to":{"q":-1,"r":1}}
+  {"type":"movePiece","pieceId":"player-hero","to":{"q":1,"r":1}}
+  {"type":"movePiece","pieceId":"player-hero","to":{"q":-1,"r":2}}
+  {"type":"movePiece","pieceId":"player-hero","to":{"q":0,"r":2}}
+  {"type":"movePiece","pieceId":"player-unit","to":{"q":-1,"r":-1}}
+  {"type":"movePiece","pieceId":"player-unit","to":{"q":0,"r":-1}}
+  {"type":"movePiece","pieceId":"player-unit","to":{"q":-2,"r":0}}
+  {"type":"movePiece","pieceId":"player-unit","to":{"q":0,"r":0}}
+  {"type":"movePiece","pieceId":"player-unit","to":{"q":-2,"r":1}}
+  {"type":"movePiece","pieceId":"player-unit","to":{"q":-1,"r":1}}
+  {"type":"startAttackPhase"}
+
+result: FAILED (2 of 3 expectations failed)

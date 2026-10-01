@@ -13,12 +13,15 @@
     "build": "cargo build --workspace && bun run --cwd frontend build",
     "test": "cargo test --workspace && bun run --cwd frontend typecheck && bun run --cwd frontend test:unit",
     "test:stories": "bun run --cwd frontend test:stories",
-    "test:e2e": "playwright test --workers=1"
+    "test:e2e": "playwright test --workers=1",
+    "build:browser-engine": "scripts/build-browser-engine.sh",
+    "build:pages": "bun run build:browser-engine && VITE_BROWSER_ONLY=1 VITE_BASE_PATH=/arcania/ bun run --cwd frontend build && cp frontend/dist/index.html frontend/dist/404.html",
+    "test:pages": "playwright test --config playwright.pages.config.mts"
   },
-  "packageManager": "bun@1.3.14",
+  "packageManager": "bun@1.4.2",
   "devDependencies": {
     "@playwright/test": "^1.62.1",
     "@types/node": "^26.1.0",
-    "chromium-bidi": "^16.0.1"
+    "chromium-bidi": "^17.0.0"
   }
 }

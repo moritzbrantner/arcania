@@ -1,0 +1,76 @@
+{
+  "assetId": "rune-lanes.workshop.rune-field",
+  "environment": {
+    "components": [
+      {
+        "algorithm": "splitmix64-v1",
+        "id": "asset-tooling.prng",
+        "integerDomain": "uint64"
+      }
+    ],
+    "platform": {
+      "arch": "x64",
+      "os": "linux"
+    },
+    "runtime": {
+      "executableSha256": "a83d263767d839e4d2649ca8e35d07159c7afc99afdc96d731ced29e056dda0c",
+      "name": "bun",
+      "version": "1.4.2"
+    },
+    "schemaVersion": 1,
+    "sha256": "9e8e12d73008456107774ddb35b4308d99181e06da519578f8b99b4b305126ca"
+  },
+  "generator": {
+    "id": "builtin.procedural.svg-scatter",
+    "kind": "procedural",
+    "version": "1"
+  },
+  "inputs": {},
+  "models": {},
+  "observations": {
+    "algorithm": "svg-scatter-v1",
+    "generatedElementCount": 200,
+    "prng": "splitmix64-v1"
+  },
+  "output": {
+    "path": ".asset-tooling/rune-field.svg",
+    "sha256": "7f3cc6aaddb98770afaa66b7538da2b8102a19375164661718c3cb16143739f8"
+  },
+  "parameters": {
+    "background": "#102b2b",
+    "count": 200,
+    "height": 640,
+    "maxRadius": 3,
+    "minRadius": 1,
+    "palette": [
+      "#d9b84f",
+      "#58b7a1",
+      "#367666",
+      "#20524b"
+    ],
+    "width": 640
+  },
+  "parametersSha256": "4a090e2adea226f78abebdb1160720e4ea512e925b1c5ca9f0d7073d3a1107ca",
+  "randomness": {
+    "mode": "seeded",
+    "seed": "7331"
+  },
+  "reproducibility": {
+    "baseline": "constrained",
+    "expected": "exact",
+    "reasons": []
+  },
+  "schemaVersion": 2,
+  "spec": {
+    "canonicalizer": "asset-tooling-canonical-json-v1",
+    "sha256": "8c7ebb10d5ac16d0f7296effce5b27e0d03442ec4292d21f2b9c54d0fb45ea8b"
+  },
+  "tool": {
+    "name": "asset-tooling",
+    "sourceFingerprint": {
+      "algorithm": "sha256-tree-v1",
+      "sha256": "e4c61807625022cb514958015281712da36e42044e620bf1185710a06663c42d"
+    },
+    "version": "0.1.0"
+  }
+}

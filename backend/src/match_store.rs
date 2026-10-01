@@ -16,12 +16,14 @@ use crate::match_session::{
 use crate::progression;
 
 mod db_values;
+mod event_store;
 mod ids;
 mod matches;
 mod replays;
 mod rows;
 mod schema;
 mod shared_matches;
+pub(crate) use db_values::side_from_db;
 use db_values::*;
 use ids::*;
 
@@ -130,6 +132,12 @@ pub enum MatchStoreError {
     Identity(identity::IdentityError),
     Deck(DeckLibraryError),
     Progression(progression::ProgressionError),
+    EventSourcing(rune_lanes_core::event_sourcing::EventSourcingError),
+    EventStore(String),
+    VersionConflict {
+        expected: rune_lanes_core::event_sourcing::AggregateVersion,
+        actual: rune_lanes_core::event_sourcing::AggregateVersion,
+    },
 }
 
 impl fmt::Display for MatchStoreError {
@@ -141,6 +149,13 @@ impl fmt::Display for MatchStoreError {
             Self::Identity(error) => write!(f, "{error}"),
             Self::Deck(error) => write!(f, "{error}"),
             Self::Progression(error) => write!(f, "{error}"),
+            Self::EventSourcing(error) => write!(f, "event-sourced match failed: {error}"),
+            Self::EventStore(reason) => write!(f, "event store is inconsistent: {reason}"),
+            Self::VersionConflict { expected, actual } => write!(
+                f,
+                "event store version conflict: expected {}, actual {}",
+                expected.0, actual.0
+            ),
         }
     }
 }
@@ -180,6 +195,12 @@ impl From<DeckLibraryError> for MatchStoreError {
 impl From<progression::ProgressionError> for MatchStoreError {
     fn from(error: progression::ProgressionError) -> Self {
         Self::Progression(error)
+    }
+}
+
+impl From<rune_lanes_core::event_sourcing::EventSourcingError> for MatchStoreError {
+    fn from(error: rune_lanes_core::event_sourcing::EventSourcingError) -> Self {
+        Self::EventSourcing(error)
     }
 }
 
@@ -278,6 +299,7 @@ impl SqliteMatchStore {
 
             if inserted == 1 {
                 insert_replay_frame(&transaction, &id, 0, &initial_frame, &event_json)?;
+                event_store::insert_genesis(&transaction, &id, &state, 0)?;
                 transaction.commit()?;
                 return Ok(StoredMatch { id, state });
             }
@@ -321,6 +343,7 @@ impl SqliteMatchStore {
             params![id, snapshot, owner_user_id, player_deck_name],
         )?;
         insert_replay_frame(&transaction, &id, 0, &initial_frame, &event_json)?;
+        event_store::insert_genesis(&transaction, &id, &state, 0)?;
         transaction.commit()?;
         Ok(StoredMatch { id, state })
     }
@@ -439,6 +462,7 @@ impl SqliteMatchStore {
 
             if inserted == 1 {
                 insert_replay_frame(&transaction, &id, 0, &initial_frame, &event_json)?;
+                event_store::insert_genesis(&transaction, &id, &state, 0)?;
                 transaction.commit()?;
                 return Ok(StoredMatch { id, state });
             }
@@ -541,7 +565,8 @@ impl SqliteMatchStore {
 
         if shared.format == SharedMatchFormat::TwoVTwo {
             if let Some(loadouts) = ready_shared_two_v_two_loadouts(&transaction, id)? {
-                let player_deck = deck_library::deck_from_snapshot(Side::Player, &loadouts.player.1)?;
+                let player_deck =
+                    deck_library::deck_from_snapshot(Side::Player, &loadouts.player.1)?;
                 let opponent_deck =
                     deck_library::deck_from_snapshot(Side::Opponent, &loadouts.opponent.1)?;
                 let player_two_deck =
@@ -580,6 +605,7 @@ impl SqliteMatchStore {
                     params![id, snapshot],
                 )?;
                 insert_replay_frame(&transaction, id, 0, &initial_frame, &event_json)?;
+                event_store::insert_genesis(&transaction, id, &state, 0)?;
                 transaction.execute(
                     "
                     UPDATE shared_matches
@@ -636,6 +662,7 @@ impl SqliteMatchStore {
                 params![id, snapshot],
             )?;
             insert_replay_frame(&transaction, id, 0, &initial_frame, &event_json)?;
+            event_store::insert_genesis(&transaction, id, &state, 0)?;
             transaction.execute(
                 "
                 UPDATE shared_matches
@@ -1044,7 +1071,8 @@ impl SqliteMatchStore {
             params![match_id, user_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         ).optional()?;
-        Ok(seat.and_then(|(side, deck_name)| side_from_db(&side).map(|side| (side.team(), deck_name))))
+        Ok(seat
+            .and_then(|(side, deck_name)| side_from_db(&side).map(|side| (side.team(), deck_name))))
     }
 
     pub fn load_replay(&self, id: &str) -> Result<Option<StoredReplay>, MatchStoreError> {
@@ -1123,16 +1151,18 @@ impl SqliteMatchStore {
             )
             .optional()?;
 
-        row.map(|(id, snapshot, created_at, updated_at, player_deck_name, frame_count)| {
-            MatchState::from_snapshot_json(&snapshot).map(|state| StoredMatchSummary {
-                id,
-                created_at,
-                updated_at,
-                frame_count: frame_count as usize,
-                player_deck_name,
-                state,
-            })
-        })
+        row.map(
+            |(id, snapshot, created_at, updated_at, player_deck_name, frame_count)| {
+                MatchState::from_snapshot_json(&snapshot).map(|state| StoredMatchSummary {
+                    id,
+                    created_at,
+                    updated_at,
+                    frame_count: frame_count as usize,
+                    player_deck_name,
+                    state,
+                })
+            },
+        )
         .transpose()
         .map_err(MatchStoreError::from)
     }

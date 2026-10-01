@@ -526,6 +526,8 @@ export type MatchPlayerState = MatchParticipantState & {
 };
 
 export type MatchState = {
+  /** Browser engine query projection for Player; absent on legacy hosted responses. */
+  legalCommands?: MatchActionRequest[];
   mode: MatchMode;
   format?: MatchFormat;
   round: number;

@@ -20,7 +20,13 @@ import { Board3DRenderer } from "../../Board3D";
 import type { BoardAnimationCue, PieceAnimation } from "../../boardAnimations";
 import { deriveBoardSurface } from "../../boardSurface";
 import { useBoardRendererDegradation } from "../../boardRendererDegradation";
-import { createMatchVisualCatalog, type CardVisualIdentity, type MatchVisualCatalog, type UnitVisualIdentity, type HeroVisualIdentity } from "../../matchVisualIdentity";
+import {
+  createMatchVisualCatalog,
+  type CardVisualIdentity,
+  type MatchVisualCatalog,
+  type UnitVisualIdentity,
+  type HeroVisualIdentity,
+} from "../../matchVisualIdentity";
 import type { BoardPiece, BoardUnit, UnitContextMenu } from "../../appTypes";
 import type {
   Building,
@@ -28,6 +34,7 @@ import type {
   Card,
   HexCoord,
   HexTile,
+  HeroAppearanceAssignment,
   MatchParticipantState,
   MatchState,
   Side,
@@ -66,7 +73,7 @@ export function UnitContextMenuView({
   onActivateBuilding,
 }: {
   menu: Exclude<UnitContextMenu, null>;
-  unit: BoardUnit;
+  unit: BoardPiece;
   onClose: () => void;
   onOpenCardInfo: () => void;
   canActivateItems: boolean;
@@ -94,6 +101,10 @@ export function UnitContextMenuView({
     };
   }, [onClose]);
 
+  if (unit.pieceType !== "unit") {
+    return null;
+  }
+
   return (
     <div
       className="unit-context-menu"
@@ -106,7 +117,7 @@ export function UnitContextMenuView({
         <LibraryBig size={15} />
         Card info
       </button>
-      {unit.items
+      {(unit.items ?? [])
         .filter((item) => item.active)
         .map((item) => (
           <button
@@ -217,12 +228,12 @@ export function UnitCardModal({
             <DetailStat label="Armor" value={`${unit.armor}/${unit.maxArmor}`} />
             <DetailStat label="AP" value={`${unit.apRemaining}/${unit.maxAp}`} />
             <DetailStat label="Attacked" value={unit.hasAttacked ? "Yes" : "No"} />
-            <DetailStat label="Items" value={unit.items.length} />
+            <DetailStat label="Items" value={(unit.items ?? []).length} />
           </div>
 
-          {unit.items.length > 0 ? (
+          {(unit.items ?? []).length > 0 ? (
             <div className="unit-item-list" aria-label="Carried items">
-              {unit.items.map((item) => (
+              {(unit.items ?? []).map((item) => (
                 <p key={item.id}>
                   <strong>{item.name}</strong>
                   <span>{itemPassiveLabel(item.passive)}</span>
@@ -294,7 +305,7 @@ export function StackDisplay({
   );
 }
 
-function TargetingStackOverlay({
+export function TargetingStackOverlay({
   stack,
   prioritySide,
   activeStackItemId,
@@ -342,7 +353,6 @@ function TargetingStackOverlay({
     </section>
   );
 }
-
 
 export function PlayerBadge({ player }: { player: MatchParticipantState }) {
   return (
@@ -415,6 +425,7 @@ export function Board({
   selectedCard: Card | null;
   selectedPiece: BoardPiece | null;
   focusedCoord?: HexCoord | null;
+  heroAppearances?: HeroAppearanceAssignment[];
   disabled: boolean;
   readOnly?: boolean;
   onTileClick?: (tile: HexTile) => void;
@@ -725,27 +736,27 @@ export function PieceToken({
           <Sword size={11} />
           {piece.attack}
         </span>
-      {piece.pieceType === "hero" ? (
+        {piece.pieceType === "hero" ? (
+          <span>
+            <Heart size={11} />
+            {piece.hp}
+          </span>
+        ) : (
+          <span>
+            <Shield size={11} />
+            {piece.armor}
+          </span>
+        )}
         <span>
-          <Heart size={11} />
-          {piece.hp}
+          <Footprints size={11} />
+          {piece.apRemaining}
         </span>
-      ) : (
-        <span>
-          <Shield size={11} />
-          {piece.armor}
-        </span>
-      )}
-      <span>
-        <Footprints size={11} />
-        {piece.apRemaining}
-      </span>
-      {piece.pieceType === "unit" && piece.items.length > 0 ? (
-        <span>
-          <Sparkles size={11} />
-          {piece.items.length}
-        </span>
-      ) : null}
+        {piece.pieceType === "unit" && (piece.items ?? []).length > 0 ? (
+          <span>
+            <Sparkles size={11} />
+            {(piece.items ?? []).length}
+          </span>
+        ) : null}
       </span>
       {feedbackLabel ? <span className="piece-feedback">{feedbackLabel}</span> : null}
     </span>
@@ -760,7 +771,10 @@ export function CardButton({
   played = false,
   style,
   disabled,
+  unavailable = false,
+  availabilityReason,
   onClick,
+  onFocus,
   onDragStart,
   onDragEnd,
   tutorialTargetId,
@@ -773,7 +787,10 @@ export function CardButton({
   played?: boolean;
   style?: CSSProperties;
   disabled: boolean;
+  unavailable?: boolean;
+  availabilityReason?: string | null;
   onClick: () => void;
+  onFocus?: () => void;
   onDragStart?: (event: ReactDragEvent<HTMLButtonElement>) => void;
   onDragEnd?: () => void;
   tutorialTargetId?: string;
@@ -781,14 +798,23 @@ export function CardButton({
 }) {
   return (
     <button
-      className={`card-button ${selected ? "selected" : ""} ${dragging ? "dragging" : ""} ${played ? "played" : ""} ${tutorialHighlighted ? "tutorial-highlight tutorial-highlight-primary" : ""} ${card.rarity}`}
+      className={`card-button ${selected ? "selected" : ""} ${dragging ? "dragging" : ""} ${played ? "played" : ""} ${unavailable ? "unavailable" : ""} ${tutorialHighlighted ? "tutorial-highlight tutorial-highlight-primary" : ""} ${card.rarity}`}
       type="button"
       disabled={disabled}
-      draggable={!disabled}
+      aria-disabled={disabled || unavailable}
+      draggable={!disabled && !unavailable}
       style={style}
+      title={availabilityReason ?? undefined}
       data-tutorial-target={tutorialTargetId}
       onClick={onClick}
-      onDragStart={onDragStart}
+      onFocus={onFocus}
+      onDragStart={(event) => {
+        if (unavailable) {
+          event.preventDefault();
+          return;
+        }
+        onDragStart?.(event);
+      }}
       onDragEnd={onDragEnd}
     >
       {visualIdentity.artPath ? (

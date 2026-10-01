@@ -1,0 +1,127 @@
+setup seed:7
+  state round=1 phase=movement active=player priority=-
+  player mana 3/3 hand 7 deck 53 discard 0 | player-hero (0,3) hp 20/20 atk 1 ap 3/3
+  opponent mana 3/3 hand 7 deck 53 discard 0 | opponent-hero (0,-3) hp 20/20 atk 1 ap 3/3
+  buildings natural-mana-2 (0,0)
+
+#3 expect ok (4 checks)
+
+#4 player {"type":"startAttackPhase"}
+  accepted: v2 commandAccepted
+  event phaseChanged player attack
+  state round=1 phase=attack active=player priority=-
+  player mana 3/3 hand 7 deck 53 discard 0 | player-hero (0,3) hp 20/20 atk 1 ap 3/3
+  opponent mana 3/3 hand 7 deck 53 discard 0 | opponent-hero (0,-3) hp 20/20 atk 1 ap 3/3
+  buildings natural-mana-2 (0,0)
+
+#5 player {"type":"startCardPlay"}
+  accepted: v3 commandAccepted
+  event phaseChanged player cardPlay
+  state round=1 phase=cardPlay active=player priority=-
+  player mana 3/3 hand 7 deck 53 discard 0 | player-hero (0,3) hp 20/20 atk 1 ap 3/3
+  opponent mana 3/3 hand 7 deck 53 discard 0 | opponent-hero (0,-3) hp 20/20 atk 1 ap 3/3
+  buildings natural-mana-2 (0,0)
+
+#6 player {"type":"endTurn"}
+  accepted: v4 commandAccepted
+  event turnEnded player round 1
+  event turnStarted opponent round 1
+  state round=1 phase=movement active=opponent priority=-
+  player mana 3/3 hand 7 deck 53 discard 0 | player-hero (0,3) hp 20/20 atk 1 ap 3/3
+  opponent mana 3/3 hand 7 deck 53 discard 0 | opponent-hero (0,-3) hp 20/20 atk 1 ap 3/3
+  buildings natural-mana-2 (0,0)
+
+#7.1 opponent ai {"type":"startAttackPhase"}
+  accepted: v5 commandAccepted
+  event phaseChanged opponent attack
+  state round=1 phase=attack active=opponent priority=-
+  player mana 3/3 hand 7 deck 53 discard 0 | player-hero (0,3) hp 20/20 atk 1 ap 3/3
+  opponent mana 3/3 hand 7 deck 53 discard 0 | opponent-hero (0,-3) hp 20/20 atk 1 ap 3/3
+  buildings natural-mana-2 (0,0)
+
+#7.2 opponent ai {"type":"startCardPlay"}
+  accepted: v6 commandAccepted
+  event phaseChanged opponent cardPlay
+  state round=1 phase=cardPlay active=opponent priority=-
+  player mana 3/3 hand 7 deck 53 discard 0 | player-hero (0,3) hp 20/20 atk 1 ap 3/3
+  opponent mana 3/3 hand 7 deck 53 discard 0 | opponent-hero (0,-3) hp 20/20 atk 1 ap 3/3
+  buildings natural-mana-2 (0,0)
+
+#7.3 opponent ai {"type":"playCard","cardId":"o-1-runic-insight","target":{"type":"piece","pieceId":"opponent-hero"}}
+  accepted: v7 commandAccepted
+  event cardPlayed opponent runic-insight (spell cost 1) -> piece opponent-hero
+  event actionQueued opponent stack-1 opponent p1 castSpell runic-insight -> opponent-hero
+  state round=1 phase=cardPlay active=opponent priority=player
+  player mana 3/3 hand 7 deck 53 discard 0 | player-hero (0,3) hp 20/20 atk 1 ap 3/3
+  opponent mana 2/3 hand 6 deck 53 discard 1 | opponent-hero (0,-3) hp 20/20 atk 1 ap 3/3
+  buildings natural-mana-2 (0,0)
+  stack stack-1 opponent p1 castSpell runic-insight -> opponent-hero
+
+#9 expect ok (3 checks)
+
+#10 player {"type":"passPriority"}
+  accepted: v8 commandAccepted
+  event cardDrawn opponent arcane-parry
+  state round=1 phase=cardPlay active=opponent priority=-
+  player mana 3/3 hand 7 deck 53 discard 0 | player-hero (0,3) hp 20/20 atk 1 ap 3/3
+  opponent mana 2/3 hand 7 deck 52 discard 1 | opponent-hero (0,-3) hp 20/20 atk 1 ap 3/3
+  buildings natural-mana-2 (0,0)
+
+#11.1 opponent ai {"type":"playCard","cardId":"o-1-ash-hound","target":{"type":"hex","coord":{"q":0,"r":-2}}}
+  accepted: v9 commandAccepted
+  event cardPlayed opponent ash-hound (unit cost 2) -> hex (0,-2)
+  event actionQueued opponent stack-2 opponent p0 playUnit ash-hound (0,-2)
+  state round=1 phase=cardPlay active=opponent priority=player
+  player mana 3/3 hand 7 deck 53 discard 0 | player-hero (0,3) hp 20/20 atk 1 ap 3/3
+  opponent mana 0/3 hand 6 deck 52 discard 2 | opponent-hero (0,-3) hp 20/20 atk 1 ap 3/3
+  buildings natural-mana-2 (0,0)
+  stack stack-2 opponent p0 playUnit ash-hound (0,-2)
+
+#12 player {"type":"passPriority"}
+  accepted: v10 commandAccepted
+  event unitSummoned opponent O1 "Ash Hound" (0,-2)
+  state round=1 phase=cardPlay active=opponent priority=-
+  player mana 3/3 hand 7 deck 53 discard 0 | player-hero (0,3) hp 20/20 atk 1 ap 3/3
+  opponent mana 0/3 hand 6 deck 52 discard 2 | opponent-hero (0,-3) hp 20/20 atk 1 ap 3/3 | O1 (0,-2) atk 2 arm 1/1 ap 1/3
+  buildings natural-mana-2 (0,0)
+
+#13.1 opponent ai finishTurn
+  accepted: v11 aiTurnFinished
+  event turnEnded opponent round 1
+  event turnStarted player round 2
+  event cardDrawn player quick-salve
+  event roundStarted 2
+  state round=2 phase=movement active=player priority=-
+  player mana 3/3 hand 8 deck 52 discard 0 | player-hero (0,3) hp 20/20 atk 1 ap 3/3
+  opponent mana 0/3 hand 6 deck 52 discard 2 | opponent-hero (0,-3) hp 20/20 atk 1 ap 3/3 | O1 (0,-2) atk 2 arm 1/1 ap 1/3
+  buildings natural-mana-2 (0,0)
+
+#14 expect ok (3 checks)
+
+legal commands for player (24):
+  {"type":"playCard","cardId":"p-4-mana-well","target":{"type":"hex","coord":{"q":0,"r":2}}}
+  {"type":"playCard","cardId":"p-4-mana-well","target":{"type":"hex","coord":{"q":1,"r":2}}}
+  {"type":"playCard","cardId":"p-4-mana-well","target":{"type":"hex","coord":{"q":-1,"r":3}}}
+  {"type":"playCard","cardId":"p-3-swift-familiar","target":{"type":"hex","coord":{"q":0,"r":2}}}
+  {"type":"playCard","cardId":"p-3-swift-familiar","target":{"type":"hex","coord":{"q":1,"r":2}}}
+  {"type":"playCard","cardId":"p-3-swift-familiar","target":{"type":"hex","coord":{"q":-1,"r":3}}}
+  {"type":"playCard","cardId":"p-2-prism-initiate","target":{"type":"hex","coord":{"q":0,"r":2}}}
+  {"type":"playCard","cardId":"p-2-prism-initiate","target":{"type":"hex","coord":{"q":1,"r":2}}}
+  {"type":"playCard","cardId":"p-2-prism-initiate","target":{"type":"hex","coord":{"q":-1,"r":3}}}
+  {"type":"playCard","cardId":"p-3-prism-initiate","target":{"type":"hex","coord":{"q":0,"r":2}}}
+  {"type":"playCard","cardId":"p-3-prism-initiate","target":{"type":"hex","coord":{"q":1,"r":2}}}
+  {"type":"playCard","cardId":"p-3-prism-initiate","target":{"type":"hex","coord":{"q":-1,"r":3}}}
+  {"type":"playCard","cardId":"p-0-ash-hound","target":{"type":"hex","coord":{"q":0,"r":2}}}
+  {"type":"playCard","cardId":"p-0-ash-hound","target":{"type":"hex","coord":{"q":1,"r":2}}}
+  {"type":"playCard","cardId":"p-0-ash-hound","target":{"type":"hex","coord":{"q":-1,"r":3}}}
+  {"type":"playCard","cardId":"p-3-quick-salve","target":{"type":"piece","pieceId":"player-hero"}}
+  {"type":"playCard","cardId":"p-2-ash-hound","target":{"type":"hex","coord":{"q":0,"r":2}}}
+  {"type":"playCard","cardId":"p-2-ash-hound","target":{"type":"hex","coord":{"q":1,"r":2}}}
+  {"type":"playCard","cardId":"p-2-ash-hound","target":{"type":"hex","coord":{"q":-1,"r":3}}}
+  {"type":"playCard","cardId":"p-0-quick-salve","target":{"type":"piece","pieceId":"player-hero"}}
+  {"type":"movePiece","pieceId":"player-hero","to":{"q":0,"r":2}}
+  {"type":"movePiece","pieceId":"player-hero","to":{"q":1,"r":2}}
+  {"type":"movePiece","pieceId":"player-hero","to":{"q":-1,"r":3}}
+  {"type":"startAttackPhase"}
+
+result: ok (3 expectations passed)

@@ -102,10 +102,7 @@ pub(super) fn hero_appearance_definition_any(
         .find(|appearance| appearance.id == appearance_id)
 }
 
-pub(super) fn appearance_unlocked(
-    hero_level: u32,
-    definition: &HeroAppearanceDefinition,
-) -> bool {
+pub(super) fn appearance_unlocked(hero_level: u32, definition: &HeroAppearanceDefinition) -> bool {
     definition
         .unlock_level
         .is_none_or(|unlock_level| hero_level >= unlock_level)

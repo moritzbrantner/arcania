@@ -1,3 +1,4 @@
+import { browserRoutePath } from "./routes";
 import type {
   Card,
   CardKind,
@@ -124,7 +125,7 @@ export function createMatchVisualCatalog(cards: CatalogCard[]): MatchVisualCatal
         status: "resolved",
         heroType: hero.heroType,
         name: option.name,
-        portraitPath: `/hero-art/${hero.heroType}.svg`,
+        portraitPath: browserRoutePath(`/hero-art/${hero.heroType}.svg`),
         portraitAlt: `${option.name} portrait`,
         accentClass: hero.heroType,
         fallbackLabel: option.token,
@@ -145,7 +146,7 @@ function cardVisualFromCatalog(
     kind: card.kind,
     cost: card.cost,
     text: card.text,
-    artPath: card.artPath,
+    artPath: browserRoutePath(card.artPath),
     artAlt: `${card.name} art`,
     accentClass: card.rarity,
   };
@@ -173,7 +174,7 @@ function unitVisualFromCatalog(
     templateId: card.templateId,
     name: card.name,
     rarity: card.rarity,
-    portraitPath: card.artPath,
+    portraitPath: browserRoutePath(card.artPath),
     portraitAlt: `${card.name} portrait`,
     fallbackLabel: fallbackLabel(card.name),
     baseStats: {

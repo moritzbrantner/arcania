@@ -7,10 +7,12 @@ export function MatchEndOverlay({
   winner,
   viewerSide,
   onOpenSummary,
+  actionLabel = "Match Summary",
 }: {
   winner: Side | null;
   viewerSide: Side;
   onOpenSummary: () => void;
+  actionLabel?: string;
 }) {
   const result = winner === viewerSide ? "Victory" : "Defeat";
   const winnerLabel = winner ? `${sideLabel(winner)} wins` : "Match complete";
@@ -25,7 +27,7 @@ export function MatchEndOverlay({
         <h2>{result}</h2>
         <button className="primary-button" type="button" onClick={onOpenSummary}>
           <Play size={18} />
-          Match Summary
+          {actionLabel}
         </button>
       </div>
     </section>

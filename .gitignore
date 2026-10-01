@@ -9,3 +9,10 @@ data/
 *.log
 playwright-report/
 test-results/
+
+# Generated browser engine (bun run build:browser-engine)
+/frontend/public/engine/
+
+**/.asset-tooling/
+
+/test-results-pages/

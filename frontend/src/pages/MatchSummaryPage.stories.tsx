@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { fn } from "storybook/test";
-import { storyAccount, withMockApi } from "../storybook/fixtures";
+import { storyAccount, storySecondSeatSummaryResponse, withMockApi } from "../storybook/fixtures";
 import { MatchSummaryPage } from "./MatchSummaryPage";
 
 const meta = {
@@ -22,3 +22,10 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Ready: Story = {};
+
+export const WinningSecondSeat: Story = {
+  args: { matchId: "rl-shared", seatToken: "player-two-seat" },
+  decorators: [withMockApi({
+    "/api/shared-matches/rl-shared/seats/player-two-seat/summary": storySecondSeatSummaryResponse,
+  })],
+};

@@ -1,5 +1,9 @@
 import type { BoardAnimationCue } from "./boardAnimations";
 import type { BoardPiece } from "./appTypes";
+import {
+  buildingDecorForTile,
+  type BoardSurfaceBuildingDecor,
+} from "./buildingVisuals";
 import type {
   Building,
   Card,
@@ -49,6 +53,7 @@ export type BoardSurfaceTile = {
   hasManaSource: boolean;
   hasBuilding: boolean;
   building: Building | null;
+  buildingDecor: BoardSurfaceBuildingDecor | null;
   hasPiece: boolean;
   piece: BoardPiece | null;
   displayPiece: BoardPiece | null;
@@ -146,6 +151,7 @@ export function deriveBoardSurface({
       hasManaSource,
       hasBuilding: Boolean(building),
       building,
+      buildingDecor: building ? buildingDecorForTile(building, piece?.side) : null,
       hasPiece: Boolean(piece),
       piece,
       displayPiece,

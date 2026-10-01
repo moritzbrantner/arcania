@@ -192,7 +192,7 @@ async fn completed_match_summary_includes_viewer_reward_unlocks() {
     complete_match_by_forfeit(&path, match_id, Side::Player);
 
     let (status, summary) = json_request(
-        app,
+        app.clone(),
         Request::builder()
             .uri(format!("/api/matches/{match_id}/summary"))
             .header("authorization", format!("Bearer {token}"))
@@ -225,6 +225,33 @@ async fn completed_match_summary_includes_viewer_reward_unlocks() {
             .iter()
             .any(|unlock| unlock["type"] == "skillPointUnlocked")
     );
+
+    assert_eq!(summary["summary"]["viewerDeckName"], "Balanced Starter");
+    // Old matches lack this optional presentation label; their event streams stay intact.
+    SqliteMatchStore::new(&path)
+        .expect("store should reopen")
+        .connection_mut()
+        .execute(
+            "UPDATE matches SET player_deck_name = NULL WHERE id = ?1",
+            rusqlite::params![match_id],
+        )
+        .expect("legacy presentation metadata should save");
+    let (status, legacy_summary) = json_request(
+        app,
+        Request::builder()
+            .uri(format!("/api/matches/{match_id}/summary"))
+            .header("authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .expect("request should build"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        legacy_summary["summary"].get("viewerDeckName"),
+        Some(&serde_json::Value::Null)
+    );
+    assert_eq!(legacy_summary["viewer"]["result"], "victory");
+    assert_eq!(legacy_summary["reward"], summary["reward"]);
 
     let _ = fs::remove_file(path);
 }
@@ -347,11 +374,21 @@ async fn match_action_response_includes_replay_frames_for_live_playback() {
     let match_id = created["matchId"].as_str().expect("match id should exist");
 
     end_turn_from_card_play(app.clone(), match_id).await;
-    let (status, _) = post_match_action(app.clone(), match_id, r#"{"type":"advanceAi"}"#).await;
-    assert_eq!(status, StatusCode::OK);
-    let (status, advanced) =
-        post_match_action(app.clone(), match_id, r#"{"type":"advanceAi"}"#).await;
-    assert_eq!(status, StatusCode::OK);
+    let mut advanced = serde_json::Value::Null;
+    for _ in 0..10 {
+        let (status, response) =
+            post_match_action(app.clone(), match_id, r#"{"type":"advanceAi"}"#).await;
+        assert_eq!(status, StatusCode::OK);
+        advanced = response;
+        if advanced["replayFrames"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|frame| frame["event"]["type"] == "actionQueued")
+        {
+            break;
+        }
+    }
 
     let frames = advanced["replayFrames"]
         .as_array()

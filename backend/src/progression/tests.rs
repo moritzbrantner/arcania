@@ -107,6 +107,70 @@ fn match_loadout_rejects_locked_and_duplicate_runes() {
 }
 
 #[test]
+fn saved_loadouts_and_skills_freeze_independently_of_later_account_changes() {
+    let mut connection = Connection::open_in_memory().expect("in-memory database should open");
+    identity::migrate(&connection).expect("identity schema should migrate");
+    migrate(&connection).expect("progression schema should migrate");
+    insert_user(&connection, 1, 100);
+    connection
+        .execute(
+            "INSERT INTO hero_mastery (user_id, hero_type, xp) VALUES (1, 'runekeeper', 200)",
+            [],
+        )
+        .expect("mastery should insert");
+    let mut progression = ProgressionModule::new(&mut connection);
+    progression
+        .unlock_skill(1, HeroType::Runekeeper, "runekeeper-steady-glyph")
+        .expect("skill should unlock");
+    let saved = progression
+        .save_rune_loadout(
+            1,
+            HeroType::Runekeeper,
+            SaveRuneLoadoutRequest {
+                rune_ids: vec!["vitality".to_string()],
+            },
+        )
+        .expect("loadout should save");
+    assert_eq!(
+        saved
+            .loadouts
+            .iter()
+            .find(|loadout| loadout.hero_type == HeroType::Runekeeper)
+            .expect("saved Hero loadout should exist")
+            .rune_ids,
+        ["vitality"]
+    );
+    let frozen = progression
+        .match_loadout(Some(1), HeroType::Runekeeper, None)
+        .expect("saved loadout should freeze");
+
+    progression
+        .save_rune_loadout(
+            1,
+            HeroType::Runekeeper,
+            SaveRuneLoadoutRequest {
+                rune_ids: Vec::new(),
+            },
+        )
+        .expect("replacement loadout should save");
+    progression
+        .respec_hero(1, HeroType::Runekeeper)
+        .expect("Hero should respec");
+    let next = progression
+        .match_loadout(Some(1), HeroType::Runekeeper, None)
+        .expect("replacement loadout should freeze");
+    assert!(next.rune_ids.is_empty());
+    assert_eq!(next.skill_ids, ["runekeeper-runic-balance"]);
+    assert_eq!(next.effects.max_hp_delta, 0);
+    assert_eq!(frozen.rune_ids, ["vitality"]);
+    assert_eq!(
+        frozen.skill_ids,
+        ["runekeeper-runic-balance", "runekeeper-steady-glyph"]
+    );
+    assert_eq!(frozen.effects.max_hp_delta, 3);
+}
+
+#[test]
 fn skill_unlock_spends_hero_mastery_points_and_respec_restores_them() {
     let mut connection = Connection::open_in_memory().expect("in-memory database should open");
     identity::migrate(&connection).expect("identity schema should migrate");
@@ -163,7 +227,9 @@ fn hero_appearance_selection_respects_mastery_unlocks() {
 
     {
         let mut progression = ProgressionModule::new(&mut connection);
-        let response = progression.load_for_user(1).expect("progression should load");
+        let response = progression
+            .load_for_user(1)
+            .expect("progression should load");
         let pyromancer = response
             .hero_appearances
             .iter()
@@ -236,7 +302,10 @@ fn hero_appearance_selection_respects_mastery_unlocks() {
         .iter()
         .find(|hero| hero.hero_type == HeroType::Pyromancer)
         .expect("pyromancer appearances should load");
-    assert_eq!(pyromancer.selected_appearance_id, "pyromancer-inferno-crown");
+    assert_eq!(
+        pyromancer.selected_appearance_id,
+        "pyromancer-inferno-crown"
+    );
 }
 
 #[test]
@@ -320,6 +389,117 @@ fn reward_summary_includes_hero_appearance_unlocks() {
 }
 
 #[test]
+fn completed_two_v_two_match_awards_every_account_and_hero_once() {
+    let path = test_db_path("two-v-two-progression-awards");
+    let mut store = SqliteMatchStore::new(&path).expect("store should open");
+    for user_id in 1..=4 {
+        insert_user(store.connection_mut(), user_id, 0);
+    }
+    let created = store
+        .create_shared_match(None, crate::match_store::SharedMatchFormat::TwoVTwo)
+        .expect("2v2 match should create");
+    let participants = [
+        (
+            1,
+            &created.player_token,
+            Side::Player,
+            HeroType::Runekeeper,
+            150,
+        ),
+        (
+            2,
+            &created.opponent_token,
+            Side::Opponent,
+            HeroType::Pyromancer,
+            100,
+        ),
+        (
+            3,
+            created
+                .player_two_token
+                .as_ref()
+                .expect("second Player token should exist"),
+            Side::PlayerTwo,
+            HeroType::Warden,
+            150,
+        ),
+        (
+            4,
+            created
+                .opponent_two_token
+                .as_ref()
+                .expect("second Opponent token should exist"),
+            Side::OpponentTwo,
+            HeroType::Barbarian,
+            100,
+        ),
+    ];
+    for (user_id, token, _, hero_type, _) in participants {
+        store
+            .join_shared_match(
+                &created.match_id,
+                token,
+                hero_type,
+                crate::deck_library::starter_deck_snapshot(),
+                crate::match_session::MatchProgressionLoadout::default(),
+                Some(user_id),
+            )
+            .expect("seat should join");
+    }
+    let mut stored = store
+        .load_match(&created.match_id)
+        .expect("match should load")
+        .expect("match should exist");
+    let frames = rune_lanes_core::test_support::forfeit_match(&mut stored.state, Side::Player, 0);
+    store
+        .save_custom_action_and_replay_frames(
+            &created.match_id,
+            0,
+            r#"{"type":"testForfeit"}"#,
+            &stored.state,
+            &frames,
+        )
+        .expect("completed match should save");
+    award_completed_match(store.connection_mut(), &created.match_id)
+        .expect("repeated award attempt should succeed");
+
+    for (user_id, _, side, hero_type, xp) in participants {
+        let mut progression = ProgressionModule::new(store.connection_mut());
+        let account = progression
+            .load_for_user(user_id)
+            .expect("progression should load");
+        assert_eq!(account.account.total_xp, xp, "Seat {side:?}");
+        assert_eq!(
+            account
+                .heroes
+                .iter()
+                .find(|hero| hero.hero_type == hero_type)
+                .expect("participant Hero should exist")
+                .xp,
+            xp
+        );
+        let reward = progression
+            .match_reward_summary(user_id, &created.match_id, side)
+            .expect("reward should load")
+            .expect("participant reward should exist");
+        assert_eq!(reward.hero_type, hero_type);
+        assert_eq!(reward.account_xp_gained, xp);
+        assert_eq!(reward.hero_xp_gained, xp);
+        assert_eq!(reward.won, xp == 150);
+    }
+    let award_count: i64 = store
+        .connection_mut()
+        .query_row(
+            "SELECT COUNT(*) FROM match_xp_awards WHERE match_id = ?1",
+            params![created.match_id],
+            |row| row.get(0),
+        )
+        .expect("award count should load");
+    assert_eq!(award_count, 4);
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
 fn completed_match_awards_account_and_hero_xp_once() {
     let path = test_db_path("progression-award");
     let mut store = SqliteMatchStore::new(&path).expect("store should open");
@@ -336,7 +516,7 @@ fn completed_match_awards_account_and_hero_xp_once() {
     let mut stored = store
         .create_match_for_user(HeroType::Pyromancer, Some(1))
         .expect("match should create");
-    let frames = stored.state.forfeit_recording(Side::Player, 0);
+    let frames = rune_lanes_core::test_support::forfeit_match(&mut stored.state, Side::Player, 0);
     store
         .save_custom_action_and_replay_frames(
             &stored.id,

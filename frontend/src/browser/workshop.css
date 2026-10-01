@@ -1,0 +1,131 @@
+.workshop-shell { max-width: 1180px; margin: auto; padding: 24px 32px 64px; }
+.workshop-nav, .workshop-brand, .workshop-tabs, .workshop-save { display: flex; align-items: center; }
+.workshop-nav { justify-content: space-between; padding-bottom: 26px; border-bottom: 1px solid var(--line); gap: 20px; }
+.workshop-brand { background: none; border: 0; color: inherit; font: 700 21px Georgia, serif; gap: 12px; cursor: pointer; }
+.workshop-brand > span { color: var(--gold); font-size: 38px; }
+.workshop-heading { padding: 48px 0 30px; }
+.workshop-heading h1 { font: 500 clamp(32px, 5vw, 56px)/1.1 Georgia, serif; margin: 12px 0 16px; letter-spacing: -.025em; }
+.workshop-heading > p:last-child { color: var(--muted); max-width: 650px; line-height: 1.7; }
+.workshop-tabs { gap: 24px; border-bottom: 1px solid var(--line); margin-bottom: 28px; }
+.workshop-tabs button { display: flex; align-items: center; gap: 8px; padding: 16px 4px; background: none; color: var(--muted); border: 0; border-bottom: 3px solid transparent; font: inherit; cursor: pointer; }
+.workshop-tabs button[aria-current] { color: var(--gold); border-bottom-color: var(--gold); }
+.workshop-content { border: 0; margin: 0; padding: 0; min-width: 0; }
+.workshop-play { display: grid; grid-template-columns: 1.1fr 1fr; min-height: 510px; border: 1px solid var(--line); background: var(--panel); border-radius: 16px; overflow: hidden; }
+.workshop-play-copy { padding: 36px; display: flex; flex-direction: column; align-items: flex-start; gap: 20px; }
+.workshop-play-copy .eyebrow { display: flex; align-items: center; gap: 8px; margin: 0; }
+.workshop-play-copy h2 { font: 500 clamp(32px, 4vw, 48px)/1.1 Georgia, serif; margin: 0; }
+.workshop-play-copy > p:not(.eyebrow), .workshop-play-copy small { color: var(--muted); line-height: 1.7; margin: 0; }
+.workshop-play-copy .workshop-fields { width: 100%; }
+.workshop-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 16px; }
+.workshop-field { display: flex; flex-direction: column; gap: 9px; font-size: 13px; font-weight: 600; min-width: 0; }
+.workshop-field input, .workshop-field select, .workshop-field textarea, .workshop-card-form details textarea { box-sizing: border-box; border: 1px solid var(--line); border-radius: 6px; background: var(--ink); color: inherit; padding: 12px; width: 100%; font: inherit; min-height: 44px; }
+.workshop-field textarea { min-height: 90px; resize: vertical; }
+.workshop-shell button:focus-visible, .workshop-shell input:focus-visible, .workshop-shell select:focus-visible, .workshop-shell textarea:focus-visible, .workshop-shell summary:focus-visible { outline: 2px solid var(--gold); outline-offset: 4px; }
+.workshop-start { width: 100%; justify-content: space-between; min-height: 52px; }
+.workshop-loadout { display: flex; flex-wrap: wrap; gap: 16px; font-size: 12px; color: var(--muted); }
+.workshop-scene { position: relative; display: grid; place-items: center; background: linear-gradient(180deg, transparent, var(--ink)), url('../../public/workshop/rune-field.svg') center/cover; min-height: 440px; overflow: hidden; }
+.workshop-hero-art { width: 76%; z-index: 1; filter: drop-shadow(0 22px 22px #0008); transform: rotate(-7deg); border: 1px solid var(--gold); border-radius: 45% 45% 12px 12px; }
+.workshop-orbit { position: absolute; width: 110%; aspect-ratio: 1; border: 1px solid var(--gold); opacity: .25; border-radius: 50%; }
+.workshop-scene-caption { position: absolute; bottom: 28px; left: 28px; right: 28px; display: grid; gap: 8px; z-index: 2; color: #f7f3ea; text-shadow: 0 2px 4px #000; }
+.workshop-scene-caption span { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; }
+.workshop-scene-caption strong { font: 32px Georgia, serif; }
+.workshop-rules > p, .workshop-card-editor > div > p, .workshop-tools p { color: var(--muted); line-height: 1.6; }
+.workshop-rules > h3 { margin-top: 36px; }
+.workshop-hero-rule { margin: 16px 0; padding: 20px 0; border: 0; border-top: 1px solid var(--line); }
+.workshop-hero-rule legend { padding-right: 16px; color: var(--gold); font-weight: 600; }
+.workshop-save { justify-content: flex-end; flex-wrap: wrap; gap: 16px; padding: 24px 0; border-top: 1px solid var(--line); margin-top: 24px; }
+.workshop-save > span { margin-right: auto; font-size: 13px; color: var(--muted); }
+.workshop-tools { padding: 24px 0; margin-top: 20px; border-top: 1px solid var(--line); }
+.workshop-tools summary, .workshop-card-form summary { cursor: pointer; padding: 12px 0; }
+.workshop-tools .workshop-field { max-width: 230px; margin-bottom: 16px; }
+.workshop-import { position: relative; }
+.workshop-import input { position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer; }
+.workshop-import:focus-within { outline: 2px solid var(--gold); }
+.workshop-status { padding: 12px 0; color: var(--teal); }
+.workshop-card-columns { display: grid; grid-template-columns: 1.4fr 1fr; gap: 48px; margin-top: 26px; align-items: start; }
+.workshop-card-form { display: grid; gap: 20px; }
+.workshop-card-preview { border: 1px solid var(--gold); border-radius: 14px; overflow: hidden; background: var(--panel); margin: 12px auto; max-width: 300px; width: 100%; box-shadow: 0 20px 50px #0003; }
+.workshop-card-preview > p, .workshop-card-preview > h3 { margin: 20px; }
+.workshop-card-preview h3 { font: 26px Georgia, serif; }
+.workshop-preview-art { height: 210px; position: relative; display: grid; place-items: center; overflow: hidden; }
+.workshop-preview-art img { position: absolute; width: 100%; height: 100%; object-fit: cover; }
+.workshop-preview-art > span { position: absolute; top: 12px; left: 12px; border-radius: 50%; background: var(--ink); border: 1px solid var(--gold); width: 40px; height: 40px; display: grid; place-items: center; font-size: 22px; }
+.workshop-preview-art > strong { z-index: 1; font-size: 120px; color: var(--gold); text-shadow: 0 0 40px var(--teal); }
+.workshop-card-preview dl { display: flex; justify-content: space-around; border-top: 1px solid var(--line); margin: 0; padding: 18px; }
+.workshop-card-preview dt { color: var(--muted); font-size: 11px; text-transform: uppercase; }
+.workshop-card-preview dd { font-size: 24px; margin: 8px 0 0; }
+.workshop-card-list { list-style: none; padding: 0; }
+.workshop-card-list li { display: flex; justify-content: space-between; border-top: 1px solid var(--line); padding: 12px 0; }
+.workshop-card-list li > button:first-child { display: grid; gap: 8px; text-align: left; color: inherit; background: none; border: 0; font: inherit; cursor: pointer; }
+.workshop-card-list small { color: var(--muted); }
+@media (max-width: 700px) {
+  .workshop-shell { padding: 16px 18px 40px; }
+  .workshop-nav { align-items: flex-start; }
+  .workshop-nav .actions { gap: 8px; flex-direction: column; }
+  .workshop-heading { padding-top: 28px; }
+  .workshop-play { grid-template-columns: 1fr; }
+  .workshop-play-copy { padding: 24px; }
+  .workshop-scene { display: none; }
+  .workshop-tabs { gap: 16px; }
+  .workshop-tabs button { font-size: 13px; }
+  .workshop-card-columns { grid-template-columns: 1fr; gap: 24px; }
+  .workshop-card-preview { grid-row: 1; }
+  .workshop-save .primary-button { flex: 1; }
+}
+.workshop-shell .secondary-link, .workshop-shell .icon-button { color: inherit; }
+.workshop-shell .primary-button { color: #17201d; }
+.workshop-shell .text-link { color: var(--muted); }
+:root[data-theme="light"] .workshop-shell { --gold: #87631b; --teal: #286b5a; }
+:root[data-theme="light"] .workshop-shell .primary-button { color: #fffaf0; }
+.workshop-scene { background-image: linear-gradient(180deg, transparent 55%, #102020), url('../../public/workshop/rune-field.svg'); }
+
+/* Keep the browser Solo board reachable on touch screens: the hand and chrome
+   take space in the document instead of covering board targets. */
+@media (max-width: 700px) {
+  .browser-match .match-table { height: auto; overflow: visible; padding: 12px; }
+  .browser-match .match-chrome { position: static; background: var(--panel); box-shadow: none; margin-bottom: 12px; }
+  .browser-match .match-chrome .actions { flex-wrap: wrap; }
+  .browser-match .match-action-dock { position: sticky; top: 0; padding: 10px 0; background: var(--panel); max-width: none; justify-content: flex-start; }
+  .browser-match .turn-checklist { position: static; width: 100%; margin: 8px 0; }
+  .browser-match .match-ux-dock { position: static; width: 100%; margin: 8px 0; }
+  .browser-match .battlefield { width: 100%; height: auto; min-height: 0; overflow: visible; display: flex; flex-wrap: wrap; gap: 8px; }
+  .browser-match .battlefield-hud { position: static; transform: none; width: auto; max-width: 100%; }
+  .browser-match .battlefield-hud-hand { display: none; }
+  .browser-match .board { width: 100%; height: 460px; min-height: 460px; padding: 20px; border: 1px solid var(--line); border-radius: 8px; scroll-padding: 24px; }
+  .browser-match .board-3d-shell, .browser-match .board-3d-fallback { width: 100%; height: 460px; min-height: 460px; }
+  .browser-match .hand-overlay { position: static; width: 100%; min-width: 0; overflow: auto; display: block; pointer-events: auto; }
+  .browser-match .hand { width: max-content; max-width: none; justify-content: flex-start; padding: 14px 0; gap: 10px; }
+  .browser-match .hand .card-button { margin: 0; transform: none; width: 150px; flex-basis: 150px; }
+  .browser-match .hand .card-button.selected { outline: 3px solid var(--gold); outline-offset: -3px; }
+  .browser-match .hand-and-log { margin: 16px 0; }
+  .browser-match .match-chrome-restore { position: static; margin-bottom: 10px; }
+}
+.browser-match .secondary-link, .browser-match .icon-button, .browser-match .hero-type-pill { color: inherit; }
+.browser-match .primary-button { color: #17201d; }
+.browser-match .card-button, .browser-match .turn-checklist, .browser-match .match-ux-panel { --muted: #c9cec5; }
+.browser-match .card-button { color: #fffaf0; }
+.browser-match .match-chrome-restore { display: none; }
+.browser-match.match-chrome-minimized .match-chrome-restore { display: inline-flex; }
+@media (min-width: 701px) {
+  .browser-match .match-chrome, .browser-match .opponent-hand-display { color: #fffaf0; --muted: #c9cec5; }
+}
+@media (max-width: 700px) {
+  :root[data-board-scale="normal"] .browser-match {
+    --hex-width: clamp(54px, 13.5vw, 80px);
+    --hex-height: calc(var(--hex-width) * .91);
+    --hex-column-overlap: calc(var(--hex-width) * -.25);
+    --hex-vertical-overlap: -1px;
+    --hex-board-min-width: calc(var(--hex-width) * 5.5);
+    --token-size: calc(var(--hex-width) * .72);
+  }
+  .browser-match .piece-token { padding: 2px; gap: 1px; }
+  .browser-match .piece-token strong { font-size: 8px; line-height: 1; }
+  .browser-match .piece-token .piece-token-stat-row { gap: 2px; font-size: 8px; }
+  .browser-match .piece-token-stat-row svg { display: none; }
+  .browser-match .piece-side-badge { font-size: 6px; padding: 1px 3px; }
+}
+
+.browser-match .pile-label, .browser-match .pile-display strong { color: inherit; }
+@media (max-width: 700px) {
+  .browser-match .piece-token .piece-token-stat-row span { font-size: 8px; padding: 0 1px; }
+}

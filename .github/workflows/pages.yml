@@ -1,0 +1,153 @@
+name: GitHub Pages
+
+on:
+  pull_request:
+    paths:
+      - "frontend/**"
+      - "rune-lanes-core/**"
+      - "rune-lanes-browser/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "scripts/build-browser-engine.sh"
+      - "e2e-pages/**"
+      - "playwright.pages.config.mts"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/pages.yml"
+  push:
+    branches: [main]
+    paths:
+      - "frontend/**"
+      - "rune-lanes-core/**"
+      - "rune-lanes-browser/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "scripts/build-browser-engine.sh"
+      - "e2e-pages/**"
+      - "playwright.pages.config.mts"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      PAGES_BASE_PATH: /${{ github.event.repository.name }}/
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Set up browser engine toolchain
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal --target wasm32-unknown-unknown
+          rustup default 1.98.1
+          cargo install wasm-bindgen-cli --version 0.2.129 --locked
+
+      - name: Build browser engine
+        run: bun run build:browser-engine
+
+      - name: Verify frontend
+        run: |
+          bun run --cwd frontend typecheck
+          bun run --cwd frontend test:unit
+
+      - name: Build Pages site
+        env:
+          VITE_BASE_PATH: ${{ env.PAGES_BASE_PATH }}
+          VITE_DISABLE_BACKEND_PROXY: "1"
+          VITE_BROWSER_ONLY: "1"
+        run: |
+          bun run --cwd frontend build
+          cp frontend/dist/index.html frontend/dist/404.html
+          printf '{"revision":"%s"}\n' "$GITHUB_SHA" > frontend/dist/deployment.json
+
+      - name: Test browser Solo matches without a backend
+        run: |
+          bunx --no-install playwright install --with-deps chromium
+          bun run test:pages
+
+      - name: Verify Pages artifact
+        run: |
+          test -s frontend/dist/engine/rune_lanes_browser_bg.wasm
+          test -s frontend/dist/engine/rune_lanes_browser.js
+          test -s frontend/dist/index.html
+          test -s frontend/dist/404.html
+          grep -F "${PAGES_BASE_PATH}assets/" frontend/dist/index.html
+          cmp frontend/dist/index.html frontend/dist/404.html
+
+      - name: Upload Pages artifact
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: frontend/dist
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+        with:
+          enablement: true
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+  verify-live:
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+
+      - name: Install browser tests
+        run: |
+          bun install --frozen-lockfile
+          bunx --no-install playwright install --with-deps chromium
+
+      - name: Verify the deployed revision and play on the public site
+        env:
+          ARCANIA_PAGES_URL: ${{ needs.deploy.outputs.page_url }}
+          ARCANIA_PAGES_REVISION: ${{ github.sha }}
+        run: bun run test:pages
+
+      - name: Preserve live screenshots and failure traces
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pages-live-results
+          path: test-results-pages/
+          retention-days: 7
