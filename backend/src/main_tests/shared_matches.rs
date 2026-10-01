@@ -555,3 +555,98 @@ async fn shared_match_join_exposes_only_the_viewer_seat_hand() {
 
     let _ = fs::remove_file(path);
 }
+
+#[tokio::test]
+async fn four_shared_seat_views_project_only_the_viewers_commands() {
+    let path = test_db_path("shared-command-projection");
+    let app = create_app(SqliteMatchStore::new(&path).unwrap());
+    let (status, created) = json_request(
+        app.clone(),
+        Request::builder()
+            .method("POST")
+            .uri("/api/shared-matches")
+            .header("content-type", "application/json")
+            .body(Body::from(r#"{"format":"twoVTwo"}"#))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let match_id = created["matchId"].as_str().unwrap();
+    let seats = created["seatUrls"].as_array().unwrap();
+    for seat in seats {
+        let token = seat_token_from_url(seat["url"].as_str().unwrap());
+        let (status, _) = json_request(
+            app.clone(),
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/shared-matches/{match_id}/seats/{token}/join"))
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"heroType":"runekeeper"}"#))
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+    }
+    let store = SqliteMatchStore::new(&path).unwrap();
+    for seat in seats {
+        let token = seat_token_from_url(seat["url"].as_str().unwrap());
+        let (status, loaded) = json_request(
+            app.clone(),
+            Request::builder()
+                .uri(format!("/api/shared-matches/{match_id}/seats/{token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let shared = store
+            .load_shared_match_for_seat(match_id, token)
+            .unwrap()
+            .unwrap();
+        let side = shared.viewer_seat.side;
+        let state = shared.state.as_ref().unwrap();
+        let hand = match side {
+            Side::Player => &state.player.hand,
+            Side::Opponent => &state.opponent.hand,
+            Side::PlayerTwo => &state.player_two.as_ref().unwrap().hand,
+            Side::OpponentTwo => &state.opponent_two.as_ref().unwrap().hand,
+        };
+        let expected = serde_json::to_value(state.queries().command_projection(side)).unwrap();
+        assert_eq!(loaded["matchState"]["commandProjection"], expected);
+        assert_eq!(
+            loaded["matchState"]["legalCommands"],
+            expected["legalCommands"]
+        );
+        assert_eq!(expected["viewerSide"], seat["side"]);
+        let ids: std::collections::BTreeSet<_> = expected["cards"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|card| card["cardId"].as_str().unwrap())
+            .collect();
+        assert_eq!(ids, hand.iter().map(|card| card.id.as_str()).collect());
+        for command in expected["legalCommands"].as_array().unwrap() {
+            if command["type"] == "playCard" {
+                assert!(ids.contains(command["cardId"].as_str().unwrap()));
+            }
+        }
+        let snapshot = serde_json::to_value(crate::http_types::SharedServerMessage::Snapshot {
+            payload: shared.clone().into(),
+        })
+        .unwrap();
+        let accepted =
+            serde_json::to_value(crate::http_types::SharedServerMessage::ActionAccepted {
+                request_id: "projection-contract".into(),
+                payload: shared.into(),
+            })
+            .unwrap();
+        assert_eq!(
+            snapshot["payload"]["matchState"]["commandProjection"],
+            expected
+        );
+        assert_eq!(
+            accepted["payload"]["matchState"]["commandProjection"],
+            expected
+        );
+    }
+}

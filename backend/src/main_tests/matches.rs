@@ -349,9 +349,18 @@ async fn accepted_actions_append_action_record_and_internal_replay_frames() {
     )
     .await;
     assert_eq!(status, StatusCode::OK);
+    let mut authoritative_view = loaded["matchState"].clone();
+    authoritative_view
+        .as_object_mut()
+        .unwrap()
+        .remove("legalCommands");
+    authoritative_view
+        .as_object_mut()
+        .unwrap()
+        .remove("commandProjection");
     assert_eq!(
         frames.last().expect("last frame exists")["matchState"],
-        loaded["matchState"]
+        authoritative_view
     );
 
     let _ = fs::remove_file(path);
@@ -541,4 +550,76 @@ fn database_path_defaults_to_ignored_data_directory() {
         match_store::database_path_from_environment(),
         PathBuf::from("data/rune-lanes.sqlite3")
     );
+}
+
+#[tokio::test]
+async fn solo_live_responses_project_core_commands_without_persisting_view_data() {
+    let path = test_db_path("solo-command-projection");
+    let app = create_app(SqliteMatchStore::new(&path).unwrap());
+    let (status, created) = json_request(
+        app.clone(),
+        Request::builder()
+            .method("POST")
+            .uri("/api/matches")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    let match_id = created["matchId"].as_str().unwrap();
+    let mut store = SqliteMatchStore::new(&path).unwrap();
+    let aggregate = store.load_event_sourced_match(match_id).unwrap().unwrap().0;
+    let expected =
+        serde_json::to_value(aggregate.state().queries().command_projection(Side::Player)).unwrap();
+    assert_eq!(created["matchState"]["commandProjection"], expected);
+    assert_eq!(
+        created["matchState"]["legalCommands"],
+        expected["legalCommands"]
+    );
+    let (status, loaded) = json_request(
+        app.clone(),
+        Request::builder()
+            .uri(format!("/api/matches/{match_id}"))
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(loaded["matchState"]["commandProjection"], expected);
+    let (status, acted) =
+        post_match_action(app.clone(), match_id, r#"{"type":"startAttackPhase"}"#).await;
+    assert_eq!(status, StatusCode::OK);
+    let aggregate = store.load_event_sourced_match(match_id).unwrap().unwrap().0;
+    assert_eq!(
+        acted["matchState"]["commandProjection"],
+        serde_json::to_value(aggregate.state().queries().command_projection(Side::Player)).unwrap()
+    );
+    let snapshot: String = store
+        .connection_mut()
+        .query_row(
+            "SELECT snapshot_json FROM matches WHERE id = ?1",
+            rusqlite::params![match_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(!snapshot.contains("commandProjection"));
+    for frame in acted["replayFrames"].as_array().unwrap() {
+        assert_eq!(
+            frame["matchState"]["commandProjection"]["viewerSide"],
+            "player"
+        );
+    }
+    let (status, archived) = json_request(
+        app,
+        Request::builder()
+            .uri(format!("/api/matches/{match_id}/replay"))
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    for frame in archived["frames"].as_array().unwrap() {
+        assert!(frame["matchState"].get("commandProjection").is_none());
+        assert!(frame["matchState"].get("legalCommands").is_none());
+    }
 }
