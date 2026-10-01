@@ -1,0 +1,233 @@
+{
+  "candidate": {
+    "source": {
+      "type": "published",
+      "revisionId": {
+        "cardId": "custom-measured-duelist",
+        "revision": 2
+      }
+    },
+    "definition": {
+      "id": "custom-measured-duelist",
+      "name": "Measured Duelist",
+      "rarity": "basic",
+      "cost": 1,
+      "text": "An explicit example Card for a paired experiment.",
+      "kind": {
+        "type": "unit",
+        "attack": 2,
+        "armor": 4,
+        "maxAp": 2
+      }
+    }
+  },
+  "baseline": {
+    "source": {
+      "type": "published",
+      "revisionId": {
+        "cardId": "custom-measured-duelist",
+        "revision": 1
+      }
+    },
+    "definition": {
+      "id": "custom-measured-duelist",
+      "name": "Measured Duelist",
+      "rarity": "basic",
+      "cost": 4,
+      "text": "An explicit example Card for a paired experiment.",
+      "kind": {
+        "type": "unit",
+        "attack": 2,
+        "armor": 4,
+        "maxAp": 2
+      }
+    }
+  },
+  "cases": [
+    {
+      "workshop": {
+        "seed": 7,
+        "playerHero": "runekeeper",
+        "opponentHero": "runekeeper",
+        "playerDeckRecipe": [
+          {
+            "templateId": "stoneguard",
+            "count": 30
+          }
+        ],
+        "opponentDeckRecipe": [
+          {
+            "templateId": "stoneguard",
+            "count": 30
+          }
+        ],
+        "ruleset": {
+          "schemaVersion": 1,
+          "arena": {
+            "duelRadius": 3,
+            "twoVTwoRadius": 4
+          },
+          "turn": {
+            "baseHeroMana": 3,
+            "openingHandSize": 7,
+            "maxCarriedItems": 3,
+            "defaultAttackRange": 1,
+            "movementCardPlay": true
+          },
+          "heroes": {
+            "runekeeper": {
+              "maxHp": 20,
+              "attack": 1,
+              "maxAp": 3,
+              "attackRange": 1
+            },
+            "pyromancer": {
+              "maxHp": 18,
+              "attack": 2,
+              "maxAp": 3,
+              "attackRange": 1
+            },
+            "chronomancer": {
+              "maxHp": 16,
+              "attack": 1,
+              "maxAp": 4,
+              "attackRange": 1
+            },
+            "warden": {
+              "maxHp": 24,
+              "attack": 1,
+              "maxAp": 2,
+              "attackRange": 1
+            },
+            "battlemage": {
+              "maxHp": 20,
+              "attack": 2,
+              "maxAp": 2,
+              "attackRange": 1
+            },
+            "barbarian": {
+              "maxHp": 22,
+              "attack": 3,
+              "maxAp": 2,
+              "attackRange": 1
+            },
+            "archer": {
+              "maxHp": 16,
+              "attack": 2,
+              "maxAp": 4,
+              "attackRange": 2
+            },
+            "builder": {
+              "maxHp": 24,
+              "attack": 1,
+              "maxAp": 2,
+              "attackRange": 1
+            }
+          }
+        },
+        "cards": []
+      },
+      "boardSetup": "empty"
+    },
+    {
+      "workshop": {
+        "seed": 42,
+        "playerHero": "runekeeper",
+        "opponentHero": "runekeeper",
+        "playerDeckRecipe": [
+          {
+            "templateId": "stoneguard",
+            "count": 30
+          }
+        ],
+        "opponentDeckRecipe": [
+          {
+            "templateId": "stoneguard",
+            "count": 30
+          }
+        ],
+        "ruleset": {
+          "schemaVersion": 1,
+          "arena": {
+            "duelRadius": 3,
+            "twoVTwoRadius": 4
+          },
+          "turn": {
+            "baseHeroMana": 3,
+            "openingHandSize": 7,
+            "maxCarriedItems": 3,
+            "defaultAttackRange": 1,
+            "movementCardPlay": true
+          },
+          "heroes": {
+            "runekeeper": {
+              "maxHp": 20,
+              "attack": 1,
+              "maxAp": 3,
+              "attackRange": 1
+            },
+            "pyromancer": {
+              "maxHp": 18,
+              "attack": 2,
+              "maxAp": 3,
+              "attackRange": 1
+            },
+            "chronomancer": {
+              "maxHp": 16,
+              "attack": 1,
+              "maxAp": 4,
+              "attackRange": 1
+            },
+            "warden": {
+              "maxHp": 24,
+              "attack": 1,
+              "maxAp": 2,
+              "attackRange": 1
+            },
+            "battlemage": {
+              "maxHp": 20,
+              "attack": 2,
+              "maxAp": 2,
+              "attackRange": 1
+            },
+            "barbarian": {
+              "maxHp": 22,
+              "attack": 3,
+              "maxAp": 2,
+              "attackRange": 1
+            },
+            "archer": {
+              "maxHp": 16,
+              "attack": 2,
+              "maxAp": 4,
+              "attackRange": 2
+            },
+            "builder": {
+              "maxHp": 24,
+              "attack": 1,
+              "maxAp": 2,
+              "attackRange": 1
+            }
+          }
+        },
+        "cards": []
+      },
+      "boardSetup": "empty"
+    }
+  ],
+  "policyConfig": {
+    "defaultPolicyId": "summon",
+    "policies": [
+      {
+        "id": "summon",
+        "rules": [
+          "highestCostUnitSummon"
+        ]
+      }
+    ]
+  },
+  "playerPolicyId": "summon",
+  "opponentPolicyId": "summon",
+  "testedSide": "player",
+  "maxActions": 1
+}

@@ -1,4 +1,4 @@
-use crate::match_session::{AiAdvanceOutcome, Phase};
+use crate::match_session::{AiAdvanceOutcome, MatchState, Phase};
 
 use super::*;
 
@@ -26,7 +26,35 @@ pub(super) fn run_game(
     setup: &SimulationSetup,
     max_actions: u32,
 ) -> Result<SimulationGameResult, AiLabError> {
-    let mut game = setup.new_match(spec)?;
+    let result = run_self_play(
+        setup.new_match(spec)?,
+        spec.candidate_side,
+        baseline_policy,
+        candidate_policy,
+        max_actions,
+    )?;
+    Ok(SimulationGameResult {
+        spec: spec.clone(),
+        outcome: result.outcome,
+        action_count: result.action_count,
+        frames: result.frames,
+    })
+}
+
+pub(super) struct SelfPlayResult {
+    pub(super) outcome: GameOutcome,
+    pub(super) action_count: u32,
+    pub(super) frames: Vec<RecordedReplayFrame>,
+    pub(super) final_state: MatchState,
+}
+
+pub(super) fn run_self_play(
+    mut game: MatchState,
+    candidate_side: Side,
+    baseline_policy: &crate::match_session::SoloAiPolicy,
+    candidate_policy: &crate::match_session::SoloAiPolicy,
+    max_actions: u32,
+) -> Result<SelfPlayResult, AiLabError> {
     let mut frames = vec![game.initial_replay_frame()];
     let mut action_count = 0;
     while game.phase != Phase::MatchOver && action_count < max_actions {
@@ -37,7 +65,7 @@ pub(super) fn run_game(
         } else {
             game.active_side
         };
-        let policy = if side == spec.candidate_side {
+        let policy = if side == candidate_side {
             candidate_policy
         } else {
             baseline_policy
@@ -53,8 +81,8 @@ pub(super) fn run_game(
         }));
         match result {
             Ok(Ok(AiAdvanceOutcome::IllegalIntent { reason })) => {
-                return Ok(SimulationGameResult {
-                    spec: spec.clone(),
+                return Ok(SelfPlayResult {
+                    final_state: game,
                     outcome: GameOutcome::IllegalAction(reason),
                     action_count,
                     frames,
@@ -65,16 +93,16 @@ pub(super) fn run_game(
                 action_count += 1;
             }
             Ok(Err(error)) => {
-                return Ok(SimulationGameResult {
-                    spec: spec.clone(),
+                return Ok(SelfPlayResult {
+                    final_state: game,
                     outcome: GameOutcome::IllegalAction(error.to_string()),
                     action_count,
                     frames,
                 });
             }
             Err(_) => {
-                return Ok(SimulationGameResult {
-                    spec: spec.clone(),
+                return Ok(SelfPlayResult {
+                    final_state: game,
                     outcome: GameOutcome::IllegalAction("AI action panicked".to_string()),
                     action_count,
                     frames,
@@ -83,13 +111,13 @@ pub(super) fn run_game(
         }
     }
     let outcome = match game.winner {
-        Some(winner) if winner == spec.candidate_side => GameOutcome::CandidateWin,
+        Some(winner) if winner == candidate_side => GameOutcome::CandidateWin,
         Some(_) => GameOutcome::BaselineWin,
         None if action_count >= max_actions => GameOutcome::Timeout,
         None => GameOutcome::Draw,
     };
-    Ok(SimulationGameResult {
-        spec: spec.clone(),
+    Ok(SelfPlayResult {
+        final_state: game,
         outcome,
         action_count,
         frames,
