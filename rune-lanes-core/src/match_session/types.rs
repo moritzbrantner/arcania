@@ -349,9 +349,10 @@ pub enum Rarity {
     Rare,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
     tag = "type",
+    deny_unknown_fields,
     rename_all = "camelCase",
     rename_all_fields = "camelCase"
 )]
@@ -393,9 +394,10 @@ fn default_item_targets() -> BuffTargetPolicy {
     BuffTargetPolicy::UnitsOnly
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
     tag = "type",
+    deny_unknown_fields,
     rename_all = "camelCase",
     rename_all_fields = "camelCase"
 )]
@@ -428,9 +430,10 @@ pub enum BuildingEffect {
     },
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
     tag = "type",
+    deny_unknown_fields,
     rename_all = "camelCase",
     rename_all_fields = "camelCase"
 )]
@@ -464,9 +467,10 @@ pub enum SpellEffect {
     },
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
     tag = "type",
+    deny_unknown_fields,
     rename_all = "camelCase",
     rename_all_fields = "camelCase"
 )]
@@ -479,9 +483,10 @@ pub enum ItemPassiveEffect {
     },
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
     tag = "type",
+    deny_unknown_fields,
     rename_all = "camelCase",
     rename_all_fields = "camelCase"
 )]
