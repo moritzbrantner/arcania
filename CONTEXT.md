@@ -256,6 +256,10 @@ _Avoid_: avatar upload
 The player-facing presentation that makes a Card, Unit, or Hero recognizable across match surfaces, including art, labels, colors, rarity treatment, token portrait, and unknown fallback.
 _Avoid_: skin, cosmetic data, asset lookup
 
+**Card artwork identity**:
+A named artwork choice for one exact published Card revision. Several Card artwork identities can represent the same revision without changing Card interactions.
+_Avoid_: artwork revision, gameplay skin
+
 **Targeting indicator**:
 A presentation-only board visual that shows the source, primary target, and optional affected footprint of a selected or queued attack or Spell.
 _Avoid_: threat line, action marker, rules target

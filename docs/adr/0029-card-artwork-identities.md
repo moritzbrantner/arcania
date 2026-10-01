@@ -1,0 +1,5 @@
+# Exact-revision Card artwork identities
+
+Custom Card artwork is presentation metadata that refers to an exact core-owned published Card revision. The frontend prepares a separate `CardArtworkCatalog` from serializable identity/asset records and the supplied published revision IDs; it does not embed a Card definition, choose a latest revision or change match and replay data. Multiple artwork identities may reference one gameplay revision. This keeps alternate art independent of immutable gameplay publication and allows existing visual rendering to consume it separately.
+
+Preparation validates the wire shape, unique visual/asset IDs and exact gameplay references, and copies the parsed metadata into an owned catalog. Resolution requires the requested revision and visual identity to agree. Missing identity, mismatched revision, absent artwork and missing asset references have explicit fallback results. The catalog preserves metadata on serialization and keeps inputs, exported data and resolution results independent. Asset availability is the supplied asset index; image-load failure belongs to rendering, not this catalog.
