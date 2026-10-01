@@ -13,7 +13,7 @@
     "dev:preview": "vite preview"
   },
   "dependencies": {
-    "@moritzbrantner/input-bindings": "github:moritzbrantner/input-bindings#f3747579e462d9c6e65196912d1348afd5cf4b13",
+    "@moritzbrantner/input-bindings": "github:moritzbrantner/input-bindings#e24c89e0c917ded25531fc1bd1b3c9a553e2c4ff",
     "@moritzbrantner/input-bindings-runtime": "github:moritzbrantner/input-bindings#2f8c5e2caf435d9bdc284aae09246041680c67b6",
     "@moritzbrantner/input-bindings-web": "github:moritzbrantner/input-bindings#3d514ab479915338f47bdc776ce2fd9d8e3e3f65",
     "@react-three/fiber": "^9.6.1",
