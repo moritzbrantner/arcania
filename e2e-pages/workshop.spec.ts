@@ -88,6 +88,47 @@ test("invalid imported presets are rejected without losing saved rules", async (
   await expect(page.getByRole("spinbutton", { name: "Base Hero Mana", exact: true })).toHaveValue("7");
 });
 
+test("system deck selections persist independently and determine the browser match", async ({ page }) => {
+  const apiRequests: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.includes("/api/")) { apiRequests.push(request.url()); }
+  });
+  await page.goto("./workshop");
+  const playerDeck = page.getByRole("combobox", { name: "Your deck", exact: true });
+  const opponentDeck = page.getByRole("combobox", { name: "Bot deck", exact: true });
+  await expect(playerDeck).toHaveValue("balanced-starter");
+  await expect(opponentDeck).toHaveValue("balanced-starter");
+  await page.getByRole("combobox", { name: "Your Hero", exact: true }).selectOption("warden");
+  await page.getByRole("combobox", { name: "Bot Hero", exact: true }).selectOption("archer");
+  await playerDeck.selectOption("ember-burn");
+  await expect(opponentDeck).toHaveValue("balanced-starter");
+  await opponentDeck.selectOption("tempo-lines");
+  await expect(playerDeck).toHaveValue("ember-burn");
+  await expect(page.getByText("Your deck: Ember Burn", { exact: true })).toBeVisible();
+  await expect(page.getByText("Bot deck: Tempo Lines", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Match rules", exact: true }).click();
+  await page.getByRole("button", { name: "Save preset", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("saved");
+  await page.reload();
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(playerDeck).toHaveValue("ember-burn");
+  await expect(opponentDeck).toHaveValue("tempo-lines");
+  await expect(page.getByRole("combobox", { name: "Your Hero", exact: true })).toHaveValue("warden");
+  await expect(page.getByRole("combobox", { name: "Bot Hero", exact: true })).toHaveValue("archer");
+  await page.getByRole("button", { name: "Play against bot", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Round 1", exact: true })).toBeVisible();
+  const hand = page.getByLabel("Hand", { exact: true });
+  await expect(hand.getByRole("button", { name: /Iron Colossus/ })).toHaveCount(0);
+  await expect(hand.getByRole("button", { name: /Rune Charm/ })).toHaveCount(0);
+  const journal: unknown = await page.evaluate(() => JSON.parse(localStorage.getItem("rune-lanes.browser-match.v1") ?? "null"));
+  expect(journal).toMatchObject({ setup: {
+    playerHero: "warden", opponentHero: "archer",
+    playerDeckRecipe: expect.arrayContaining([{ templateId: "meteor-bloom", count: 3 }]),
+    opponentDeckRecipe: expect.arrayContaining([{ templateId: "chrono-cog", count: 2 }]),
+  } });
+  expect(apiRequests).toEqual([]);
+});
+
 test("imported independent deck recipes drive the match and its saved command journal", async ({ page }) => {
   const apiRequests: string[] = [];
   page.on("request", (request) => {

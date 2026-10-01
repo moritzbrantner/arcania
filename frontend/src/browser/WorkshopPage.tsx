@@ -3,12 +3,14 @@ import { ArrowRight, BookOpen, Download, Layers, Play, Settings, Sparkles, Uploa
 import { HERO_OPTIONS } from "../heroes";
 import type { CatalogCard, HeroType } from "../types";
 import { CardEditor } from "./CardEditor";
+import { DeckSelect, systemDeckForRecipe } from "./DeckSelect";
 import { RuleEditor, NumberField } from "./RuleEditor";
-import { BROWSER_MATCH_ID, browserCatalog, defaultSetup, hasBrowserMatch, loadSetup, saveSetup, startBrowserMatch, validateSetup, type WorkshopSetup } from "./engine";
+import { BROWSER_MATCH_ID, browserCatalog, browserSystemDecks, defaultSetup, hasBrowserMatch, loadSetup, saveSetup, startBrowserMatch, validateSetup, type WorkshopSetup, type WorkshopSystemDeckRecipe } from "./engine";
 
 export function WorkshopPage({ tab, onNavigate }: { tab: string | null; onNavigate: (path: string) => void }) {
   const [setup, setSetup] = useState<WorkshopSetup | null>(null);
   const [catalog, setCatalog] = useState<CatalogCard[]>([]);
+  const [systemDecks, setSystemDecks] = useState<WorkshopSystemDeckRecipe[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -17,8 +19,8 @@ export function WorkshopPage({ tab, onNavigate }: { tab: string | null; onNaviga
   const activeTab = tab === "cards" || tab === "rules" ? tab : "play";
   useEffect(() => {
     let cancelled = false;
-    Promise.all([loadSetup(), browserCatalog()]).then(([loaded, catalog]) => {
-      if (!cancelled) { setSetup(loaded); setCatalog(catalog.cards); setResume(hasBrowserMatch()); }
+    Promise.all([loadSetup(), browserCatalog(), browserSystemDecks()]).then(([loaded, catalog, decks]) => {
+      if (!cancelled) { setSetup(loaded); setCatalog(catalog.cards); setSystemDecks(decks); setResume(hasBrowserMatch()); }
     }).catch((error: unknown) => { if (!cancelled) { setError(String(error)); } });
     return () => { cancelled = true; };
   }, []);
@@ -29,11 +31,11 @@ export function WorkshopPage({ tab, onNavigate }: { tab: string | null; onNaviga
     try { await action(); return true; } catch (error) { setError(String(error)); return false; } finally { setBusy(false); }
   }
   function reset() {
-    return run(async () => { const defaults = await defaultSetup(); await saveSetup(defaults); setSetup(defaults); setDirty(false); setNotice("Default rules restored. Your saved match is unchanged."); });
+    return run(async () => { const [defaults, catalog, decks] = await Promise.all([defaultSetup(), browserCatalog(), browserSystemDecks()]); await saveSetup(defaults); setSetup(defaults); setCatalog(catalog.cards); setSystemDecks(decks); setDirty(false); setNotice("Default workshop preset restored. Your saved match is unchanged."); });
   }
   async function save() {
     if (!setup) { return; }
-    setSetup(await saveSetup(setup)); setDirty(false); setNotice("Rule preset saved in this browser.");
+    setSetup(await saveSetup(setup)); setDirty(false); setNotice("Workshop preset saved in this browser.");
   }
   async function start() {
     if (!setup) { return; }
@@ -60,7 +62,8 @@ export function WorkshopPage({ tab, onNavigate }: { tab: string | null; onNaviga
         {activeTab === "play" ? <section className="workshop-play">
           <div className="workshop-play-copy"><p className="eyebrow"><Sparkles size={15} /> Solo match</p><h2>Your next move<br />starts here.</h2><p>Move your Hero, summon Units, and claim Mana sources. Defeat the opposing Hero to win.</p>
             <div className="workshop-fields"><HeroSelect label="Your Hero" value={setup.playerHero} onChange={(playerHero) => edit({ ...setup, playerHero })} /><HeroSelect label="Bot Hero" value={setup.opponentHero} onChange={(opponentHero) => edit({ ...setup, opponentHero })} /></div>
-            <div className="workshop-loadout"><span>{setup.ruleset.turn.baseHeroMana} base Mana</span><span>{setup.cards.length} custom cards</span><span>Starter deck</span></div>
+            <div className="workshop-fields"><DeckSelect label="Your deck" recipe={setup.playerDeckRecipe} systemDecks={systemDecks} onChange={(playerDeckRecipe) => edit({ ...setup, playerDeckRecipe })} /><DeckSelect label="Bot deck" recipe={setup.opponentDeckRecipe} systemDecks={systemDecks} onChange={(opponentDeckRecipe) => edit({ ...setup, opponentDeckRecipe })} /></div>
+            <div className="workshop-loadout"><span>{setup.ruleset.turn.baseHeroMana} base Mana</span><span>{setup.cards.length} custom cards</span><span>Your deck: {systemDeckForRecipe(setup.playerDeckRecipe, systemDecks)?.name ?? "Custom recipe"}</span><span>Bot deck: {systemDeckForRecipe(setup.opponentDeckRecipe, systemDecks)?.name ?? "Custom recipe"}</span></div>
             <button className="primary-button workshop-start" type="submit">{busy ? "Preparing arena…" : "Play against bot"}<ArrowRight size={20} /></button>
             {resume ? <button className="secondary-link" type="button" onClick={() => onNavigate(`/match/${BROWSER_MATCH_ID}`)}>Resume saved match</button> : null}
             <small>No account needed. Rules, cards and your latest match are saved in this browser. Starting a match replaces the previous one.</small>
@@ -69,7 +72,7 @@ export function WorkshopPage({ tab, onNavigate }: { tab: string | null; onNaviga
           <div className="workshop-scene" aria-hidden="true"><div className="workshop-orbit" /><img className="workshop-hero-art" src={`${import.meta.env.BASE_URL}hero-art/${setup.playerHero}.svg`} alt="" /><div className="workshop-scene-caption"><span>37 hexes. Endless possibilities.</span><strong>{HERO_OPTIONS.find((hero) => hero.id === setup.playerHero)?.name}</strong></div></div>
         </section> : activeTab === "rules" ? <RuleEditor setup={setup} onChange={edit} /> : <CardEditor cards={setup.cards} catalog={catalog} onChange={(cards) => run(async () => { const next = await validateSetup({ ...setup, cards }); edit(next); setNotice("Card changes ready. Save the preset or start a match to keep them."); })} />}
         {activeTab !== "play" ? <div className="workshop-save"><span>{dirty ? "Unsaved changes" : "Saved preset"}</span><button className="primary-button" type="submit">Save preset</button><button className="secondary-link" type="button" onClick={() => run(start)}>Save & play against bot<ArrowRight size={18} /></button></div> : null}
-        <details className="workshop-tools"><summary>Preset tools & repeatable matches</summary><p>Export rules and custom cards to share or keep a backup. Importing validates the preset before replacing your draft.</p><NumberField label="Match seed" min={0} max={4294967295} value={setup.seed} onChange={(seed) => edit({ ...setup, seed })} /><div className="actions"><button className="secondary-link" type="button" onClick={() => run(exportPreset)}><Download size={16} />Export preset</button><label className="secondary-link workshop-import"><Upload size={16} />Import preset<input type="file" accept="application/json,.json" aria-label="Import preset" onChange={(event) => {
+        <details className="workshop-tools"><summary>Preset tools & repeatable matches</summary><p>Export rules, deck recipes and custom cards to share or keep a backup. Importing validates the preset before replacing your draft.</p><NumberField label="Match seed" min={0} max={4294967295} value={setup.seed} onChange={(seed) => edit({ ...setup, seed })} /><div className="actions"><button className="secondary-link" type="button" onClick={() => run(exportPreset)}><Download size={16} />Export preset</button><label className="secondary-link workshop-import"><Upload size={16} />Import preset<input type="file" accept="application/json,.json" aria-label="Import preset" onChange={(event) => {
           const file = event.target.files?.[0]; event.target.value = "";
           if (file) { run(async () => { if (file.size > 100_000) { throw new Error("Preset files must be smaller than 100 KB."); } edit(await validateSetup(JSON.parse(await file.text()))); setNotice("Preset imported. Save or start a match to keep it."); }); }
         }} /></label><button className="secondary-link" type="button" onClick={reset}>Restore defaults</button></div></details>
