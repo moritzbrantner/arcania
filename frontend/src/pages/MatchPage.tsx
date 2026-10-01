@@ -381,7 +381,7 @@ export function MatchPage({
     ? cardAvailability(match, viewerSide, selectedCard, { canAct, busy })
     : null;
   const selectedPreview = selectedCard
-    ? actionPreviewForCard(match, viewerSide, selectedCard)
+    ? actionPreviewForCard(match, viewerSide, selectedCard, undefined, { canAct, busy })
     : selectedPiece
       ? actionPreviewForPiece(match, viewerSide, selectedPiece)
       : focusedUnit
@@ -397,6 +397,7 @@ export function MatchPage({
         : null,
     focusedPiece: focusedUnit,
     canAct: canAct && !busy,
+    availabilityOptions: { busy },
   });
   const turnChecklistItems = turnChecklistForMatch(match, viewerSide, canAct && !busy);
 
@@ -470,15 +471,6 @@ export function MatchPage({
               >
                 <Sword size={18} />
                 Start Attack
-              </button>
-              <button
-                className="primary-button"
-                type="button"
-                onClick={() => void runAction(() => startCardPlay(matchId))}
-                disabled={busy || match.activeSide !== viewerSide}
-              >
-                <Layers size={18} />
-                Play Cards
               </button>
             </>
           ) : null}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isLegalAttack, isLegalCardTarget, pieceStatLabel, tileTitle } from "./matchBoardHelpers";
+import { storyCardProjection } from "./components/board.fixtures";
 import type { BoardPiece, BoardUnit } from "./appTypes";
 import type { Card, MatchState, Side } from "./types";
 
@@ -27,6 +28,7 @@ describe("match board helpers", () => {
   it("allows mana source cards on adjacent empty non-source hexes only", () => {
     const match = baseMatch();
     match.phase = "cardPlay";
+    match.commandProjection = storyCardProjection([{ card: manaSourceCard(), targets: [{ type: "hex", coord: { q: -1, r: 3 } }] }]);
     match.board.manaSources = [{ q: 1, r: 2 }];
     const blocker = unit("blocker", "player", { q: 0, r: 2 }, 1);
     match.board.units = [blocker];

@@ -88,6 +88,32 @@ test("invalid imported presets are rejected without losing saved rules", async (
   await expect(page.getByRole("spinbutton", { name: "Base Hero Mana", exact: true })).toHaveValue("7");
 });
 
+test("summons Ember Squire in Movement, moves it, and advances through Attack and Card Play", async ({ page }) => {
+  await page.goto("./workshop");
+  await page.getByText("Preset tools & repeatable matches", { exact: true }).click();
+  await page.getByRole("spinbutton", { name: "Match seed", exact: true }).fill("1");
+  await page.getByRole("button", { name: "Play against bot", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Play Cards", exact: true })).toHaveCount(0);
+  const card = page.getByLabel("Hand", { exact: true }).getByRole("button", { name: /Ember Squire/ });
+  await expect(card).toBeEnabled();
+  await card.click();
+  const summon = page.getByRole("button", { name: "q 0, r 2, empty hex", exact: true });
+  await expect(summon).toHaveClass(/\blegal\b/);
+  await summon.click();
+  await expect(page.getByRole("region", { name: "Turn checklist" })).toContainText("3/3");
+  await page.getByRole("button", { name: "q 0, r 2, occupied by your unit", exact: true }).click();
+  const move = page.getByRole("button", { name: "q 0, r 1, empty hex", exact: true });
+  await expect(move).toHaveClass(/\blegal\b/);
+  await move.click();
+  await expect(page.getByRole("button", { name: "q 0, r 1, occupied by your unit", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Start Attack", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Start Attack", exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Hand", { exact: true }).getByRole("button", { name: /Prism Initiate/ })).toBeDisabled();
+  await page.getByRole("button", { name: "Finish Attacks", exact: true }).click();
+  await expect(page.getByRole("button", { name: "End Turn", exact: true })).toBeVisible();
+  await expect(page.getByLabel("Hand", { exact: true }).getByRole("button", { name: /Prism Initiate/ })).toBeEnabled();
+});
+
 test("a custom Spell can win a browser match and return to the workshop", async ({ page }) => {
   await page.goto("./workshop?tab=rules");
   await page.getByRole("spinbutton", { name: "Runekeeper HP", exact: true }).fill("1");

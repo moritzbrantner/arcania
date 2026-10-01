@@ -856,9 +856,22 @@ function playableMatch({
   units = [],
   prioritySide = null,
   actionStack = [],
+  commandProjection = {
+    viewerSide: "player",
+    proactiveCardPhases: ["movement", "cardPlay"],
+    cards: [
+      { cardId: "ember-squire-card", allowed: true },
+      { cardId: "spark-jolt-card", allowed: true },
+    ],
+    legalCommands: [
+      { type: "playCard", cardId: "ember-squire-card", target: { type: "hex", coord: { q: 0, r: 0 } } },
+      { type: "playCard", cardId: "spark-jolt-card", target: { type: "piece", pieceId: "opponent-hero" } },
+    ],
+  },
 }) {
   return {
     mode: "solo",
+    commandProjection,
     round: 1,
     phase,
     activeSide,

@@ -7,11 +7,9 @@ import { AccountActions } from "../components/common";
 import { sideLabel } from "../labels";
 import {
   cardFanStyle,
-  cardTargetForTile,
   handForSide,
   isLegalAttack,
   isLegalMove,
-  isPlayableCard,
   opponentSideOf,
   participantBySide,
   pieceAt,
@@ -103,9 +101,9 @@ export function TutorialPage({
 
     const piece = pieceAt(match, tile.coord);
     if (selectedCard) {
-      const target = cardTargetForTile(match, viewerSide, selectedCard, tile);
-      if (target?.type === "piece") {
-        dispatch({ type: "interact", interaction: { type: "pieceClick", pieceId: target.pieceId } });
+      // This scripted lesson accepts objective interactions rather than live commands.
+      if (selectedCard.kind.type === "spell" && piece) {
+        dispatch({ type: "interact", interaction: { type: "pieceClick", pieceId: piece.id } });
         return;
       }
       dispatch({ type: "interact", interaction: { type: "tileClick", coord: tile.coord } });
@@ -248,7 +246,7 @@ export function TutorialPage({
                   visualIdentity={visualCatalog.card(card)}
                   selected={state.selection?.type === "card" && state.selection.cardId === card.id}
                   style={cardFanStyle(index, handForSide(match, viewerSide).length)}
-                  disabled={inputPaused || !isPlayableCard(match, viewerSide, card)}
+                  disabled={inputPaused || !isCardHighlighted(highlights, card.id)}
                   tutorialTargetId={tutorialTargetIdForCard(card.id)}
                   tutorialHighlighted={isCardHighlighted(highlights, card.id)}
                   onClick={() => handleCardClick(card)}

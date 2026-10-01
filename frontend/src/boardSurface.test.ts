@@ -4,6 +4,7 @@ import {
   pendingAttackStack,
   pendingSpellStack,
   storyMatch,
+  storyCardProjection,
   storyUnit,
 } from "./components/board.fixtures";
 import { pieceById } from "./matchBoardHelpers";
@@ -11,7 +12,7 @@ import { deriveBoardSurface } from "./boardSurface";
 
 describe("board surface", () => {
   it("exposes selected Card targets and their targeting indicators", () => {
-    const match = storyMatch({ hand: [cinderRingCard], phase: "cardPlay" });
+    const match = storyMatch({ hand: [cinderRingCard], phase: "cardPlay", commandProjection: storyCardProjection([{ card: cinderRingCard, targets: [{ type: "piece", pieceId: "opponent-hero" }] }]) });
 
     const surface = deriveBoardSurface({
       match,

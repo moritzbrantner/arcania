@@ -29,12 +29,12 @@ test("shared active matches use persistent full-screen collapsible chrome", asyn
   await expect.poll(() => hasPainted3dCanvas(page)).toBe(true);
   await expect(page.getByText("You", { exact: true })).toBeVisible();
   await expect(page.getByText("Opponent", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Play Cards" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start Attack" })).toBeVisible();
   await expectNoVisibleOverlap(page, matchOverlaySelectors());
 
   await page.getByRole("button", { name: "Minimize match chrome" }).click();
   await expect(page.getByRole("button", { name: "Restore match chrome" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Play Cards" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start Attack" })).toBeVisible();
   await expectNoVisibleOverlap(page, minimizedMatchOverlaySelectors());
   await expect
     .poll(() => page.evaluate((key) => localStorage.getItem(key), MATCH_CHROME_STORAGE_KEY))
@@ -42,7 +42,7 @@ test("shared active matches use persistent full-screen collapsible chrome", asyn
 
   await page.reload();
   await expect(page.getByRole("button", { name: "Restore match chrome" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Play Cards" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start Attack" })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 700 });
   await page.reload();
@@ -163,6 +163,43 @@ test("shared cursor initializes to the opponent seat Hero and does not confirm o
   await expect.poll(() => sharedActions(page)).toEqual([]);
 });
 
+test("disconnect blocks projected Cards consistently in the hand, checklist, board, and previews", async ({ page }) => {
+  await installSharedWebSocket(page);
+  await page.addInitScript(() => localStorage.setItem("rune-lanes-board-visual-mode", "2d"));
+  const card = {
+    id: "shared-ember-squire", templateId: "ember-squire", name: "Ember Squire",
+    rarity: "basic", cost: 1, text: "Summon a Unit.",
+    kind: { type: "unit", attack: 1, armor: 2, maxAp: 2 },
+  };
+  await mockSharedApi(page, { signedIn: false, sharedResponse: (side) => {
+    const response = sharedMatchResponse(side);
+    response.matchState.player.hand = [card];
+    response.matchState.player.handCount = 1;
+    response.matchState.commandProjection = {
+      viewerSide: side, proactiveCardPhases: ["movement", "cardPlay"],
+      cards: [{ cardId: card.id, allowed: true }],
+      legalCommands: [{ type: "playCard", cardId: card.id, target: { type: "hex", coord: { q: 0, r: 2 } } }],
+    };
+    return response;
+  } });
+  await page.goto(`/match/${MATCH_ID}/${PLAYER_SEAT_TOKEN}`);
+  const handCard = page.getByLabel("Hand", { exact: true }).getByRole("button", { name: /Ember Squire/ });
+  const cardCount = page.getByRole("region", { name: "Turn checklist" }).locator(".turn-checklist-item").filter({ hasText: "Playable cards" }).locator("strong");
+  await expect(handCard).toBeEnabled();
+  await expect(cardCount).toHaveText("1");
+  await handCard.click();
+  const target = page.getByRole("button", { name: "q 0, r 2, empty hex", exact: true });
+  await expect(target).toHaveClass(/\blegal\b/);
+  await page.evaluate(() => window.__sharedSocket.close());
+  await expect(handCard).toBeDisabled();
+  await expect(cardCount).toHaveText("0");
+  await expect(target).toBeDisabled();
+  await expect(target).not.toHaveClass(/\blegal\b/);
+  await expect(page.getByText("The live connection is not ready.", { exact: true }).first()).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => sharedActions(page)).toEqual([]);
+});
+
 async function installSharedWebSocket(page) {
   await page.addInitScript(() => {
     window.__sharedWsMessages = [];
@@ -177,6 +214,7 @@ async function installSharedWebSocket(page) {
         super();
         this.url = url;
         window.__sharedWsUrl = url;
+        window.__sharedSocket = this;
         window.setTimeout(() => this.dispatchEvent(new Event("open")), 0);
       }
 
@@ -194,7 +232,7 @@ async function installSharedWebSocket(page) {
   });
 }
 
-async function mockSharedApi(page, { signedIn, preferences = defaultPreferences(), apiRequests = [] }) {
+async function mockSharedApi(page, { signedIn, preferences = defaultPreferences(), apiRequests = [], sharedResponse = sharedMatchResponse }) {
   await page.route("**://*/api/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -240,7 +278,7 @@ async function mockSharedApi(page, { signedIn, preferences = defaultPreferences(
 
     const sharedMatch = sharedMatchFromPath(url.pathname);
     if (sharedMatch && request.method() === "GET") {
-      await route.fulfill({ json: sharedMatchResponse(sharedMatch.viewerSide) });
+      await route.fulfill({ json: sharedResponse(sharedMatch.viewerSide) });
       return;
     }
 
