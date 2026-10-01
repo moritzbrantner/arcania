@@ -31,6 +31,34 @@ fn manifests_round_trip_and_resolve_exact_pack_and_card_versions() {
 }
 
 #[test]
+fn round_tripped_pack_references_preserve_the_exact_revision_taxonomy() {
+    let mut tagged = serde_json::to_value(revision(1)).unwrap();
+    let taxonomy = serde_json::json!({
+        "faction": "ember-court", "element": "fire",
+        "traits": ["soldier", "veteran"], "families": ["duelist", "starter"]
+    });
+    tagged["definition"]["taxonomy"] = taxonomy.clone();
+    let first: PublishedCardRevision = serde_json::from_value(tagged).unwrap();
+    let mut newer = serde_json::to_value(revision(2)).unwrap();
+    newer["definition"]["taxonomy"] = serde_json::json!({"faction": "neutral"});
+    let second: PublishedCardRevision = serde_json::from_value(newer).unwrap();
+    let decoded: Vec<PublishedCardRevision> =
+        serde_json::from_value(serde_json::to_value([first.clone(), second]).unwrap()).unwrap();
+    let cards = CardCatalog::new(decoded).unwrap();
+    let manifest = manifest("ember-pack", 1, vec![first.id().clone()]);
+    let restored: CardPackManifest =
+        serde_json::from_value(serde_json::to_value(&manifest).unwrap()).unwrap();
+    let packs = CardPackCatalog::new([restored], &cards).unwrap();
+    let pinned = &packs.resolve(&manifest.id).unwrap().cards[0];
+    assert_eq!(pinned.to_string(), "custom-squire@1");
+    assert_eq!(
+        serde_json::to_value(cards.resolve(pinned).unwrap().definition()).unwrap()["taxonomy"],
+        taxonomy
+    );
+    assert_eq!(cards.latest("custom-squire").unwrap().id().revision(), 2);
+}
+
+#[test]
 fn unknown_manifest_versions_are_rejected_with_actionable_diagnostics() {
     let cards = CardCatalog::new([revision(1)]).unwrap();
     let mut unsupported = manifest("future", 1, vec![]);
@@ -258,6 +286,7 @@ fn validation_errors_are_serializable_without_losing_reference_identity() {
 fn revision(number: u32) -> PublishedCardRevision {
     PublishedCardRevision::new(
         CardDefinition {
+            taxonomy: Default::default(),
             id: "custom-squire".to_string(),
             name: "Custom Squire".to_string(),
             rarity: Rarity::Basic,
