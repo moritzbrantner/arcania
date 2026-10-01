@@ -88,6 +88,39 @@ test("invalid imported presets are rejected without losing saved rules", async (
   await expect(page.getByRole("spinbutton", { name: "Base Hero Mana", exact: true })).toHaveValue("7");
 });
 
+test("imported independent deck recipes drive the match and its saved command journal", async ({ page }) => {
+  const apiRequests: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.includes("/api/")) { apiRequests.push(request.url()); }
+  });
+  await page.goto("./workshop?tab=rules");
+  await page.getByRole("button", { name: "Save preset", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("saved");
+  const stored: unknown = await page.evaluate(() => JSON.parse(localStorage.getItem("rune-lanes.workshop.v1") ?? "null"));
+  if (typeof stored !== "object" || stored === null || Array.isArray(stored)) {
+    throw new Error("The Workshop must save a preset before recipe import.");
+  }
+  const playerDeckRecipe = [{ templateId: "ember-squire", count: 20 }];
+  const opponentDeckRecipe = [{ templateId: "spark-jolt", count: 20 }];
+  await page.getByText("Preset tools & repeatable matches", { exact: true }).click();
+  await page.getByLabel("Import preset", { exact: true }).setInputFiles({
+    name: "independent-decks.json", mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify({ ...stored, playerDeckRecipe, opponentDeckRecipe })),
+  });
+  await expect(page.getByRole("status")).toContainText("imported");
+  await page.getByRole("button", { name: "Save & play against bot", exact: true }).click();
+  const hand = page.getByLabel("Hand", { exact: true });
+  await expect(hand.getByRole("button", { name: /Ember Squire/ })).toHaveCount(7);
+  await expect(hand.getByRole("button", { name: /Spark Jolt/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Start Attack", exact: true }).click();
+  const journal: unknown = await page.evaluate(() => JSON.parse(localStorage.getItem("rune-lanes.browser-match.v1") ?? "null"));
+  expect(journal).toMatchObject({ setup: { playerDeckRecipe, opponentDeckRecipe }, commands: [{ command: { type: "startAttackPhase" } }] });
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Finish Attacks", exact: true })).toBeVisible();
+  await expect(hand.getByRole("button", { name: /Ember Squire/ })).toHaveCount(7);
+  expect(apiRequests).toEqual([]);
+});
+
 test("summons Ember Squire in Movement, moves it, and advances through Attack and Card Play", async ({ page }) => {
   await page.goto("./workshop");
   await page.getByText("Preset tools & repeatable matches", { exact: true }).click();

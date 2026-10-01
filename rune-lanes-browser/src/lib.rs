@@ -2,6 +2,7 @@
 use rune_lanes_core::{
     MatchActionRequest, MatchState, Side, SoloAiPolicy,
     commands::{CommandContext, GameCommand},
+    deck_library::system_deck_recipes,
     rules::CURRENT_RULESET,
     workshop::WorkshopSetup,
 };
@@ -37,6 +38,7 @@ impl BrowserMatch {
     #[wasm_bindgen(constructor)]
     pub fn new(setup_json: &str) -> Result<BrowserMatch, String> {
         let setup: WorkshopSetup = serde_json::from_str(setup_json).map_err(|e| e.to_string())?;
+        let setup = setup.normalized()?;
         let state = setup.create_match()?;
         Ok(Self {
             state,
@@ -139,6 +141,8 @@ pub fn workshop_defaults() -> Result<String, String> {
         seed: 42,
         player_hero: Default::default(),
         opponent_hero: Default::default(),
+        player_deck_recipe: system_deck_recipes()[0].cards.clone(),
+        opponent_deck_recipe: system_deck_recipes()[0].cards.clone(),
         ruleset: CURRENT_RULESET,
         cards: vec![],
     })
@@ -148,13 +152,18 @@ pub fn workshop_defaults() -> Result<String, String> {
 #[wasm_bindgen]
 pub fn validate_setup(setup_json: &str) -> Result<String, String> {
     let setup: WorkshopSetup = serde_json::from_str(setup_json).map_err(|e| e.to_string())?;
-    setup.validate()?;
+    let setup = setup.normalized()?;
     serde_json::to_string(&setup).map_err(|e| e.to_string())
 }
 
 #[wasm_bindgen]
 pub fn catalog() -> Result<String, String> {
     catalog_value(&[])
+}
+
+#[wasm_bindgen]
+pub fn system_decks() -> Result<String, String> {
+    serde_json::to_string(system_deck_recipes()).map_err(|error| error.to_string())
 }
 
 fn catalog_value(custom: &[rune_lanes_core::CardDefinition]) -> Result<String, String> {
@@ -199,10 +208,22 @@ mod tests {
             .as_object_mut()
             .unwrap()
             .remove("movementCardPlay");
+        setup.as_object_mut().unwrap().remove("playerDeckRecipe");
+        setup.as_object_mut().unwrap().remove("opponentDeckRecipe");
         let mut game = BrowserMatch::new(&setup.to_string()).unwrap();
         game.act(r#"{"type":"startCardPlay"}"#).unwrap();
         game.act(r#"{"type":"endTurn"}"#).unwrap();
-        let saved = game.journal().unwrap();
+        let mut old_journal: serde_json::Value =
+            serde_json::from_str(&game.journal().unwrap()).unwrap();
+        old_journal["setup"]
+            .as_object_mut()
+            .unwrap()
+            .remove("playerDeckRecipe");
+        old_journal["setup"]
+            .as_object_mut()
+            .unwrap()
+            .remove("opponentDeckRecipe");
+        let saved = old_journal.to_string();
         assert!(!saved.contains("movementCardPlay"));
         let restored = BrowserMatch::restore(&saved).unwrap();
         assert_eq!(restored.view().unwrap(), game.view().unwrap());
@@ -216,5 +237,60 @@ mod tests {
         assert!(game.act(r#"{"type":"endTurn"}"#).is_err());
         assert_eq!(before, game.journal().unwrap());
         assert!(BrowserMatch::restore(&before.replace("\"version\":1", "\"version\":99")).is_err());
+    }
+
+    #[test]
+    fn exposes_the_exact_shared_system_recipes() {
+        let recipes: Vec<rune_lanes_core::deck_library::SystemDeckRecipe> =
+            serde_json::from_str(&system_decks().unwrap()).unwrap();
+        assert_eq!(recipes, system_deck_recipes());
+        assert_eq!(recipes.len(), 8);
+        assert_eq!(recipes[0].id, "balanced-starter");
+    }
+
+    #[test]
+    fn independent_recipes_are_normalized_frozen_and_restored_in_the_journal() {
+        use rune_lanes_core::deck_library::{DeckCardCount, system_deck_by_id};
+        let mut setup: WorkshopSetup = serde_json::from_str(&workshop_defaults().unwrap()).unwrap();
+        setup.player_deck_recipe = system_deck_by_id("ember-burn").unwrap().cards.clone();
+        setup.player_deck_recipe.reverse();
+        setup.opponent_deck_recipe = vec![
+            DeckCardCount {
+                template_id: "spark-jolt".into(),
+                count: 10,
+            },
+            DeckCardCount {
+                template_id: "ember-squire".into(),
+                count: 10,
+            },
+        ];
+        let valid: WorkshopSetup =
+            serde_json::from_str(&validate_setup(&serde_json::to_string(&setup).unwrap()).unwrap())
+                .unwrap();
+        assert_eq!(
+            valid.player_deck_recipe,
+            system_deck_by_id("ember-burn").unwrap().cards
+        );
+        assert_eq!(valid.opponent_deck_recipe[0].template_id, "ember-squire");
+        assert_eq!(valid.opponent_deck_recipe[0].count, 10);
+        let mut game = BrowserMatch::new(&serde_json::to_string(&setup).unwrap()).unwrap();
+        setup.player_deck_recipe.clear();
+        game.act(r#"{"type":"startAttackPhase"}"#).unwrap();
+        let saved = game.journal().unwrap();
+        let journal: Journal = serde_json::from_str(&saved).unwrap();
+        assert_eq!(journal.setup.player_deck_recipe, valid.player_deck_recipe);
+        assert_eq!(
+            journal.setup.opponent_deck_recipe,
+            valid.opponent_deck_recipe
+        );
+        let restored = BrowserMatch::restore(&saved).unwrap();
+        assert_eq!(restored.view().unwrap(), game.view().unwrap());
+        assert_eq!(
+            restored.state.to_snapshot_json().unwrap(),
+            game.state.to_snapshot_json().unwrap()
+        );
+        let mut corrupt: serde_json::Value = serde_json::from_str(&saved).unwrap();
+        corrupt["setup"]["opponentDeckRecipe"][0]["templateId"] = json!("missing-card");
+        assert!(BrowserMatch::restore(&corrupt.to_string()).is_err());
     }
 }
