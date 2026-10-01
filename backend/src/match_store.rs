@@ -23,6 +23,7 @@ mod replays;
 mod rows;
 mod schema;
 mod shared_matches;
+pub(crate) use db_values::side_from_db;
 use db_values::*;
 use ids::*;
 
