@@ -7,7 +7,12 @@ use serde::{Deserialize, Serialize};
 use crate::match_session::{HeroType, MatchProgressionEffects, Side};
 
 mod awards;
-pub use awards::{award_completed_match, award_completed_match_in_transaction};
+#[allow(
+    unused_imports,
+    reason = "retained entry point for direct progression callers"
+)]
+pub use awards::award_completed_match;
+pub use awards::award_completed_match_in_transaction;
 mod catalog;
 mod loadouts;
 pub use catalog::summary_for_xp;

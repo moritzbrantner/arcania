@@ -9,7 +9,7 @@ use super::catalog::{
 };
 use super::{
     HeroProgression, HeroProgressionDelta, MatchRewardSummary, MatchUnlockCallout,
-    ProgressionDelta, ProgressionError, ProgressionModule, ProgressionSummary, table_exists,
+    ProgressionDelta, ProgressionError, ProgressionModule, ProgressionSummary,
 };
 
 const COMPLETION_XP: i64 = 100;
