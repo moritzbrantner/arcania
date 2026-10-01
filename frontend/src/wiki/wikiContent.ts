@@ -114,7 +114,7 @@ export const WIKI_TOPICS = [
       "When a side has priority, it may respond with a legal higher-priority Spell or pass.",
       "When both sides are done adding responses, stack items resolve from the top.",
       "A pending stack freezes ordinary movement, attacks, proactive Cards, phase changes, and End Turn until it empties.",
-      "After a Card and its responses resolve, play resumes in the phase where the stack began.",
+      "After a Card and its responses resolve, play resumes in the phase where the stack began, unless the match ends or normal phase completion advances play.",
     ],
     example:
       "Play a Card during Movement, answer eligible higher-priority responses or pass, then continue Movement when the stack empties. Spell responses can also happen during Attack; proactive Cards wait for final Card Play.",

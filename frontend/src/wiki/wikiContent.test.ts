@@ -54,7 +54,7 @@ describe("wiki content", () => {
       "Proactive Card play means the active side plays a Card with an empty stack during Movement or final Card Play, never during Attack.",
     );
     expect(cards?.keyRules).toContain(
-      "After a Card and its responses resolve, play resumes in the phase where the stack began.",
+      "After a Card and its responses resolve, play resumes in the phase where the stack began, unless the match ends or normal phase completion advances play.",
     );
     expect(actions?.example).toContain("Ember Squire enters with 1/2 Unit action points");
     expect(actions?.keyRules.join(" ")).toContain(
