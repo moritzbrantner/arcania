@@ -26,7 +26,7 @@ setup move-unit
 #7 expect FAILED
   - lastResult: expected "accepted", got "notActiveSide"
 
-legal commands for player (14):
+legal commands for player (13):
   {"type":"movePiece","pieceId":"player-hero","to":{"q":0,"r":0}}
   {"type":"movePiece","pieceId":"player-hero","to":{"q":1,"r":0}}
   {"type":"movePiece","pieceId":"player-hero","to":{"q":-1,"r":1}}
@@ -40,6 +40,5 @@ legal commands for player (14):
   {"type":"movePiece","pieceId":"player-unit","to":{"q":-2,"r":1}}
   {"type":"movePiece","pieceId":"player-unit","to":{"q":-1,"r":1}}
   {"type":"startAttackPhase"}
-  {"type":"startCardPlay"}
 
 result: FAILED (2 of 3 expectations failed)

@@ -374,11 +374,21 @@ async fn match_action_response_includes_replay_frames_for_live_playback() {
     let match_id = created["matchId"].as_str().expect("match id should exist");
 
     end_turn_from_card_play(app.clone(), match_id).await;
-    let (status, _) = post_match_action(app.clone(), match_id, r#"{"type":"advanceAi"}"#).await;
-    assert_eq!(status, StatusCode::OK);
-    let (status, advanced) =
-        post_match_action(app.clone(), match_id, r#"{"type":"advanceAi"}"#).await;
-    assert_eq!(status, StatusCode::OK);
+    let mut advanced = serde_json::Value::Null;
+    for _ in 0..10 {
+        let (status, response) =
+            post_match_action(app.clone(), match_id, r#"{"type":"advanceAi"}"#).await;
+        assert_eq!(status, StatusCode::OK);
+        advanced = response;
+        if advanced["replayFrames"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|frame| frame["event"]["type"] == "actionQueued")
+        {
+            break;
+        }
+    }
 
     let frames = advanced["replayFrames"]
         .as_array()

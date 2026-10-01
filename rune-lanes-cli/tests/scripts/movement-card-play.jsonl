@@ -1,11 +1,9 @@
-# Current rules (ADR 0023): proactive Cards are only playable in the Card Play step.
-# Baseline for the Movement-phase Card play work in #122-#125.
+# Movement Cards spend Mana, resolve on the existing stack, and retain Movement.
 {"setup": "play-unit-card"}
-{"expect": {"phase": "movement", "mana": {"player": 8}, "illegal": [{"command": {"type": "playCard", "cardId": "scenario-ember-squire", "target": {"type": "hex", "coord": {"q": 0, "r": 0}}}, "rejection": "wrongPhase"}]}}
+{"expect": {"phase": "movement", "mana": {"player": 8}, "legal": [{"type": "playCard", "cardId": "scenario-ember-squire", "target": {"type": "hex", "coord": {"q": 0, "r": 0}}}], "illegal": [{"command": {"type": "startCardPlay"}, "rejection": "wrongPhase"}]}}
 {"type": "playCard", "cardId": "scenario-ember-squire", "target": {"type": "hex", "coord": {"q": 0, "r": 0}}}
-{"expect": {"lastResult": "wrongPhase", "mana": {"player": 8}}}
+{"expect": {"lastResult": "accepted", "phase": "movement", "mana": {"player": 7}, "state": {"actionStack": []}, "pieces": {"player-hero": {"apRemaining": 3}, "P1": {"position": {"q": 0, "r": 0}, "apRemaining": 1}}}}
 {"type": "startAttackPhase"}
+{"expect": {"phase": "attack"}}
 {"type": "startCardPlay"}
-{"expect": {"phase": "cardPlay", "legal": [{"type": "playCard", "cardId": "scenario-ember-squire", "target": {"type": "hex", "coord": {"q": 0, "r": 0}}}]}}
-{"type": "playCard", "cardId": "scenario-ember-squire", "target": {"type": "hex", "coord": {"q": 0, "r": 0}}}
-{"expect": {"state": {"actionStack": []}, "pieces": {"P1": {"position": {"q": 0, "r": 0}, "apRemaining": 1}}}}
+{"expect": {"phase": "cardPlay", "legal": [{"type": "endTurn"}]}}

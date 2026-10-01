@@ -28,7 +28,7 @@ fn authoritative_state_rehydrates_without_action_replay_or_match_snapshot_projec
         .apply_solo_action(
             Actor::Anonymous,
             &created.id,
-            MatchActionRequest::StartCardPlay,
+            MatchActionRequest::StartAttackPhase,
         )
         .expect("command should append an authoritative event");
     let expected_state = applied
@@ -92,7 +92,7 @@ fn stale_append_fails_before_writing_projection_rows() {
             side: Side::Player,
             action_index,
         },
-        GameCommand::StartCardPlay,
+        GameCommand::StartAttackPhase,
     );
     let mut first_candidate = base.clone();
     let first_outcome = first_candidate
@@ -104,7 +104,7 @@ fn stale_append_fails_before_writing_projection_rows() {
             &created.id,
             &first_event,
             &first_snapshot,
-            r#"{"type":"startCardPlay"}"#,
+            r#"{"type":"startAttackPhase"}"#,
             first_candidate.state(),
             &first_outcome.replay_frames,
             None,

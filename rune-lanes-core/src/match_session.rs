@@ -799,7 +799,9 @@ impl MatchState {
         frames: &mut Vec<RecordedReplayFrame>,
         action_index: Option<u32>,
     ) -> Result<(), MatchError> {
-        if self.phase != Phase::Movement && self.phase != Phase::Attack {
+        if self.ruleset.turn.movement_card_play {
+            self.require_phase(Phase::Attack)?;
+        } else if self.phase != Phase::Movement && self.phase != Phase::Attack {
             return Err(MatchError::WrongPhase);
         }
         self.transition_to_phase(side, Phase::CardPlay, frames, action_index);
@@ -975,7 +977,11 @@ impl MatchState {
             if side != self.active_side {
                 return Err(MatchError::NotActiveSide);
             }
-            self.require_phase(Phase::CardPlay)?;
+            if self.phase != Phase::CardPlay
+                && !(self.ruleset.turn.movement_card_play && self.phase == Phase::Movement)
+            {
+                return Err(MatchError::WrongPhase);
+            }
         } else {
             if self.priority_side != Some(side) {
                 return Err(MatchError::NotPrioritySide);
@@ -2445,7 +2451,11 @@ impl MatchState {
                         Ok(Some(AiAdvanceOutcome::ActionApplied))
                     }
                     _ => {
-                        self.start_card_play_for_side(side, frames, action_index)?;
+                        if self.ruleset.turn.movement_card_play {
+                            self.start_attack_phase_for_side(side, frames, action_index)?;
+                        } else {
+                            self.start_card_play_for_side(side, frames, action_index)?;
+                        }
                         Ok(Some(AiAdvanceOutcome::ActionApplied))
                     }
                 }

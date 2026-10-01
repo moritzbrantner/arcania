@@ -5,7 +5,7 @@ use super::{HexBoard, MatchMode, MatchState, Phase, PlayerState, Side, StackItem
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct MatchSnapshot {
-    #[serde(default)]
+    #[serde(default = "legacy_ruleset")]
     ruleset: crate::rules::RuneLanesRuleset,
     #[serde(default = "default_match_mode")]
     mode: MatchMode,
@@ -35,6 +35,10 @@ pub(super) struct MatchSnapshot {
     next_item_id: u32,
     #[serde(default = "default_next_building_id")]
     next_building_id: u32,
+}
+
+fn legacy_ruleset() -> crate::rules::RuneLanesRuleset {
+    crate::rules::LEGACY_RULESET
 }
 
 impl From<&MatchState> for MatchSnapshot {

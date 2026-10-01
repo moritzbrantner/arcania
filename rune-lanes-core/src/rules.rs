@@ -21,6 +21,12 @@ pub struct TurnRules {
     pub opening_hand_size: u8,
     pub max_carried_items: u8,
     pub default_attack_range: u8,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub movement_card_play: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !value
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -54,7 +60,8 @@ pub struct RuneLanesRuleset {
     pub heroes: HeroRules,
 }
 
-pub const CURRENT_RULESET: RuneLanesRuleset = RuneLanesRuleset {
+// Historical defaults stay frozen so existing event streams retain their fingerprint.
+pub(crate) const LEGACY_RULESET: RuneLanesRuleset = RuneLanesRuleset {
     schema_version: RULESET_SCHEMA_VERSION,
     arena: ArenaRules {
         duel_radius: 3,
@@ -65,6 +72,7 @@ pub const CURRENT_RULESET: RuneLanesRuleset = RuneLanesRuleset {
         opening_hand_size: 7,
         max_carried_items: 3,
         default_attack_range: 1,
+        movement_card_play: false,
     },
     heroes: HeroRules {
         runekeeper: HeroRule {
@@ -117,6 +125,18 @@ pub const CURRENT_RULESET: RuneLanesRuleset = RuneLanesRuleset {
         },
     },
 };
+
+pub const CURRENT_RULESET: RuneLanesRuleset = RuneLanesRuleset {
+    turn: TurnRules {
+        movement_card_play: true,
+        ..LEGACY_RULESET.turn
+    },
+    ..LEGACY_RULESET
+};
+
+pub(crate) fn legacy_ruleset_version() -> String {
+    ruleset_version(&LEGACY_RULESET)
+}
 
 impl Default for RuneLanesRuleset {
     fn default() -> Self {
@@ -259,5 +279,19 @@ mod tests {
         changed.turn.default_attack_range += 1;
 
         assert_ne!(current, ruleset_version(&changed));
+    }
+
+    #[test]
+    fn historical_card_timing_keeps_its_original_serialization_and_fingerprint() {
+        assert_eq!(
+            legacy_ruleset_version(),
+            "rune-lanes-rules-v1-251ad8ae1f7ee879"
+        );
+        assert_ne!(current_ruleset_version(), legacy_ruleset_version());
+        let legacy = serde_json::to_value(LEGACY_RULESET).unwrap();
+        assert!(legacy["turn"].get("movementCardPlay").is_none());
+        let restored: RuneLanesRuleset = serde_json::from_value(legacy).unwrap();
+        assert_eq!(restored, LEGACY_RULESET);
+        assert!(!restored.turn.movement_card_play);
     }
 }

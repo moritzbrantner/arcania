@@ -200,6 +200,15 @@ fn shared_turn_start_refreshes_only_active_side_unit_armor() {
 
 #[test]
 fn shared_spell_responses_require_higher_priority_and_resolve_lifo() {
+    assert_shared_spell_responses(Phase::CardPlay);
+}
+
+#[test]
+fn shared_movement_spell_responses_block_turn_actions_and_resume_movement() {
+    assert_shared_spell_responses(Phase::Movement);
+}
+
+fn assert_shared_spell_responses(phase: Phase) {
     let mut game = MatchState::new_with_seed_hero_types_and_mode(
         7,
         HeroType::Runekeeper,
@@ -239,7 +248,7 @@ fn shared_spell_responses_require_higher_priority_and_resolve_lifo() {
     let bolt_id = put_card_in_side_hand(&mut game, Side::Player, bolt);
     let parry_id = put_card_in_side_hand(&mut game, Side::Opponent, parry);
 
-    enter_card_play(&mut game);
+    game.phase = phase.clone();
     game.apply_action_recording_for_side(
         Side::Player,
         MatchActionRequest::PlayCard {
@@ -254,6 +263,21 @@ fn shared_spell_responses_require_higher_priority_and_resolve_lifo() {
 
     assert_eq!(game.action_stack.len(), 1);
     assert_eq!(game.priority_side, Some(Side::Opponent));
+    for action in [
+        MatchActionRequest::MovePiece {
+            piece_id: game.player.hero.id.clone(),
+            to: hex(0, 2),
+        },
+        MatchActionRequest::StartAttackPhase,
+        MatchActionRequest::StartCardPlay,
+        MatchActionRequest::EndTurn,
+    ] {
+        assert_eq!(
+            game.apply_action_recording_for_side(Side::Player, action, 1)
+                .unwrap_err(),
+            MatchError::StackPending
+        );
+    }
     assert_eq!(
         game.board
             .units
@@ -294,6 +318,7 @@ fn shared_spell_responses_require_higher_priority_and_resolve_lifo() {
         .expect("opponent can pass to resolve the original spell");
     assert_eq!(game.action_stack.len(), 0);
     assert_eq!(game.priority_side, None);
+    assert_eq!(game.phase, phase);
     assert_eq!(
         game.board
             .units

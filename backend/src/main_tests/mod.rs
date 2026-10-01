@@ -72,6 +72,9 @@ async fn advance_solo_match_to_player_turn(app: Router, match_id: &str) -> serde
 }
 
 async fn end_turn_from_card_play(app: Router, match_id: &str) -> serde_json::Value {
+    let (status, _) =
+        post_match_action(app.clone(), match_id, r#"{"type":"startAttackPhase"}"#).await;
+    assert_eq!(status, StatusCode::OK);
     let (status, _) = post_match_action(app.clone(), match_id, r#"{"type":"startCardPlay"}"#).await;
     assert_eq!(status, StatusCode::OK);
     let (status, acted) = post_match_action(app, match_id, r#"{"type":"endTurn"}"#).await;

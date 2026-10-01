@@ -57,7 +57,8 @@ test("Pages can edit rules, create a card, play against a bot, and resume withou
   await expect(page.getByRole("heading", { name: "Round 1", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: /Moonstone Guardian/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /Iron Colossus/ })).toBeVisible();
-  await page.getByRole("button", { name: "Play Cards", exact: true }).click();
+  await page.getByRole("button", { name: "Start Attack", exact: true }).click();
+  await page.getByRole("button", { name: "Finish Attacks", exact: true }).click();
   await page.getByRole("button", { name: /Moonstone Guardian/ }).click();
   // Legal hexes come from the core's command query projection.
   await page.getByRole("button", { name: "q 0, r 2, empty hex", exact: true }).click();
@@ -97,7 +98,8 @@ test("a custom Spell can win a browser match and return to the workshop", async 
   await page.getByRole("button", { name: "Add card", exact: true }).click();
   await expect(page.getByRole("button", { name: /Final Spark.*Mana/ })).toBeVisible();
   await page.getByRole("button", { name: "Save & play against bot", exact: true }).click();
-  await page.getByRole("button", { name: "Play Cards", exact: true }).click();
+  await page.getByRole("button", { name: "Start Attack", exact: true }).click();
+  await page.getByRole("button", { name: "Finish Attacks", exact: true }).click();
   await page.getByRole("button", { name: /Final Spark/ }).click();
   await page.getByRole("button", { name: "q 0, r -3, occupied by the opponent's hero", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Victory", exact: true })).toBeVisible();

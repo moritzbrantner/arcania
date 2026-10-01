@@ -66,9 +66,6 @@ async fn debug_match_scenario_creation_returns_a_playable_match() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(loaded["matchId"], match_id);
 
-    let (status, _) = post_match_action(app.clone(), match_id, r#"{"type":"startCardPlay"}"#).await;
-    assert_eq!(status, StatusCode::OK);
-
     let (status, acted) = post_match_action(
             app,
             match_id,

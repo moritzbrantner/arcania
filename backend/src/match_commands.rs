@@ -349,9 +349,17 @@ mod tests {
             .apply_solo_action(
                 Actor::Anonymous,
                 &created.id,
+                MatchActionRequest::StartAttackPhase,
+            )
+            .expect("ownerless attack phase action should apply");
+
+        MatchCommands::new(&mut store)
+            .apply_solo_action(
+                Actor::Anonymous,
+                &created.id,
                 MatchActionRequest::StartCardPlay,
             )
-            .expect("ownerless phase action should apply");
+            .expect("ownerless card play phase action should apply");
 
         let applied = MatchCommands::new(&mut store)
             .apply_solo_action(Actor::Anonymous, &created.id, MatchActionRequest::EndTurn)
@@ -363,7 +371,7 @@ mod tests {
             store
                 .next_action_index(&created.id)
                 .expect("action index should load"),
-            2
+            3
         );
         let replay = store
             .load_replay(&created.id)
@@ -401,6 +409,7 @@ mod tests {
         let mut commands = MatchCommands::new(&mut store);
         commands.solo_ai_policy = config.default_policy().expect("default should resolve");
         for request in [
+            MatchActionRequest::StartAttackPhase,
             MatchActionRequest::StartCardPlay,
             MatchActionRequest::EndTurn,
         ] {
@@ -535,6 +544,13 @@ mod tests {
             .apply_shared_seat_action(
                 &created.match_id,
                 &created.player_token,
+                MatchActionRequest::StartAttackPhase,
+            )
+            .expect("Player should enter Attack");
+        MatchCommands::new(&mut store)
+            .apply_shared_seat_action(
+                &created.match_id,
+                &created.player_token,
                 MatchActionRequest::StartCardPlay,
             )
             .expect("Player should enter Card Play");
@@ -581,7 +597,7 @@ mod tests {
                 .expect("aggregate should load")
                 .expect("aggregate should exist");
             assert_eq!(aggregate.version(), aggregate_before.version());
-            assert_eq!(action_index, 1);
+            assert_eq!(action_index, 2);
             let replay = store
                 .load_replay(&created.match_id)
                 .expect("replay should load")
@@ -618,7 +634,7 @@ mod tests {
             store
                 .next_action_index(&created.match_id)
                 .expect("action index should load"),
-            2
+            3
         );
         let requests: Vec<serde_json::Value> = store
             .connection_mut()
@@ -636,6 +652,7 @@ mod tests {
         assert_eq!(
             requests,
             vec![
+                serde_json::json!({"type": "startAttackPhase"}),
                 serde_json::json!({"type": "startCardPlay"}),
                 serde_json::json!({"type": "endTurn"})
             ]
@@ -660,8 +677,184 @@ mod tests {
                 .iter()
                 .filter_map(|frame| frame.action_index)
                 .collect::<std::collections::BTreeSet<_>>(),
-            std::collections::BTreeSet::from([0, 1])
+            std::collections::BTreeSet::from([0, 1, 2])
         );
+    }
+
+    #[test]
+    fn movement_cards_survive_shared_seat_recovery_and_completed_replays() {
+        for format in [SharedMatchFormat::Duel, SharedMatchFormat::TwoVTwo] {
+            let path = test_db_path("shared-movement-card");
+            let mut store = SqliteMatchStore::new(&path).unwrap();
+            let created = store.create_shared_match(None, format).unwrap();
+            let mut seats = vec![
+                (Side::Player, created.player_token.clone()),
+                (Side::Opponent, created.opponent_token.clone()),
+            ];
+            if let (Some(player_two), Some(opponent_two)) =
+                (&created.player_two_token, &created.opponent_two_token)
+            {
+                seats.extend([
+                    (Side::PlayerTwo, player_two.clone()),
+                    (Side::OpponentTwo, opponent_two.clone()),
+                ]);
+            }
+            // A single-template frozen deck makes opening Card selection deterministic.
+            let deck = crate::deck_library::DeckRecipeSnapshot {
+                name: "Movement fixture".into(),
+                cards: vec![crate::deck_library::DeckCardCount {
+                    template_id: "ember-squire".into(),
+                    count: 8,
+                }],
+            };
+            for (_, token) in &seats {
+                store
+                    .join_shared_match(
+                        &created.match_id,
+                        token,
+                        HeroType::Runekeeper,
+                        deck.clone(),
+                        MatchProgressionLoadout::default(),
+                        None,
+                    )
+                    .unwrap();
+            }
+            let initial = store
+                .load_shared_match_for_seat(&created.match_id, &created.player_token)
+                .unwrap()
+                .unwrap()
+                .state
+                .unwrap();
+            let card_id = initial.player.hand[0].id.clone();
+            let coord = crate::match_session::HexCoord {
+                q: initial.player.hero.position.q,
+                r: initial.player.hero.position.r - 1,
+            };
+            let request = MatchActionRequest::PlayCard {
+                card_id,
+                target: crate::match_session::ActionTarget::Hex { coord },
+            };
+            let encoded = serde_json::to_value(&request).unwrap();
+            for (side, token) in seats.iter().skip(1) {
+                let player = match side {
+                    Side::Player => &initial.player,
+                    Side::Opponent => &initial.opponent,
+                    Side::PlayerTwo => initial.player_two.as_ref().unwrap(),
+                    Side::OpponentTwo => initial.opponent_two.as_ref().unwrap(),
+                };
+                let inactive_request = MatchActionRequest::PlayCard {
+                    card_id: player.hand[0].id.clone(),
+                    target: crate::match_session::ActionTarget::Hex { coord },
+                };
+                assert!(matches!(
+                    MatchCommands::new(&mut store).apply_shared_seat_action(
+                        &created.match_id,
+                        token,
+                        inactive_request
+                    ),
+                    Err(MatchCommandError::Rule(
+                        crate::match_session::MatchError::NotActiveSide
+                    ))
+                ));
+            }
+            let queued = MatchCommands::new(&mut store)
+                .apply_shared_seat_action(&created.match_id, &created.player_token, request)
+                .unwrap();
+            let state = queued.shared_match.state.unwrap();
+            assert_eq!(state.phase, crate::match_session::Phase::Movement);
+            assert_eq!(
+                state.player.hero.ap_remaining,
+                initial.player.hero.ap_remaining
+            );
+            assert_eq!(state.player.mana, initial.player.mana - 1);
+            assert_eq!(state.action_stack.len(), 1);
+            drop(store);
+            let mut store = SqliteMatchStore::new(&path).unwrap();
+            for _ in 0..seats.len() {
+                let state = store
+                    .load_shared_match_for_seat(&created.match_id, &created.player_token)
+                    .unwrap()
+                    .unwrap()
+                    .state
+                    .unwrap();
+                let Some(priority_side) = state.priority_side else {
+                    break;
+                };
+                let token = &seats
+                    .iter()
+                    .find(|(side, _)| *side == priority_side)
+                    .unwrap()
+                    .1;
+                MatchCommands::new(&mut store)
+                    .apply_shared_seat_action(
+                        &created.match_id,
+                        token,
+                        MatchActionRequest::PassPriority,
+                    )
+                    .unwrap();
+            }
+            let state = store
+                .load_shared_match_for_seat(&created.match_id, &created.player_token)
+                .unwrap()
+                .unwrap()
+                .state
+                .unwrap();
+            assert!(state.action_stack.is_empty());
+            assert_eq!(state.phase, crate::match_session::Phase::Movement);
+            assert!(
+                state
+                    .board
+                    .units
+                    .iter()
+                    .any(|unit| unit.template_id.as_deref() == Some("ember-squire")
+                        && unit.side == Side::Player)
+            );
+            let stored_request: String = store.connection_mut().query_row("SELECT request_json FROM match_actions WHERE match_id = ?1 AND action_index = 0", params![created.match_id], |row| row.get(0)).unwrap();
+            assert_eq!(
+                serde_json::from_str::<serde_json::Value>(&stored_request).unwrap(),
+                encoded
+            );
+            for (side, token) in &seats {
+                if side.team() == Side::Opponent.team() {
+                    store
+                        .mark_shared_seat_disconnected(&created.match_id, token)
+                        .unwrap();
+                }
+            }
+            store.connection_mut().execute("UPDATE match_seats SET disconnected_at = 100 WHERE match_id = ?1 AND side IN ('opponent', 'opponentTwo')", params![created.match_id]).unwrap();
+            MatchCommands::new(&mut store)
+                .claim_shared_forfeit(&created.match_id, &created.player_token, 220)
+                .unwrap();
+            drop(store);
+            let mut store = SqliteMatchStore::new(&path).unwrap();
+            let replay = store.load_replay(&created.match_id).unwrap().unwrap();
+            assert_eq!(replay.summary.state.winner, Some(Side::Player));
+            assert!(replay.frames.iter().any(|frame| matches!(
+                frame.event,
+                ReplayEvent::CardPlayed {
+                    side: Side::Player,
+                    ..
+                }
+            )));
+            for (index, frame) in replay.frames.iter().enumerate() {
+                assert_eq!(frame.frame_index as usize, index);
+            }
+            assert!(
+                replay
+                    .frames
+                    .windows(2)
+                    .all(|frames| frames[0].action_index <= frames[1].action_index)
+            );
+            let aggregate = store
+                .load_event_sourced_match(&created.match_id)
+                .unwrap()
+                .unwrap()
+                .0;
+            assert_eq!(
+                aggregate.state().to_snapshot_json().unwrap(),
+                replay.summary.state.to_snapshot_json().unwrap()
+            );
+        }
     }
 
     #[test]
@@ -750,7 +943,7 @@ mod tests {
             .apply_solo_action_with_command_id(
                 Actor::Anonymous,
                 &created.id,
-                MatchActionRequest::StartCardPlay,
+                MatchActionRequest::StartAttackPhase,
                 command_id.clone(),
             )
             .expect("first command should apply");
@@ -758,7 +951,7 @@ mod tests {
             .apply_solo_action_with_command_id(
                 Actor::Anonymous,
                 &created.id,
-                MatchActionRequest::StartCardPlay,
+                MatchActionRequest::StartAttackPhase,
                 command_id,
             )
             .expect("duplicate command should be idempotent");

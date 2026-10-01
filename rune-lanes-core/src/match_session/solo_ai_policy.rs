@@ -460,6 +460,7 @@ impl MatchState {
                     SoloAiDecision::TakeAction(SoloAiActionIntent::Attack { .. }) => {
                         GameCommand::StartAttackPhase
                     }
+                    _ if self.ruleset.turn.movement_card_play => GameCommand::StartAttackPhase,
                     _ => GameCommand::StartCardPlay,
                 }))
             }

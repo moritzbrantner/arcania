@@ -49,7 +49,7 @@ The resource spent to play cards. A side refreshes Mana from its Hero and occupi
 _Avoid_: energy
 
 **Movement Phase**:
-The first step of an active side's turn, when that side may move Heroes and Units before committing to attacks or card play.
+The first step of an active side's turn, when that side may move Heroes and Units and play otherwise-legal Cards by spending Mana. Card responses resolve through the existing stack, then Movement resumes. Advancing commits the side to Attack Phase.
 _Avoid_: planning phase
 
 **Attack Phase**:

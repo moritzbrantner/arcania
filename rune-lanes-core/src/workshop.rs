@@ -176,7 +176,11 @@ mod tests {
         assert_eq!(state.player.hand.len(), 4);
         assert_eq!(state.player.hero.hp, 42);
         assert_eq!(state.player.mana, 9);
-        for command in [GameCommand::StartCardPlay, GameCommand::EndTurn] {
+        for command in [
+            GameCommand::StartAttackPhase,
+            GameCommand::StartCardPlay,
+            GameCommand::EndTurn,
+        ] {
             command
                 .execute_compatibility(
                     &mut state,
@@ -205,6 +209,9 @@ mod tests {
             side: Side::Player,
             action_index: 0,
         };
+        GameCommand::StartAttackPhase
+            .execute_compatibility(&mut state, context)
+            .unwrap();
         GameCommand::StartCardPlay
             .execute_compatibility(&mut state, context)
             .unwrap();

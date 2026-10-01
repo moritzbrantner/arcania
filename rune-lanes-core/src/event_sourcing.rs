@@ -53,6 +53,29 @@ impl RulesetVersion {
         Self(current_ruleset_version())
     }
 
+    fn for_state(state: &MatchState) -> Self {
+        if state.queries().ruleset().turn.movement_card_play {
+            Self::current()
+        } else {
+            Self(crate::rules::legacy_ruleset_version())
+        }
+    }
+
+    fn is_supported(&self) -> bool {
+        self == &Self::current() || self.0 == crate::rules::legacy_ruleset_version()
+    }
+
+    fn validate_state(&self, state: &MatchState) -> Result<(), EventSourcingError> {
+        let expected = Self::for_state(state);
+        if self != &expected {
+            return Err(EventSourcingError::RulesetChangedWithinStream {
+                expected,
+                actual: self.clone(),
+            });
+        }
+        Ok(())
+    }
+
     pub fn new(value: impl Into<String>) -> Result<Self, EventSourcingError> {
         let value = value.into();
         if value.trim().is_empty() {
@@ -174,7 +197,7 @@ impl EventSourcedMatch {
         initial_state: MatchState,
         next_action_index: u32,
     ) -> Result<(Self, EventEnvelope), EventSourcingError> {
-        let ruleset_version = RulesetVersion::current();
+        let ruleset_version = RulesetVersion::for_state(&initial_state);
         let event = EventEnvelope {
             aggregate_version: AggregateVersion(1),
             event_schema_version: CURRENT_EVENT_SCHEMA_VERSION,
@@ -378,8 +401,10 @@ impl EventSourcedMatch {
             return Err(EventSourcingError::MissingGenesisEvent);
         };
 
+        let state = MatchState::from_snapshot_json(initial_snapshot_json)?;
+        first.ruleset_version.validate_state(&state)?;
         let mut aggregate = Self {
-            state: MatchState::from_snapshot_json(initial_snapshot_json)?,
+            state,
             version: first.aggregate_version,
             ruleset_version: first.ruleset_version.clone(),
             applied_commands: HashMap::new(),
@@ -429,7 +454,7 @@ impl EventSourcedMatch {
             });
         }
         let current_ruleset = RulesetVersion::current();
-        if snapshot.ruleset_version != current_ruleset {
+        if !snapshot.ruleset_version.is_supported() {
             return Err(EventSourcingError::UnsupportedRuleset {
                 expected: current_ruleset,
                 actual: snapshot.ruleset_version.clone(),
@@ -453,8 +478,10 @@ impl EventSourcedMatch {
             }
         }
 
+        let state = MatchState::from_snapshot_json(&snapshot.state_snapshot_json)?;
+        snapshot.ruleset_version.validate_state(&state)?;
         let mut aggregate = Self {
-            state: MatchState::from_snapshot_json(&snapshot.state_snapshot_json)?,
+            state,
             version: snapshot.aggregate_version,
             ruleset_version: snapshot.ruleset_version.clone(),
             applied_commands,
@@ -501,7 +528,7 @@ fn validate_schema_and_rules(envelope: &EventEnvelope) -> Result<(), EventSourci
         });
     }
     let current_ruleset = RulesetVersion::current();
-    if envelope.ruleset_version != current_ruleset {
+    if !envelope.ruleset_version.is_supported() {
         return Err(EventSourcingError::UnsupportedRuleset {
             expected: current_ruleset,
             actual: envelope.ruleset_version.clone(),
@@ -653,6 +680,132 @@ mod tests {
             CommandDecision::Append(event) => event,
             CommandDecision::AlreadyApplied { .. } => panic!("expected append decision"),
         }
+    }
+
+    #[test]
+    fn historical_timing_replays_from_stream_and_checkpoint_without_upgrade() {
+        let mut initial = MatchState::new_with_seed(7);
+        initial.ruleset = crate::rules::LEGACY_RULESET;
+        let mut old_json =
+            serde_json::from_str::<serde_json::Value>(&initial.to_snapshot_json().unwrap())
+                .unwrap();
+        let typed_legacy = MatchState::from_snapshot_json(&old_json.to_string()).unwrap();
+        assert!(!typed_legacy.queries().ruleset().turn.movement_card_play);
+        assert_eq!(
+            EventSourcedMatch::create(typed_legacy)
+                .unwrap()
+                .1
+                .ruleset_version
+                .as_str(),
+            "rune-lanes-rules-v1-251ad8ae1f7ee879"
+        );
+        // Snapshots before typed rules existed also used the historical timing.
+        old_json.as_object_mut().unwrap().remove("ruleset");
+        let initial = MatchState::from_snapshot_json(&old_json.to_string()).unwrap();
+        let (mut aggregate, genesis) =
+            EventSourcedMatch::create_migration_genesis(initial, 0).unwrap();
+        assert_eq!(
+            genesis.ruleset_version.as_str(),
+            "rune-lanes-rules-v1-251ad8ae1f7ee879"
+        );
+        let cards = append(
+            aggregate
+                .decide(
+                    metadata("legacy-cards", aggregate.version(), 0),
+                    GameCommand::StartCardPlay,
+                )
+                .unwrap(),
+        );
+        aggregate.evolve(&cards).unwrap();
+        let checkpoint = aggregate.snapshot().unwrap();
+        let end = append(
+            aggregate
+                .decide(
+                    metadata("legacy-end", aggregate.version(), 1),
+                    GameCommand::EndTurn,
+                )
+                .unwrap(),
+        );
+        aggregate.evolve(&end).unwrap();
+        let finish = append(
+            aggregate
+                .decide_forfeit(
+                    metadata("legacy-finish", aggregate.version(), 2),
+                    Side::Player,
+                )
+                .unwrap(),
+        );
+        aggregate.evolve(&finish).unwrap();
+        let full =
+            EventSourcedMatch::rehydrate(&[genesis.clone(), cards, end.clone(), finish.clone()])
+                .unwrap();
+        let checkpointed =
+            EventSourcedMatch::rehydrate_from_snapshot(&checkpoint, &[end, finish]).unwrap();
+        assert_eq!(full.snapshot().unwrap(), aggregate.snapshot().unwrap());
+        assert_eq!(checkpointed.snapshot().unwrap(), full.snapshot().unwrap());
+        assert_eq!(full.state().winner, Some(Side::Player));
+        assert!(!full.state().queries().ruleset().turn.movement_card_play);
+        let mut mismatched_genesis = genesis;
+        mismatched_genesis.ruleset_version = RulesetVersion::current();
+        assert!(matches!(
+            EventSourcedMatch::rehydrate(&[mismatched_genesis]),
+            Err(EventSourcingError::RulesetChangedWithinStream { .. })
+        ));
+        let mut mismatched_checkpoint = checkpoint;
+        mismatched_checkpoint.ruleset_version = RulesetVersion::current();
+        assert!(matches!(
+            EventSourcedMatch::rehydrate_from_snapshot(&mismatched_checkpoint, &[]),
+            Err(EventSourcingError::RulesetChangedWithinStream { .. })
+        ));
+    }
+
+    #[test]
+    fn movement_card_events_preserve_timing_and_wire_shapes_after_recovery() {
+        let mut initial = MatchState::new_with_seed(7);
+        initial.player.hand = vec![
+            crate::starter_card_templates()
+                .into_iter()
+                .find(|card| card.template_id == "ember-squire")
+                .unwrap(),
+        ];
+        let card_id = initial.player.hand[0].id.clone();
+        let (mut aggregate, genesis) = EventSourcedMatch::create(initial).unwrap();
+        assert_ne!(
+            genesis.ruleset_version.as_str(),
+            "rune-lanes-rules-v1-251ad8ae1f7ee879"
+        );
+        assert!(
+            aggregate
+                .decide(
+                    metadata("skip", aggregate.version(), 0),
+                    GameCommand::StartCardPlay
+                )
+                .is_err()
+        );
+        let command = GameCommand::PlayCard {
+            card_id,
+            target: crate::ActionTarget::Hex {
+                coord: crate::HexCoord { q: 0, r: 2 },
+            },
+        };
+        let encoded = serde_json::to_value(&command).unwrap();
+        assert_eq!(encoded["type"], "playCard");
+        let command = serde_json::from_value(encoded).unwrap();
+        let card = append(
+            aggregate
+                .decide(metadata("movement-card", aggregate.version(), 0), command)
+                .unwrap(),
+        );
+        let frames = aggregate.evolve(&card).unwrap().replay_frames;
+        assert!(!frames.is_empty());
+        for frame in frames {
+            let restored = MatchState::from_snapshot_json(&frame.snapshot_json).unwrap();
+            assert_eq!(restored.phase, crate::Phase::Movement);
+            assert!(restored.queries().ruleset().turn.movement_card_play);
+        }
+        let restored = EventSourcedMatch::rehydrate(&[genesis, card]).unwrap();
+        assert_eq!(restored.snapshot().unwrap(), aggregate.snapshot().unwrap());
+        assert_eq!(restored.state().phase, crate::Phase::Movement);
     }
 
     #[test]

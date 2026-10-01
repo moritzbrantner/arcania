@@ -46,10 +46,13 @@ fn solo_ai_actions_wait_for_player_priority_response() {
     enter_card_play(&mut game);
     game.apply_action(MatchActionRequest::EndTurn)
         .expect("ending turn should start AI turn");
-    game.apply_action(MatchActionRequest::AdvanceAi)
-        .expect("AI should enter the attack phase");
-    game.apply_action(MatchActionRequest::AdvanceAi)
-        .expect("AI should queue an attack");
+    for _ in 0..10 {
+        game.apply_action(MatchActionRequest::AdvanceAi)
+            .expect("AI can advance through the required phases");
+        if !game.action_stack.is_empty() {
+            break;
+        }
+    }
 
     assert_eq!(game.action_stack.len(), 1);
     assert_eq!(game.priority_side, Some(Side::Player));
@@ -87,10 +90,7 @@ fn turn_phase_actions_gate_movement_attack_card_play_and_end_turn() {
         Err(MatchError::WrongPhase)
     );
     assert_eq!(
-        game.apply_action(MatchActionRequest::PlayCard {
-            card_id: card_id.clone(),
-            target: ActionTarget::Hex { coord: hex(0, 2) },
-        }),
+        game.apply_action(MatchActionRequest::StartCardPlay),
         Err(MatchError::WrongPhase)
     );
     assert_eq!(
@@ -108,6 +108,13 @@ fn turn_phase_actions_gate_movement_attack_card_play_and_end_turn() {
         }),
         Err(MatchError::WrongPhase)
     );
+    assert_eq!(
+        game.apply_action(MatchActionRequest::PlayCard {
+            card_id: card_id.clone(),
+            target: ActionTarget::Hex { coord: hex(0, 2) },
+        }),
+        Err(MatchError::WrongPhase)
+    );
 
     game.apply_action(MatchActionRequest::StartCardPlay)
         .expect("attack phase can finish into card play");
@@ -120,13 +127,92 @@ fn turn_phase_actions_gate_movement_attack_card_play_and_end_turn() {
 }
 
 #[test]
-fn movement_phase_can_skip_attacks_and_start_card_play() {
+fn movement_phase_cannot_skip_attack_phase() {
     let mut game = MatchState::new_with_seed(7);
 
-    game.apply_action(MatchActionRequest::StartCardPlay)
-        .expect("movement phase can skip directly to cards");
+    assert_eq!(
+        game.apply_action(MatchActionRequest::StartCardPlay),
+        Err(MatchError::WrongPhase)
+    );
+    assert_eq!(game.phase, Phase::Movement);
+}
 
-    assert_eq!(game.phase, Phase::CardPlay);
+#[test]
+fn movement_phase_card_play_spends_only_mana_and_resumes_movement() {
+    let mut game = MatchState::new_with_seed(7);
+    let card = player_unit_card(&game, "ember-squire");
+    let card_cost = card.cost;
+    let card_id = put_card_in_hand(&mut game, card);
+    game.phase = Phase::Movement;
+    let hero_ap_before = game.player.hero.ap_remaining;
+    let mana_before = game.player.mana;
+
+    let frames = game
+        .apply_action_recording(
+            MatchActionRequest::PlayCard {
+                card_id,
+                target: ActionTarget::Hex { coord: hex(0, 2) },
+            },
+            20,
+        )
+        .expect("movement phase can initiate a proactive card");
+
+    assert_eq!(game.phase, Phase::Movement);
+    assert_eq!(game.player.hero.ap_remaining, hero_ap_before);
+    assert_eq!(game.player.mana, mana_before - card_cost);
+    assert!(game.action_stack.is_empty());
+    assert!(
+        game.board
+            .units
+            .iter()
+            .any(|unit| unit.template_id.as_deref() == Some("ember-squire"))
+    );
+    assert!(!frames.iter().any(|frame| matches!(
+        frame.event,
+        ReplayEvent::PhaseChanged {
+            phase: Phase::CardPlay,
+            ..
+        }
+    )));
+}
+
+#[test]
+fn shared_movement_card_resolves_without_changing_the_underlying_phase() {
+    let mut game = MatchState::new_with_seed_hero_types_and_mode(
+        7,
+        HeroType::Runekeeper,
+        HeroType::Pyromancer,
+        MatchMode::Shared,
+    );
+    let card = player_unit_card(&game, "ember-squire");
+    let card_id = put_card_in_side_hand(&mut game, Side::Player, card);
+    game.phase = Phase::Movement;
+
+    game.apply_action_recording_for_side(
+        Side::Player,
+        MatchActionRequest::PlayCard {
+            card_id,
+            target: ActionTarget::Hex { coord: hex(0, 2) },
+        },
+        21,
+    )
+    .expect("shared active side can initiate a movement-phase card");
+
+    assert_eq!(game.phase, Phase::Movement);
+    assert_eq!(game.action_stack.len(), 1);
+    assert_eq!(game.priority_side, Some(Side::Opponent));
+
+    game.apply_action_recording_for_side(Side::Opponent, MatchActionRequest::PassPriority, 22)
+        .expect("opponent can pass priority to resolve the movement-phase card");
+
+    assert_eq!(game.phase, Phase::Movement);
+    assert!(game.action_stack.is_empty());
+    assert!(
+        game.board
+            .units
+            .iter()
+            .any(|unit| unit.template_id.as_deref() == Some("ember-squire"))
+    );
 }
 
 #[test]
@@ -315,4 +401,125 @@ fn solo_turn_start_refreshes_only_active_side_unit_armor() {
 
     assert_eq!(unit_armor(&game, "player-guard"), Some(4));
     assert_eq!(unit_armor(&game, "opponent-guard"), Some(6));
+}
+
+#[test]
+fn every_card_kind_uses_mana_only_in_both_proactive_windows() {
+    for phase in [Phase::Movement, Phase::CardPlay, Phase::Attack] {
+        for template in [
+            "swift-familiar",
+            "runic-insight",
+            "runekeeper-lens",
+            "mana-well",
+            "legacy-mana-source",
+        ] {
+            let mut game = MatchState::new_with_seed(7);
+            game.phase = phase.clone();
+            game.player.hero.position = hex(0, 1);
+            game.player.mana = 8;
+            game.board
+                .units
+                .push(board_unit("ally", Side::Player, hex(0, 2), 4, 1, 2));
+            let mut card = starter_card_templates()
+                .into_iter()
+                .find(|card| {
+                    card.template_id
+                        == if template == "legacy-mana-source" {
+                            "mana-well"
+                        } else {
+                            template
+                        }
+                })
+                .unwrap();
+            if template == "legacy-mana-source" {
+                card.kind = CardKind::ManaSource;
+            }
+            let cost = card.cost;
+            let target = match card.kind {
+                CardKind::Unit { .. } | CardKind::Building { .. } | CardKind::ManaSource => {
+                    ActionTarget::Hex { coord: hex(1, 1) }
+                }
+                CardKind::Spell { .. } => ActionTarget::Piece {
+                    piece_id: game.player.hero.id.clone(),
+                },
+                CardKind::Item { .. } => ActionTarget::Piece {
+                    piece_id: "ally".into(),
+                },
+            };
+            let card_id = put_card_in_side_hand(&mut game, Side::Player, card);
+            let hero_ap = game.player.hero.ap_remaining;
+            let unit_ap = game.board.units[0].ap_remaining;
+            let action = MatchActionRequest::PlayCard { card_id, target };
+            let before = game.to_snapshot_json().unwrap();
+            let result = game.apply_action(action);
+            if phase == Phase::Attack {
+                assert_eq!(result, Err(MatchError::WrongPhase), "{template}");
+                assert_eq!(game.to_snapshot_json().unwrap(), before);
+            } else {
+                result.unwrap();
+                assert_eq!(game.player.mana, 8 - cost, "{template}");
+                assert_eq!(game.player.hero.ap_remaining, hero_ap, "{template}");
+                assert_eq!(game.board.units[0].ap_remaining, unit_ap, "{template}");
+                assert_eq!(game.phase, phase);
+                assert!(game.action_stack.is_empty());
+            }
+        }
+    }
+}
+
+#[test]
+fn movement_summoned_unit_can_move_then_attack_with_its_entry_budget() {
+    let mut game = MatchState::new_with_seed(7);
+    game.player.hero.position = hex(0, 1);
+    let card = starter_card_templates()
+        .into_iter()
+        .find(|card| card.template_id == "rune-runner")
+        .unwrap();
+    let card_id = put_card_in_side_hand(&mut game, Side::Player, card);
+    game.board
+        .units
+        .push(board_unit("enemy", Side::Opponent, hex(2, 0), 0, 1, 4));
+    game.apply_action(MatchActionRequest::PlayCard {
+        card_id,
+        target: ActionTarget::Hex { coord: hex(1, 1) },
+    })
+    .unwrap();
+    let unit = game
+        .board
+        .units
+        .iter()
+        .find(|unit| unit.template_id.as_deref() == Some("rune-runner"))
+        .unwrap();
+    let unit_id = unit.id.clone();
+    assert_eq!((unit.ap_remaining, unit.max_ap), (2, 4));
+    game.apply_action(MatchActionRequest::MovePiece {
+        piece_id: unit_id.clone(),
+        to: hex(1, 0),
+    })
+    .unwrap();
+    assert_eq!(
+        game.board
+            .units
+            .iter()
+            .find(|unit| unit.id == unit_id)
+            .unwrap()
+            .ap_remaining,
+        1
+    );
+    game.apply_action(MatchActionRequest::StartAttackPhase)
+        .unwrap();
+    game.apply_action(MatchActionRequest::Attack {
+        attacker_id: unit_id.clone(),
+        target_id: "enemy".into(),
+    })
+    .unwrap();
+    let unit = game
+        .board
+        .units
+        .iter()
+        .find(|unit| unit.id == unit_id)
+        .unwrap();
+    assert_eq!(unit.ap_remaining, 0);
+    assert!(unit.has_attacked);
+    assert_eq!(unit_armor(&game, "enemy"), Some(3));
 }
