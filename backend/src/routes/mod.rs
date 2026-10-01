@@ -1,6 +1,7 @@
 use crate::app_state::{AppState, SharedState};
 use crate::auth_context::*;
 use crate::card_catalog::{CatalogResponse, starter_catalog};
+use crate::card_workshop::scenarios::CardDraftScenarioRequest;
 use crate::card_workshop::{
     CardWorkshop, CreateCardDraftRequest, PublishCardDraftRequest, UpdateCardDraftRequest,
 };
@@ -59,6 +60,10 @@ pub fn create_app(store: SqliteMatchStore) -> Router {
         .route(
             "/api/card-drafts/{draft_id}/publish",
             post(publish_card_draft),
+        )
+        .route(
+            "/api/card-drafts/{draft_id}/scenarios/run",
+            post(run_card_draft_scenario),
         )
         .route("/api/card-revisions/{card_id}", get(card_revision_history))
         .route(
@@ -309,6 +314,36 @@ async fn publish_card_draft(
         }
     };
     Json(revision).into_response()
+}
+
+async fn run_card_draft_scenario(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Path(draft_id): Path<i64>,
+    Json(request): Json<CardDraftScenarioRequest>,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let prepared = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.prepare_draft_scenario_for_user(profile.id, draft_id, request) {
+            Ok(prepared) => prepared,
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    match prepared
+        .run()
+        .and_then(CardDraftScenarioResponse::from_result)
+    {
+        Ok(result) => Json(result).into_response(),
+        Err(error) => card_workshop_error_response(error),
+    }
 }
 
 async fn card_revision_history(

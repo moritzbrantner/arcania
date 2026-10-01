@@ -276,6 +276,41 @@ pub(crate) struct ReplayFrameResponse {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+pub(crate) struct CardDraftScenarioResponse {
+    draft_id: i64,
+    draft_version: u64,
+    initial_state: serde_json::Value,
+    final_state: serde_json::Value,
+    events: Vec<rune_lanes_core::event_sourcing::EventEnvelope>,
+    replay_frames: Vec<ReplayFrameResponse>,
+}
+
+impl CardDraftScenarioResponse {
+    pub(crate) fn from_result(
+        result: crate::card_workshop::scenarios::CardDraftScenarioResult,
+    ) -> Result<Self, crate::card_workshop::CardWorkshopError> {
+        let mut replay_frames = Vec::with_capacity(result.replay_frames.len());
+        for (index, frame) in result.replay_frames.iter().enumerate() {
+            let index = u32::try_from(index).map_err(|_| {
+                crate::card_workshop::CardWorkshopError::InvalidScenario(
+                    "Too many Card test replay frames.".into(),
+                )
+            })?;
+            replay_frames.push(ReplayFrameResponse::from_recorded(index, frame));
+        }
+        Ok(Self {
+            draft_id: result.draft_id,
+            draft_version: result.draft_version,
+            initial_state: result.initial_state,
+            final_state: result.final_state,
+            events: result.events,
+            replay_frames,
+        })
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct CreateSharedMatchResponse {
     pub(crate) match_id: String,
     pub(crate) mode: &'static str,

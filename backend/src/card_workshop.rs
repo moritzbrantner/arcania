@@ -13,6 +13,7 @@ use rune_lanes_core::{
 };
 
 mod pack_transfers;
+pub mod scenarios;
 mod transfers;
 
 #[derive(Debug, Serialize)]
@@ -96,6 +97,11 @@ pub enum CardWorkshopError {
     IncompatibleStoredRevision(rune_lanes_core::CardRevisionId),
     PackTransfer(rune_lanes_core::CardPackTransferError),
     IncompatibleStoredPack(rune_lanes_core::CardPackRevisionId),
+    InvalidScenario(String),
+    Scenario {
+        command_index: Option<u32>,
+        error: rune_lanes_core::event_sourcing::EventSourcingError,
+    },
 }
 
 impl fmt::Display for CardWorkshopError {
@@ -131,6 +137,17 @@ impl fmt::Display for CardWorkshopError {
             Self::InvalidPublishedRevision(error) => error.fmt(formatter),
             Self::Transfer(error) => error.fmt(formatter),
             Self::PackTransfer(error) => error.fmt(formatter),
+            Self::InvalidScenario(error) => formatter.write_str(error),
+            Self::Scenario {
+                command_index,
+                error,
+            } => {
+                if let Some(index) = command_index {
+                    write!(formatter, "Card test command {index} failed: {error}")
+                } else {
+                    error.fmt(formatter)
+                }
+            }
             Self::IncompatibleStoredPack(id) => write!(
                 formatter,
                 "Stored Card pack {id} has incompatible immutable content."
@@ -172,6 +189,15 @@ impl From<CardTransferError> for CardWorkshopError {
 impl From<rune_lanes_core::CardPackTransferError> for CardWorkshopError {
     fn from(error: rune_lanes_core::CardPackTransferError) -> Self {
         Self::PackTransfer(error)
+    }
+}
+
+impl From<rune_lanes_core::event_sourcing::EventSourcingError> for CardWorkshopError {
+    fn from(error: rune_lanes_core::event_sourcing::EventSourcingError) -> Self {
+        Self::Scenario {
+            command_index: None,
+            error,
+        }
     }
 }
 
