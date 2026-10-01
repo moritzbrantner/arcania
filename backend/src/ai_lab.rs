@@ -5,18 +5,17 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rune_lanes_core::card_template_by_id;
-use rune_lanes_core::rules::CURRENT_RULESET;
 use serde::{Deserialize, Serialize};
 
 use crate::deck_library::ai_lab_system_decks;
 use crate::match_session::{
-    AiPolicyConfig, Card, CardKind, HeroType, HexBoard, HexCoord, MatchError, MatchState,
-    RecordedReplayFrame, Side, Unit, default_policy_config_path,
+    AiPolicyConfig, MatchError, RecordedReplayFrame, Side, default_policy_config_path,
 };
 
 mod self_play;
-use self_play::{GameOutcome, GameSpec, SimulationGameResult, run_game};
+mod setup;
+use self_play::{GameOutcome, SimulationGameResult, run_game};
+use setup::{GameSpec, RulePreset, SimulationSetup};
 
 const DEFAULT_SUITE_PATH: &str = "backend/config/ai-lab-suites.json";
 const FALLBACK_SUITE_PATH: &str = "config/ai-lab-suites.json";
@@ -193,95 +192,6 @@ enum SeatDirection {
     CandidateAsOpponent,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct RulePreset {
-    id: String,
-    #[serde(default)]
-    player: Option<SideSetup>,
-    #[serde(default)]
-    opponent: Option<SideSetup>,
-    #[serde(default)]
-    units: Vec<UnitSetup>,
-    #[serde(default)]
-    mana_sources: Vec<HexCoord>,
-    #[serde(default)]
-    card_overrides: Vec<CardOverride>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct SideSetup {
-    #[serde(default)]
-    hero_type: Option<HeroType>,
-    #[serde(default)]
-    hero: Option<HeroOverride>,
-    #[serde(default)]
-    mana: Option<u8>,
-    #[serde(default)]
-    max_mana: Option<u8>,
-    #[serde(default)]
-    hand: Option<Vec<String>>,
-    #[serde(default)]
-    deck: Option<Vec<String>>,
-    #[serde(default)]
-    discard: Option<Vec<String>>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct HeroOverride {
-    #[serde(default)]
-    hp: Option<i32>,
-    #[serde(default)]
-    max_hp: Option<i32>,
-    #[serde(default)]
-    attack: Option<i32>,
-    #[serde(default)]
-    attack_range: Option<u8>,
-    #[serde(default)]
-    ap_remaining: Option<u8>,
-    #[serde(default)]
-    max_ap: Option<u8>,
-    #[serde(default)]
-    position: Option<HexCoord>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct UnitSetup {
-    id: String,
-    side: Side,
-    template_id: String,
-    position: HexCoord,
-    #[serde(default)]
-    attack: Option<i32>,
-    #[serde(default)]
-    attack_range: Option<u8>,
-    #[serde(default)]
-    armor: Option<i32>,
-    #[serde(default)]
-    max_armor: Option<i32>,
-    #[serde(default)]
-    ap_remaining: Option<u8>,
-    #[serde(default)]
-    max_ap: Option<u8>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct CardOverride {
-    template_id: String,
-    #[serde(default)]
-    cost: Option<u8>,
-    #[serde(default)]
-    attack: Option<i32>,
-    #[serde(default)]
-    armor: Option<i32>,
-    #[serde(default)]
-    max_ap: Option<u8>,
-}
-
 fn default_max_actions() -> u32 {
     DEFAULT_MAX_ACTIONS
 }
@@ -299,12 +209,11 @@ fn load_suite_config() -> Result<SuiteConfigFile, AiLabError> {
     };
     let text = fs::read_to_string(path)?;
     let config: SuiteConfigFile = serde_json::from_str(&text)?;
-    config.validate()?;
     Ok(config)
 }
 
 impl SuiteConfigFile {
-    fn validate(&self) -> Result<(), AiLabError> {
+    fn validate(&self) -> Result<SimulationSetup, AiLabError> {
         let mut suite_ids = HashSet::new();
         for suite in &self.suites {
             if !suite_ids.insert(&suite.id) {
@@ -332,21 +241,14 @@ impl SuiteConfigFile {
                 )));
             }
         }
-        let mut preset_ids = HashSet::new();
-        for preset in &self.rule_presets {
-            if !preset_ids.insert(&preset.id) {
-                return Err(AiLabError::Config(format!(
-                    "duplicate rule preset id: {}",
-                    preset.id
-                )));
-            }
-            preset.validate()?;
-        }
-        Ok(())
+        SimulationSetup::from_presets(&self.rule_presets)
     }
 
-    fn validate_with_policies(&self, policy_config: &AiPolicyConfig) -> Result<(), AiLabError> {
-        self.validate()?;
+    fn validate_with_policies(
+        &self,
+        policy_config: &AiPolicyConfig,
+    ) -> Result<SimulationSetup, AiLabError> {
+        let setup = self.validate()?;
         for suite in &self.suites {
             if policy_config.policy(&suite.baseline_policy_id).is_none() {
                 return Err(AiLabError::Config(format!(
@@ -363,10 +265,10 @@ impl SuiteConfigFile {
                 }
             }
             for preset_id in &suite.rule_preset_ids {
-                self.rule_preset(preset_id)?;
+                setup.validate_preset_id(preset_id)?;
             }
         }
-        Ok(())
+        Ok(setup)
     }
 
     fn suite(&self, id: &str) -> Result<&SimulationSuite, AiLabError> {
@@ -374,293 +276,6 @@ impl SuiteConfigFile {
             .iter()
             .find(|suite| suite.id == id)
             .ok_or_else(|| AiLabError::Config(format!("simulation suite was not found: {id}")))
-    }
-
-    fn rule_preset(&self, id: &str) -> Result<&RulePreset, AiLabError> {
-        self.rule_presets
-            .iter()
-            .find(|preset| preset.id == id)
-            .ok_or_else(|| AiLabError::Config(format!("rule preset was not found: {id}")))
-    }
-}
-
-impl RulePreset {
-    fn validate(&self) -> Result<(), AiLabError> {
-        let mut occupied = HashSet::new();
-        for (side, setup) in [
-            (Side::Player, &self.player),
-            (Side::Opponent, &self.opponent),
-        ] {
-            let hero_position = setup
-                .as_ref()
-                .and_then(|setup| setup.hero.as_ref())
-                .and_then(|hero| hero.position)
-                .unwrap_or_else(|| default_hero_position(side));
-            validate_hex(hero_position)?;
-            if !occupied.insert(hero_position) {
-                return Err(AiLabError::Config(format!(
-                    "rule preset {} places multiple pieces on {},{}",
-                    self.id, hero_position.q, hero_position.r
-                )));
-            }
-            if let Some(side_setup) = setup {
-                validate_side_setup(side_setup)?;
-            }
-            if let Some(hero) = setup.as_ref().and_then(|setup| setup.hero.as_ref()) {
-                validate_hero(hero)?;
-            }
-        }
-        for unit in &self.units {
-            validate_hex(unit.position)?;
-            if !occupied.insert(unit.position) {
-                return Err(AiLabError::Config(format!(
-                    "rule preset {} places multiple pieces on {},{}",
-                    self.id, unit.position.q, unit.position.r
-                )));
-            }
-            if card_template_by_id(&unit.template_id).is_none() {
-                return Err(AiLabError::Config(format!(
-                    "rule preset {} references unknown unit card {}",
-                    self.id, unit.template_id
-                )));
-            }
-        }
-        for coord in &self.mana_sources {
-            validate_hex(*coord)?;
-        }
-        for override_ in &self.card_overrides {
-            if card_template_by_id(&override_.template_id).is_none() {
-                return Err(AiLabError::Config(format!(
-                    "rule preset {} references unknown card {}",
-                    self.id, override_.template_id
-                )));
-            }
-        }
-        Ok(())
-    }
-
-    fn apply(&self, game: &mut MatchState) -> Result<(), AiLabError> {
-        if let Some(player) = &self.player {
-            apply_side_setup(game, Side::Player, player)?;
-        }
-        if let Some(opponent) = &self.opponent {
-            apply_side_setup(game, Side::Opponent, opponent)?;
-        }
-        if !self.units.is_empty() {
-            game.board.units.clear();
-            for unit in &self.units {
-                game.board.units.push(unit.to_unit()?);
-            }
-        }
-        if !self.mana_sources.is_empty() {
-            game.board
-                .replace_mana_wells(self.mana_sources.iter().copied());
-        }
-        if !self.card_overrides.is_empty() {
-            let overrides: HashMap<_, _> = self
-                .card_overrides
-                .iter()
-                .map(|override_| (override_.template_id.as_str(), override_))
-                .collect();
-            for side in [Side::Player, Side::Opponent] {
-                let player = game.player_mut_for_ai_lab(side);
-                apply_card_overrides(&mut player.hand, &overrides);
-                apply_card_overrides(player.deck_mut_for_ai_lab(), &overrides);
-                apply_card_overrides(player.discard_mut_for_ai_lab(), &overrides);
-            }
-        }
-        Ok(())
-    }
-}
-
-fn default_hero_position(side: Side) -> HexCoord {
-    let radius = CURRENT_RULESET.arena.duel_radius;
-    match side {
-        Side::Player => HexCoord { q: 0, r: radius },
-        Side::Opponent => HexCoord { q: 0, r: -radius },
-        Side::PlayerTwo => HexCoord {
-            q: 1,
-            r: radius - 1,
-        },
-        Side::OpponentTwo => HexCoord {
-            q: -1,
-            r: 1 - radius,
-        },
-    }
-}
-
-fn validate_side_setup(setup: &SideSetup) -> Result<(), AiLabError> {
-    for zone in [&setup.hand, &setup.deck, &setup.discard]
-        .into_iter()
-        .flatten()
-    {
-        for template_id in zone {
-            if card_template_by_id(template_id).is_none() {
-                return Err(AiLabError::Config(format!(
-                    "rule preset references unknown card {template_id}"
-                )));
-            }
-        }
-    }
-    Ok(())
-}
-
-fn validate_hero(hero: &HeroOverride) -> Result<(), AiLabError> {
-    if hero.max_hp.is_some_and(|value| value <= 0)
-        || hero.hp.is_some_and(|value| value <= 0)
-        || hero.max_ap.is_some_and(|value| value == 0)
-        || hero.ap_remaining.is_some_and(|value| value == 0)
-        || hero.attack_range.is_some_and(|value| value == 0)
-    {
-        return Err(AiLabError::Config(
-            "rule preset has invalid hero stats".to_string(),
-        ));
-    }
-    if let Some(position) = hero.position {
-        validate_hex(position)?;
-    }
-    Ok(())
-}
-
-fn validate_hex(coord: HexCoord) -> Result<(), AiLabError> {
-    if !HexBoard::new(CURRENT_RULESET.arena.duel_radius).is_valid(coord) {
-        return Err(AiLabError::Config(format!(
-            "rule preset references invalid hex {},{}",
-            coord.q, coord.r
-        )));
-    }
-    Ok(())
-}
-
-fn apply_side_setup(
-    game: &mut MatchState,
-    side: Side,
-    setup: &SideSetup,
-) -> Result<(), AiLabError> {
-    if let Some(hero_type) = setup.hero_type {
-        game.player_mut_for_ai_lab(side).hero.hero_type = hero_type;
-    }
-    if let Some(hero) = &setup.hero {
-        let target = &mut game.player_mut_for_ai_lab(side).hero;
-        if let Some(value) = hero.max_hp {
-            target.max_hp = value;
-        }
-        if let Some(value) = hero.hp {
-            target.hp = value;
-        }
-        if let Some(value) = hero.attack {
-            target.attack = value;
-        }
-        if let Some(value) = hero.attack_range {
-            target.attack_range = value;
-        }
-        if let Some(value) = hero.max_ap {
-            target.max_ap = value;
-        }
-        if let Some(value) = hero.ap_remaining {
-            target.ap_remaining = value;
-        }
-        if let Some(value) = hero.position {
-            target.position = value;
-        }
-    }
-    {
-        let player = game.player_mut_for_ai_lab(side);
-        if let Some(value) = setup.max_mana {
-            player.max_mana = value;
-        }
-        if let Some(value) = setup.mana {
-            player.mana = value;
-        }
-        if let Some(zone) = &setup.hand {
-            player.hand = cards_from_template_ids(side, zone)?;
-        }
-        if let Some(zone) = &setup.deck {
-            player.replace_deck_for_ai_lab(cards_from_template_ids(side, zone)?);
-        }
-        if let Some(zone) = &setup.discard {
-            player.replace_discard_for_ai_lab(cards_from_template_ids(side, zone)?);
-        }
-    }
-    Ok(())
-}
-
-fn cards_from_template_ids(side: Side, template_ids: &[String]) -> Result<Vec<Card>, AiLabError> {
-    template_ids
-        .iter()
-        .enumerate()
-        .map(|(index, template_id)| {
-            let mut card = card_template_by_id(template_id)
-                .ok_or_else(|| AiLabError::Config(format!("unknown card {template_id}")))?;
-            card.id = format!("{}-preset-{}-{index}", side.card_prefix(), card.template_id);
-            Ok(card)
-        })
-        .collect()
-}
-
-impl UnitSetup {
-    fn to_unit(&self) -> Result<Unit, AiLabError> {
-        let card = card_template_by_id(&self.template_id)
-            .ok_or_else(|| AiLabError::Config(format!("unknown unit card {}", self.template_id)))?;
-        let CardKind::Unit {
-            attack,
-            armor,
-            max_ap,
-        } = card.kind
-        else {
-            return Err(AiLabError::Config(format!(
-                "card {} is not a unit card",
-                self.template_id
-            )));
-        };
-        let max_armor = self.max_armor.unwrap_or(self.armor.unwrap_or(armor));
-        Ok(Unit {
-            id: self.id.clone(),
-            side: self.side,
-            name: card.name,
-            template_id: Some(self.template_id.clone()),
-            attack: self.attack.unwrap_or(attack),
-            attack_range: self
-                .attack_range
-                .unwrap_or(CURRENT_RULESET.turn.default_attack_range),
-            armor: self.armor.unwrap_or(max_armor),
-            max_armor,
-            position: self.position,
-            ap_remaining: self.ap_remaining.unwrap_or(self.max_ap.unwrap_or(max_ap)),
-            max_ap: self.max_ap.unwrap_or(max_ap),
-            has_attacked: false,
-            items: Vec::new(),
-            stat_markers: Vec::new(),
-        })
-    }
-}
-
-fn apply_card_overrides(cards: &mut [Card], overrides: &HashMap<&str, &CardOverride>) {
-    for card in cards {
-        let Some(override_) = overrides.get(card.template_id.as_str()) else {
-            continue;
-        };
-        if let Some(cost) = override_.cost {
-            card.cost = cost;
-        }
-        match &mut card.kind {
-            CardKind::Unit {
-                attack,
-                armor,
-                max_ap,
-            } => {
-                if let Some(value) = override_.attack {
-                    *attack = value;
-                }
-                if let Some(value) = override_.armor {
-                    *armor = value;
-                }
-                if let Some(value) = override_.max_ap {
-                    *max_ap = value;
-                }
-            }
-            _ => {}
-        }
     }
 }
 
@@ -726,7 +341,7 @@ fn run_suite(suite_id: &str, out_dir: &Path) -> Result<SimulationReport, AiLabEr
     fs::create_dir_all(out_dir)?;
     let policy_config = load_policy_config()?;
     let suite_config = load_suite_config()?;
-    suite_config.validate_with_policies(&policy_config)?;
+    let setup = suite_config.validate_with_policies(&policy_config)?;
     let suite = suite_config.suite(suite_id)?;
     let baseline = policy_config
         .policy(&suite.baseline_policy_id)
@@ -744,13 +359,13 @@ fn run_suite(suite_id: &str, out_dir: &Path) -> Result<SimulationReport, AiLabEr
             AiLabError::Config(format!("candidate policy was not found: {candidate_id}"))
         })?;
         let candidate_policy = crate::match_session::SoloAiPolicy::from_definition(candidate);
-        let specs = expand_specs(suite, &suite_config, candidate_id)?;
+        let specs = expand_specs(suite, &setup, candidate_id)?;
         for spec in specs {
             let result = run_game(
                 &spec,
                 &baseline_policy,
                 &candidate_policy,
-                &suite_config,
+                &setup,
                 suite.max_actions,
             )?;
             by_candidate
@@ -791,7 +406,7 @@ fn run_suite(suite_id: &str, out_dir: &Path) -> Result<SimulationReport, AiLabEr
 
 fn expand_specs(
     suite: &SimulationSuite,
-    config: &SuiteConfigFile,
+    setup: &SimulationSetup,
     candidate_policy_id: &str,
 ) -> Result<Vec<GameSpec>, AiLabError> {
     let decks = if suite.system_deck_matrix {
@@ -806,7 +421,7 @@ fn expand_specs(
             .rule_preset_ids
             .iter()
             .map(|id| {
-                config.rule_preset(id)?;
+                setup.validate_preset_id(id)?;
                 Ok(Some(id.clone()))
             })
             .collect::<Result<Vec<_>, AiLabError>>()?
@@ -1093,7 +708,7 @@ mod tests {
     use super::*;
     use crate::deck_library::deck_from_counts;
     use crate::match_session::{
-        AiAdvanceOutcome, AiPolicyConfig, BuildingEffect, SoloAiPolicy, SoloAiRuleId,
+        AiAdvanceOutcome, AiPolicyConfig, MatchState, SoloAiPolicy, SoloAiRuleId,
     };
 
     fn test_game() -> MatchState {
@@ -1213,153 +828,94 @@ mod tests {
     }
 
     #[test]
-    fn rule_preset_rejects_invalid_hex_and_unknown_card() {
-        let invalid_hex = RulePreset {
-            id: "bad-hex".to_string(),
-            player: Some(SideSetup {
-                hero: Some(HeroOverride {
-                    position: Some(HexCoord { q: 9, r: 0 }),
-                    ..HeroOverride::default()
-                }),
-                ..SideSetup::default()
-            }),
-            opponent: None,
-            units: Vec::new(),
-            mana_sources: Vec::new(),
-            card_overrides: Vec::new(),
-        };
-        assert!(invalid_hex.validate().is_err());
-
-        let unknown_card = RulePreset {
-            id: "bad-card".to_string(),
-            player: Some(SideSetup {
-                hand: Some(vec!["missing-card".to_string()]),
-                ..SideSetup::default()
-            }),
-            opponent: None,
-            units: Vec::new(),
-            mana_sources: Vec::new(),
-            card_overrides: Vec::new(),
-        };
-        assert!(unknown_card.validate().is_err());
+    fn rule_preset_validation_rejects_a_spell_used_as_a_unit() {
+        let config: SuiteConfigFile = serde_json::from_value(serde_json::json!({
+            "suites": [],
+            "rulePresets": [{
+                "id": "spell-as-unit", "units": [{
+                    "id": "unit", "side": "player", "templateId": "spark-jolt",
+                    "position": {"q": 0, "r": 2}
+                }]
+            }]
+        }))
+        .expect("bounded setup should deserialize");
+        assert!(
+            config.validate().is_err(),
+            "validated setup must be constructible as a Unit"
+        );
     }
 
     #[test]
-    fn rule_preset_rejects_duplicate_default_hero_hex_and_unknown_effect_fields() {
-        let duplicate_default_hero_hex = RulePreset {
-            id: "duplicate".to_string(),
-            player: None,
-            opponent: None,
-            units: vec![UnitSetup {
-                id: "unit".to_string(),
-                side: Side::Player,
-                template_id: "ember-squire".to_string(),
-                position: HexCoord { q: 0, r: 3 },
-                attack: None,
-                attack_range: None,
-                armor: None,
-                max_armor: None,
-                ap_remaining: None,
-                max_ap: None,
-            }],
-            mana_sources: Vec::new(),
-            card_overrides: Vec::new(),
+    fn prepared_setup_preserves_replay_sample_and_report_output() {
+        let config: SuiteConfigFile = serde_json::from_value(serde_json::json!({
+            "suites": [], "rulePresets": [{
+                "id": "configured", "player": {
+                    "heroType": "archer", "hero": {
+                        "hp": 10, "maxHp": 17, "attack": 4, "attackRange": 2,
+                        "apRemaining": 3, "maxAp": 5, "position": {"q": 0, "r": 2}
+                    }, "mana": 2, "maxMana": 7,
+                    "hand": ["spark-jolt"], "deck": ["ember-squire", "rune-charm"],
+                    "discard": ["mana-well"]
+                }, "opponent": {
+                    "heroType": "warden", "hero": {
+                        "hp": 15, "maxHp": 22, "attack": 2, "attackRange": 1,
+                        "apRemaining": 2, "maxAp": 4, "position": {"q": 0, "r": -2}
+                    }, "mana": 3, "maxMana": 6,
+                    "hand": ["swift-familiar"], "deck": ["spark-jolt", "spark-jolt"],
+                    "discard": ["rune-bruiser"]
+                }, "units": [{
+                    "id": "configured-unit", "side": "player", "templateId": "ember-squire",
+                    "position": {"q": 1, "r": 1}, "attack": 6, "attackRange": 2,
+                    "armor": 3, "maxArmor": 5, "apRemaining": 1, "maxAp": 4
+                }], "manaSources": [{"q": 1, "r": 0}, {"q": -1, "r": 0}],
+                "cardOverrides": [
+                    {"templateId": "ember-squire", "cost": 1, "attack": 8, "armor": 9, "maxAp": 5},
+                    {"templateId": "spark-jolt", "cost": 0}
+                ]
+            }]
+        }))
+        .expect("configured setup should parse");
+        let setup = config.validate().expect("configured setup should validate");
+        let spec = GameSpec {
+            candidate_policy_id: "candidate".to_string(),
+            player_policy_id: "candidate".to_string(),
+            opponent_policy_id: "baseline-v1".to_string(),
+            player_deck_id: "balanced-starter".to_string(),
+            opponent_deck_id: "ember-burn".to_string(),
+            candidate_side: Side::Player,
+            seed: 42,
+            rule_preset_id: Some("configured".to_string()),
         };
-        assert!(duplicate_default_hero_hex.validate().is_err());
-
-        let unknown_effect = serde_json::from_str::<SuiteConfigFile>(
-            r#"{"suites":[],"rulePresets":[{"id":"bad","cardOverrides":[{"templateId":"ember-squire","effect":{"type":"newEffect"}}]}]}"#,
+        let policy = SoloAiPolicy::baseline();
+        let result =
+            run_game(&spec, &policy, &policy, &setup, 3).expect("configured game should run");
+        let directory = std::env::temp_dir().join(format!(
+            "rune-lanes-setup-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock should run")
+                .as_nanos(),
+        ));
+        fs::create_dir_all(&directory).expect("sample directory should be created");
+        write_named_sample("configured", Some(&result), &directory)
+            .expect("sample should be written");
+        let sample: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(directory.join("configured.json")).expect("sample should exist"),
         )
-        .expect_err("new effect fields should be rejected");
-        assert!(unknown_effect.to_string().contains("unknown field"));
-    }
-
-    #[test]
-    fn rule_preset_rejects_unknown_fields_at_every_setup_boundary() {
-        for preset in [
-            serde_json::json!({"id": "invalid", "effect": {"type": "newEffect"}}),
-            serde_json::json!({"id": "invalid", "player": {"effect": {}}}),
-            serde_json::json!({"id": "invalid", "player": {"hero": {"effect": {}}}}),
-            serde_json::json!({"id": "invalid", "units": [{
-                "id": "unit", "side": "player", "templateId": "ember-squire",
-                "position": {"q": 0, "r": 2}, "effect": {}
-            }]}),
-            serde_json::json!({"id": "invalid", "cardOverrides": [{
-                "templateId": "ember-squire", "effect": {}
-            }]}),
-        ] {
-            let error = serde_json::from_value::<SuiteConfigFile>(serde_json::json!({
-                "suites": [], "rulePresets": [preset]
-            }))
-            .expect_err("unsupported effect fields must fail instead of being ignored");
-            assert!(error.to_string().contains("unknown field `effect`"));
-        }
-    }
-
-    #[test]
-    fn rule_preset_rejects_invalid_hero_stats() {
-        for hero in [
-            serde_json::json!({"hp": 0}),
-            serde_json::json!({"maxHp": -1}),
-            serde_json::json!({"maxAp": 0}),
-            serde_json::json!({"apRemaining": 0}),
-            serde_json::json!({"attackRange": 0}),
-        ] {
-            let preset: RulePreset = serde_json::from_value(serde_json::json!({
-                "id": "invalid-stats", "player": {"hero": hero}
-            }))
-            .expect("numeric Hero overrides should deserialize");
-            assert!(
-                preset
-                    .validate()
-                    .expect_err("invalid Hero stats must fail validation")
-                    .to_string()
-                    .contains("invalid hero stats")
-            );
-        }
-    }
-
-    #[test]
-    fn preset_units_use_the_core_default_attack_range() {
-        let unit = UnitSetup {
-            id: "unit".to_string(),
-            side: Side::Player,
-            template_id: "ember-squire".to_string(),
-            position: HexCoord { q: 0, r: 2 },
-            attack: None,
-            attack_range: None,
-            armor: None,
-            max_armor: None,
-            ap_remaining: None,
-            max_ap: None,
-        }
-        .to_unit()
-        .expect("known unit setup should convert");
-
-        assert_eq!(unit.attack_range, CURRENT_RULESET.turn.default_attack_range);
-    }
-
-    #[test]
-    fn rule_preset_mana_sources_apply_as_building_backed_mana_wells() {
-        let mut game = test_game();
-        game.board.mana_sources.push(HexCoord { q: 2, r: 0 });
-        let preset = RulePreset {
-            id: "mana".to_string(),
-            player: None,
-            opponent: None,
-            units: Vec::new(),
-            mana_sources: vec![HexCoord { q: 0, r: 2 }],
-            card_overrides: Vec::new(),
-        };
-
-        preset.apply(&mut game).expect("preset should apply");
-
-        assert!(game.board.mana_sources.is_empty());
-        assert!(game.board.buildings.iter().any(|building| {
-            building.id == "preset-mana-1"
-                && building.position == HexCoord { q: 0, r: 2 }
-                && matches!(building.effect, BuildingEffect::TurnStartMana { amount: 1 })
-        }));
+        .expect("sample should be JSON");
+        fs::remove_dir_all(directory).expect("sample directory should be removed");
+        let defaults = load_suite_config().expect("default suite should load");
+        let report = summarize_candidate(
+            "candidate",
+            &[result],
+            defaults.suite("default").expect("default exists"),
+        );
+        let actual = serde_json::json!({"sample": sample, "report": report});
+        let expected: serde_json::Value =
+            serde_json::from_str(include_str!("ai_lab/fixtures/configured-output.json"))
+                .expect("recorded output should be JSON");
+        assert_eq!(actual, expected);
     }
 
     #[test]
@@ -1381,8 +937,14 @@ mod tests {
             rule_preset_id: None,
         };
 
-        let result = run_game(&spec, &baseline_policy, &invalid_policy, &config, 10)
-            .expect("game should return a result");
+        let result = run_game(
+            &spec,
+            &baseline_policy,
+            &invalid_policy,
+            &config.validate().expect("setup should prepare"),
+            10,
+        )
+        .expect("game should return a result");
 
         assert!(matches!(
             result.outcome,
@@ -1474,10 +1036,11 @@ mod tests {
             rule_preset_id: None,
         };
 
+        let setup = config.validate().expect("setup should prepare");
         let first =
-            run_game(&spec, &baseline, &candidate, &config, 40).expect("first game should run");
+            run_game(&spec, &baseline, &candidate, &setup, 40).expect("first game should run");
         let second =
-            run_game(&spec, &baseline, &candidate, &config, 40).expect("second game should run");
+            run_game(&spec, &baseline, &candidate, &setup, 40).expect("second game should run");
 
         assert_eq!(first.outcome, second.outcome);
         assert_eq!(first.action_count, second.action_count);
