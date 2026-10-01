@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Card, StackItem } from "./types";
 import { pieceById } from "./matchBoardHelpers";
-import { storyMatch, storyUnit } from "./components/board.fixtures";
+import { storyMatch, storyUnit, storyCardProjection } from "./components/board.fixtures";
 import { selectedTargetingIndicators, stackTargetingIndicators } from "./targetingIndicators";
 
 describe("targeting indicators", () => {
@@ -38,6 +38,7 @@ describe("targeting indicators", () => {
     const match = storyMatch({
       phase: "cardPlay",
       hand: [sparkJolt()],
+      commandProjection: storyCardProjection([{ card: sparkJolt(), targets: [{ type: "piece", pieceId: "enemy-unit" }, { type: "piece", pieceId: "opponent-hero" }] }]),
       units: [
         storyUnit({ q: 1, r: 0 }, { id: "enemy-unit", side: "opponent" }),
         storyUnit({ q: -1, r: 1 }, { id: "friendly-unit", side: "player" }),
@@ -65,6 +66,7 @@ describe("targeting indicators", () => {
     const match = storyMatch({
       phase: "cardPlay",
       hand: [cinderRing()],
+      commandProjection: storyCardProjection([{ card: cinderRing(), targets: [{ type: "piece", pieceId: "enemy-unit" }, { type: "piece", pieceId: "opponent-hero" }] }]),
       units: [storyUnit({ q: 1, r: 0 }, { id: "enemy-unit", side: "opponent" })],
     });
 

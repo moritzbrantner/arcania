@@ -666,7 +666,7 @@ export function SharedMatchPage({
       })
     : null;
   const selectedPreview = selectedCard
-    ? actionPreviewForCard(match, viewerSide, selectedCard)
+    ? actionPreviewForCard(match, viewerSide, selectedCard, undefined, { canAct, busy, connectionReady: liveConnectionReady })
     : selectedPiece
       ? actionPreviewForPiece(match, viewerSide, selectedPiece)
       : focusedUnit
@@ -682,6 +682,7 @@ export function SharedMatchPage({
         : null,
     focusedPiece: focusedUnit,
     canAct: canAct && !busy && liveConnectionReady,
+    availabilityOptions: { busy, connectionReady: liveConnectionReady },
   });
   const turnChecklistItems = turnChecklistForMatch(match, viewerSide, canAct && !busy);
   const phaseLabel =
@@ -755,15 +756,6 @@ export function SharedMatchPage({
               >
                 <Sword size={18} />
                 Start Attack
-              </button>
-              <button
-                className="primary-button"
-                type="button"
-                onClick={() => sendSharedAction({ type: "startCardPlay" })}
-                disabled={busy || !isActiveViewer}
-              >
-                <Layers size={18} />
-                Play Cards
               </button>
             </>
           ) : null}

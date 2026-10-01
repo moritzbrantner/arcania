@@ -5,6 +5,8 @@ import type {
   HexTile,
   MatchProgressionLoadout,
   MatchState,
+  MatchCommandProjection,
+  ActionTarget,
   StackItem,
   Unit,
   Hero,
@@ -88,6 +90,33 @@ export const catalogCards: CatalogCard[] = [
   catalogCard(emberFlaskCard, 3, "/card-art/ember-flask.svg"),
 ];
 
+// Explicit wire fixtures: tests supply different commands/rejections for other states.
+export function storyCardProjection(
+  entries: { card: Card; targets?: ActionTarget[]; rejection?: MatchCommandProjection["cards"][number]["rejection"] }[],
+): MatchCommandProjection {
+  return {
+    viewerSide: "player",
+    proactiveCardPhases: ["movement", "cardPlay"],
+    legalCommands: entries.flatMap(({ card, targets = [] }) => targets.map((target) => ({
+      type: "playCard" as const, cardId: card.id, target,
+    }))),
+    cards: entries.map(({ card, targets = [], rejection }) => ({
+      cardId: card.id, allowed: targets.length > 0, rejection,
+    })),
+  };
+}
+
+const openingCardProjection = storyCardProjection([
+  { card: emberSquireCard, targets: [
+    { type: "hex", coord: { q: 0, r: 0 } },
+    { type: "hex", coord: { q: -1, r: 1 } },
+    { type: "hex", coord: { q: -1, r: 2 } },
+    { type: "hex", coord: { q: 0, r: 2 } },
+    { type: "hex", coord: { q: 1, r: 0 } },
+  ] },
+  { card: sparkJoltCard, targets: [{ type: "piece", pieceId: "opponent-hero" }] },
+]);
+
 export function storyMatch(options: {
   hand?: Card[];
   units?: Unit[];
@@ -96,10 +125,12 @@ export function storyMatch(options: {
   actionStack?: StackItem[];
   prioritySide?: "player" | "opponent" | null;
   phase?: MatchState["phase"];
+  commandProjection?: MatchCommandProjection;
 } = {}): MatchState {
   const hand = options.hand ?? [emberSquireCard, sparkJoltCard];
   return {
     mode: "solo",
+    commandProjection: options.commandProjection ?? openingCardProjection,
     round: 1,
     phase: options.phase ?? "movement",
     activeSide: "player",

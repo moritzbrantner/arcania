@@ -13,14 +13,73 @@ import {
   pendingAttackStack,
   sparkJoltCard,
   storyMatch,
+  storyCardProjection,
   storyUnit,
   thunderRailCard,
 } from "./components/board.fixtures";
-import type { Card, MatchState } from "./types";
+import type { Card, MatchState, Side } from "./types";
 
 describe("match UX model", () => {
+  it.each(["movement", "cardPlay"] as const)("uses the projected Card command in %s even with spent Hero AP", (phase) => {
+    const match = storyMatch({ phase });
+    match.player.hero.apRemaining = 0;
+    expect(cardAvailability(match, "player", emberSquireCard).playable).toBe(true);
+    expect(actionPreviewForCard(match, "player", emberSquireCard).title).toBe("Ember Squire");
+    expect(actionTrayEntriesForSelection({ match, viewerSide: "player", selection: { type: "card", card: emberSquireCard } })[0].enabled).toBe(true);
+    expect(turnChecklistForMatch(match, "player").find((entry) => entry.id === "playable-cards")?.value).toBe("2");
+  });
+
+  it.each<Side>(["player", "opponent", "playerTwo", "opponentTwo"])("uses only the %s viewer's projection", (side) => {
+    const match = storyMatch({ hand: [emberSquireCard] });
+    const participant = { ...match.player, side, hero: { ...match.player.hero, side } };
+    if (side === "opponent") match.opponent = participant;
+    if (side === "playerTwo") match.playerTwo = participant;
+    if (side === "opponentTwo") match.opponentTwo = participant;
+    match.activeSide = side;
+    match.commandProjection = { ...storyCardProjection([{ card: emberSquireCard, targets: [{ type: "hex", coord: { q: 0, r: 0 } }] }]), viewerSide: side };
+    expect(cardAvailability(match, side, emberSquireCard).playable).toBe(true);
+    const other = side === "player" ? "opponent" : "player";
+    expect(cardAvailability(match, other, emberSquireCard).playable).toBe(false);
+  });
+
+  it("explains current and historical Card windows from the projection", () => {
+    const match = storyMatch({ phase: "attack", commandProjection: storyCardProjection([{ card: emberSquireCard, rejection: "wrongPhase" }]) });
+    expect(cardAvailability(match, "player", emberSquireCard).primaryReason?.message).toContain("Movement and Card Play");
+    match.phase = "movement";
+    match.commandProjection = { ...storyCardProjection([{ card: emberSquireCard, rejection: "wrongPhase" }]), proactiveCardPhases: ["cardPlay"] };
+    expect(cardAvailability(match, "player", emberSquireCard).primaryReason?.message).toBe("Cards can be played during Card Play, after attacks.");
+  });
+
+  it.each(["movement", "attack", "cardPlay"] as const)("retains projected priority responses during %s", (phase) => {
+    const match = storyMatch({
+      phase, hand: [sparkJoltCard, emberSquireCard],
+      actionStack: [pendingAttackStack], prioritySide: "player",
+      commandProjection: storyCardProjection([
+        { card: sparkJoltCard, targets: [{ type: "piece", pieceId: "opponent-hero" }] },
+        { card: emberSquireCard, rejection: "stackPending" },
+      ]),
+    });
+    match.activeSide = "opponent";
+    expect(cardAvailability(match, "player", sparkJoltCard).playable).toBe(true);
+    expect(cardAvailability(match, "player", emberSquireCard).primaryReason?.code).toBe("notAResponse");
+  });
+
+  it("keeps connection, turn, and priority explanations ahead of lower-priority rejections", () => {
+    const match = storyMatch({ commandProjection: storyCardProjection([{ card: emberSquireCard, rejection: "notEnoughMana" }]) });
+    match.activeSide = "opponent";
+    expect(cardAvailability(match, "player", emberSquireCard).primaryReason?.code).toBe("waitingForTurn");
+    const options = { connectionReady: false };
+    expect(cardAvailability(match, "player", emberSquireCard, options).primaryReason?.code).toBe("connectionBusy");
+    expect(actionPreviewForCard(match, "player", emberSquireCard, undefined, options).body).toBe("The live connection is not ready.");
+    match.actionStack = [pendingAttackStack];
+    match.prioritySide = "opponent";
+    expect(cardAvailability(match, "player", emberSquireCard).primaryReason?.code).toBe("waitingForPriority");
+    match.commandProjection = undefined;
+    expect(cardAvailability(match, "player", emberSquireCard).playable).toBe(false);
+  });
+
   it("explains unavailable cards by priority", () => {
-    const match = storyMatch({ hand: [expensiveCard()], phase: "cardPlay" });
+    const match = storyMatch({ hand: [expensiveCard()], phase: "cardPlay", commandProjection: storyCardProjection([{ card: expensiveCard(), rejection: "notEnoughMana" }]) });
     match.player.mana = 1;
     match.player.hero.apRemaining = 0;
 
@@ -34,18 +93,20 @@ describe("match UX model", () => {
   it("explains wrong-turn and stack response restrictions", () => {
     const wrongTurn = storyMatch({ hand: [emberSquireCard] });
     wrongTurn.activeSide = "opponent";
+    wrongTurn.commandProjection = storyCardProjection([{ card: emberSquireCard, rejection: "notActiveSide" }]);
 
     expect(cardAvailability(wrongTurn, "player", emberSquireCard).primaryReason?.code).toBe(
       "waitingForTurn",
     );
 
-    const pending = storyMatch({ hand: [emberSquireCard], actionStack: [pendingAttackStack], prioritySide: "player" });
+    const pending = storyMatch({ hand: [emberSquireCard], commandProjection: storyCardProjection([{ card: emberSquireCard, rejection: "stackPending" }]), actionStack: [pendingAttackStack], prioritySide: "player" });
     expect(cardAvailability(pending, "player", emberSquireCard).primaryReason?.code).toBe(
       "notAResponse",
     );
 
     const lowPriority = storyMatch({
       hand: [thunderRailCard],
+      commandProjection: storyCardProjection([{ card: thunderRailCard, rejection: "priorityTooLow" }]),
       actionStack: [{ ...pendingAttackStack, priority: 3 }],
       prioritySide: "player",
     });
@@ -55,7 +116,7 @@ describe("match UX model", () => {
   });
 
   it("explains cards with no legal targets", () => {
-    const match = storyMatch({ hand: [sparkJoltCard], opponentHero: { q: 3, r: -3 }, phase: "cardPlay" });
+    const match = storyMatch({ hand: [sparkJoltCard], commandProjection: storyCardProjection([{ card: sparkJoltCard, rejection: "invalidTarget" }]), opponentHero: { q: 3, r: -3 }, phase: "cardPlay" });
     match.board.units = [];
 
     expect(cardAvailability(match, "player", sparkJoltCard).primaryReason?.code).toBe(
@@ -73,7 +134,7 @@ describe("match UX model", () => {
     expect(spellPreview.body).toContain("Deals 1 damage");
 
     const itemPreview = actionPreviewForCard(
-      storyMatch({ hand: [emberFlaskCard], units: [storyUnit({ q: -1, r: 1 })], phase: "cardPlay" }),
+      storyMatch({ hand: [emberFlaskCard], commandProjection: storyCardProjection([{ card: emberFlaskCard, targets: [{ type: "piece", pieceId: "story-player-unit" }] }]), units: [storyUnit({ q: -1, r: 1 })], phase: "cardPlay" }),
       "player",
       emberFlaskCard,
     );

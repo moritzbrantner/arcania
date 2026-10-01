@@ -2,10 +2,10 @@ import type { BoardPiece } from "./appTypes";
 import {
   buildingAt,
   buildingEffectIsActivated,
+  commandProjectionForViewer,
   distance,
   handForSide,
   isLegalAttack,
-  isLegalCardTarget,
   isLegalMove,
   participantBySide,
   pieceAt,
@@ -140,67 +140,55 @@ function cardAvailabilityReasons(
     );
   }
 
-  if (match.phase === "matchOver") {
-    reasons.push(reason("matchOver", "This match is over."));
+  const projection = commandProjectionForViewer(match, viewerSide);
+  const availability = projection?.cards.find((entry) => entry.cardId === card.id);
+  if (!availability) {
+    reasons.push(reason("connectionBusy", "Card availability is not ready."));
+    return prioritizedReasons(reasons);
+  }
+  if (availability.allowed) {
     return prioritizedReasons(reasons);
   }
 
-  if (pending) {
-    if (match.prioritySide !== viewerSide) {
-      reasons.push(reason("waitingForPriority", "Waiting for the other side's priority."));
-    }
-    if (card.kind.type !== "spell") {
-      reasons.push(reason("notAResponse", "Only spells can respond while the stack is pending."));
-    } else if (card.kind.priority <= pending.priority) {
-      reasons.push(
-        reason("priorityTooLow", `Needs priority higher than ${pending.priority} to respond.`),
-      );
-    }
-  } else if (match.activeSide !== viewerSide) {
-    reasons.push(reason("waitingForTurn", "Waiting for your turn."));
-  } else if (match.phase !== "cardPlay") {
-    reasons.push(reason("wrongPhase", "Cards can be played after attacks are finished."));
-  }
-
-  if (participant.mana < card.cost) {
-    reasons.push(reason("insufficientMana", `Need ${card.cost} mana; you have ${participant.mana}.`));
-  }
-
-  const hasLegalTarget = match.board.tiles.some((tile) =>
-    isLegalCardTarget(match, viewerSide, card, tile.coord, pieceAt(match, tile.coord)),
-  );
-  if (baseCardChecksPass(match, viewerSide, card, options) && !hasLegalTarget) {
-    reasons.push(reason("noLegalTargets", "No legal targets are available."));
-  }
-
-  return prioritizedReasons(reasons);
-}
-
-function baseCardChecksPass(
-  match: MatchState,
-  viewerSide: Side,
-  card: Card,
-  options: ActionAvailabilityOptions,
-) {
-  if (options.canAct === false || options.connectionReady === false || options.busy) {
-    return false;
-  }
+  // Context only orders the explanation; the projection owns availability.
   if (match.phase === "matchOver") {
-    return false;
+    reasons.push(reason("matchOver", "This match is over."));
+  } else if (pending && match.prioritySide !== viewerSide) {
+    reasons.push(reason("waitingForPriority", "Waiting for the other side's priority."));
+  } else if (!pending && match.activeSide !== viewerSide) {
+    reasons.push(reason("waitingForTurn", "Waiting for your turn."));
   }
-  const participant = participantBySide(match, viewerSide);
-  const pending = topStackItem(match);
-  if (participant.mana < card.cost) {
-    return false;
+
+  switch (availability.rejection) {
+    case "matchOver":
+      reasons.push(reason("matchOver", "This match is over."));
+      break;
+    case "notActiveSide":
+      reasons.push(reason("waitingForTurn", "Waiting for your turn."));
+      break;
+    case "notPrioritySide":
+      reasons.push(reason("waitingForPriority", "Waiting for the other side's priority."));
+      break;
+    case "stackPending":
+      reasons.push(reason("notAResponse", "Only spells can respond while the stack is pending."));
+      break;
+    case "priorityTooLow":
+      reasons.push(reason("priorityTooLow", `Needs priority higher than ${pending?.priority ?? 0} to respond.`));
+      break;
+    case "notEnoughMana":
+      reasons.push(reason("insufficientMana", `Need ${card.cost} mana; you have ${participant.mana}.`));
+      break;
+    case "wrongPhase": {
+      const windows = projection?.proactiveCardPhases.includes("movement")
+        ? "Cards can be played during Movement and Card Play, after attacks."
+        : "Cards can be played during Card Play, after attacks.";
+      reasons.push(reason("wrongPhase", windows));
+      break;
+    }
+    default:
+      reasons.push(reason("noLegalTargets", "No legal targets are available."));
   }
-  if (pending) {
-    return (
-      match.prioritySide === viewerSide &&
-      card.kind.type === "spell" &&
-      card.kind.priority > pending.priority
-    );
-  }
-  return match.activeSide === viewerSide && match.phase === "cardPlay";
+  return prioritizedReasons(reasons);
 }
 
 export function actionPreviewForCard(
@@ -208,8 +196,9 @@ export function actionPreviewForCard(
   viewerSide: Side,
   card: Card,
   target?: { coord?: HexCoord; piece?: BoardPiece | null },
+  options: ActionAvailabilityOptions = {},
 ): ActionPreview {
-  const availability = cardAvailability(match, viewerSide, card);
+  const availability = cardAvailability(match, viewerSide, card, options);
   const pending = topStackItem(match);
   const details = [
     `${card.cost} mana`,
@@ -260,15 +249,18 @@ export function actionTrayEntriesForSelection({
   selection,
   focusedPiece,
   canAct = true,
+  availabilityOptions = {},
 }: {
   match: MatchState;
   viewerSide: Side;
   selection: ActionTraySelection;
   focusedPiece?: BoardPiece | null;
   canAct?: boolean;
+  availabilityOptions?: ActionAvailabilityOptions;
 }): ActionTrayEntry[] {
   if (selection?.type === "card") {
-    const availability = cardAvailability(match, viewerSide, selection.card, { canAct });
+    const options = { canAct, ...availabilityOptions };
+    const availability = cardAvailability(match, viewerSide, selection.card, options);
     return [
       {
         id: `card-${selection.card.id}`,
@@ -276,7 +268,7 @@ export function actionTrayEntriesForSelection({
         icon: "card",
         enabled: availability.playable,
         reason: availability.primaryReason ?? undefined,
-        preview: actionPreviewForCard(match, viewerSide, selection.card),
+        preview: actionPreviewForCard(match, viewerSide, selection.card, undefined, options),
       },
     ];
   }

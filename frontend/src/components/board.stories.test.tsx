@@ -10,6 +10,7 @@ import {
   pendingMoveStack,
   pendingSpellStack,
   storyMatch,
+  storyCardProjection,
 } from "./board.fixtures";
 import { createMatchVisualCatalog } from "../matchVisualIdentity";
 import { pieceById } from "../matchBoardHelpers";
@@ -25,6 +26,8 @@ describe("board stories", () => {
 
     renderStory(boardStories.default, boardStories.SelectedCardTargets);
     expect(screen.getByRole("region", { name: "Hex board" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "q 0, r 0, empty hex" })).toHaveClass("legal");
+    expect(screen.getByRole("button", { name: /q 1, r 1, occupied/ })).not.toHaveClass("legal");
   });
 
   it("renders card, stack, and pile stories", () => {
@@ -74,7 +77,7 @@ describe("board stories", () => {
   });
 
   it("shows selected spell footprints only after target hover", async () => {
-    const match = storyMatch({ hand: [cinderRingCard], phase: "cardPlay" });
+    const match = storyMatch({ hand: [cinderRingCard], phase: "cardPlay", commandProjection: storyCardProjection([{ card: cinderRingCard, targets: [{ type: "piece", pieceId: "opponent-hero" }] }]) });
 
     render(
       <Board

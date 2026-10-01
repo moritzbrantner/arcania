@@ -525,9 +525,27 @@ export type MatchPlayerState = MatchParticipantState & {
   hand: Card[];
 };
 
+export type MatchCommandProjection = {
+  viewerSide: Side;
+  proactiveCardPhases: Phase[];
+  legalCommands: Exclude<MatchActionRequest, { type: "advanceAi" }>[];
+  cards: {
+    cardId: string;
+    allowed: boolean;
+    rejection?:
+      | "matchOver" | "notActiveSide" | "notPrioritySide" | "cardNotFound"
+      | "notEnoughMana" | "noActionPoints" | "invalidHex" | "occupiedHex"
+      | "invalidTarget" | "pieceNotFound" | "notYourPiece" | "notAdjacent"
+      | "alreadyAttacked" | "itemNotFound" | "itemExhausted" | "buildingNotFound"
+      | "buildingExhausted" | "stackPending" | "emptyStack" | "priorityTooLow"
+      | "wrongPhase" | "aiUnavailable";
+  }[];
+};
+
 export type MatchState = {
-  /** Browser engine query projection for Player; absent on legacy hosted responses. */
+  /** Derived live commands; archived replay views omit these fields. */
   legalCommands?: MatchActionRequest[];
+  commandProjection?: MatchCommandProjection;
   mode: MatchMode;
   format?: MatchFormat;
   round: number;

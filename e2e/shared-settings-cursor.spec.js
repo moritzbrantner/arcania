@@ -29,12 +29,12 @@ test("shared active matches use persistent full-screen collapsible chrome", asyn
   await expect.poll(() => hasPainted3dCanvas(page)).toBe(true);
   await expect(page.getByText("You", { exact: true })).toBeVisible();
   await expect(page.getByText("Opponent", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Play Cards" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start Attack" })).toBeVisible();
   await expectNoVisibleOverlap(page, matchOverlaySelectors());
 
   await page.getByRole("button", { name: "Minimize match chrome" }).click();
   await expect(page.getByRole("button", { name: "Restore match chrome" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Play Cards" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start Attack" })).toBeVisible();
   await expectNoVisibleOverlap(page, minimizedMatchOverlaySelectors());
   await expect
     .poll(() => page.evaluate((key) => localStorage.getItem(key), MATCH_CHROME_STORAGE_KEY))
@@ -42,7 +42,7 @@ test("shared active matches use persistent full-screen collapsible chrome", asyn
 
   await page.reload();
   await expect(page.getByRole("button", { name: "Restore match chrome" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Play Cards" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Start Attack" })).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 700 });
   await page.reload();

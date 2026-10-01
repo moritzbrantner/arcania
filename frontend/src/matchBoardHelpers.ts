@@ -15,7 +15,6 @@ import type {
 import type { AnimatedPieceSnapshot, BoardAnimationCue, PieceAnimation } from "./boardAnimations";
 import type { BoardPiece } from "./appTypes";
 import { viewerSideLabel, heroTypeLabel } from "./labels";
-import type { BuffTargetPolicy } from "./types";
 
 export function groupTilesByColumn(tiles: HexTile[]) {
   const columns = new Map<number, HexTile[]>();
@@ -261,27 +260,31 @@ export function hasPlayablePriorityResponse(match: MatchState, viewerSide: Side)
   );
 }
 
-export function isPlayableCard(match: MatchState, viewerSide: Side, card: Card) {
-  if (viewerSide === "player" && match.legalCommands) {
-    return match.legalCommands.some((command) => command.type === "playCard" && command.cardId === card.id);
-  }
-  const participant = participantBySide(match, viewerSide);
-  const pending = topStackItem(match);
-  if (pending) {
-    return (
-      match.phase !== "matchOver" &&
-      match.prioritySide === viewerSide &&
-      card.kind.type === "spell" &&
-      participant.mana >= card.cost &&
-      card.kind.priority > pending.priority
-    );
-  }
+export function commandProjectionForViewer(match: MatchState, viewerSide: Side) {
+  return match.commandProjection?.viewerSide === viewerSide ? match.commandProjection : null;
+}
 
-  return (
-    match.phase === "cardPlay" &&
-    match.activeSide === viewerSide &&
-    participant.mana >= card.cost
+export function isPlayableCard(match: MatchState, viewerSide: Side, card: Card) {
+  return commandProjectionForViewer(match, viewerSide)?.cards.some(
+    (availability) => availability.cardId === card.id && availability.allowed,
+  ) ?? false;
+}
+
+function projectedCardTarget(
+  match: MatchState,
+  viewerSide: Side,
+  card: Card,
+  coord: HexCoord,
+  piece: BoardPiece | null,
+): ActionTarget | null {
+  const command = commandProjectionForViewer(match, viewerSide)?.legalCommands.find(
+    (command) => command.type === "playCard" && command.cardId === card.id && (
+      command.target.type === "hex"
+        ? sameCoord(command.target.coord, coord)
+        : command.target.pieceId === piece?.id
+    ),
   );
+  return command?.type === "playCard" ? command.target : null;
 }
 
 export function cardTargetForTile(
@@ -290,20 +293,7 @@ export function cardTargetForTile(
   card: Card,
   tile: HexTile,
 ): ActionTarget | null {
-  const piece = pieceAt(match, tile.coord);
-  if (!isLegalCardTarget(match, viewerSide, card, tile.coord, piece)) {
-    return null;
-  }
-
-  if (card.kind.type === "unit" || card.kind.type === "manaSource" || card.kind.type === "building") {
-    return { type: "hex", coord: tile.coord };
-  }
-
-  if (card.kind.type === "item") {
-    return piece ? { type: "piece", pieceId: piece.id } : null;
-  }
-
-  return piece ? { type: "piece", pieceId: piece.id } : null;
+  return projectedCardTarget(match, viewerSide, card, tile.coord, pieceAt(match, tile.coord));
 }
 
 export function isLegalCardTarget(
@@ -313,70 +303,7 @@ export function isLegalCardTarget(
   coord: HexCoord,
   piece: BoardPiece | null,
 ) {
-  if (viewerSide === "player" && match.legalCommands) {
-    return match.legalCommands.some((command) => command.type === "playCard" && command.cardId === card.id && (
-      command.target.type === "hex" ? sameCoord(command.target.coord, coord) : command.target.pieceId === piece?.id
-    ));
-  }
-  const participant = participantBySide(match, viewerSide);
-  if (!isPlayableCard(match, viewerSide, card)) {
-    return false;
-  }
-
-  if (card.kind.type === "unit") {
-    return !piece && distance(participant.hero.position, coord) === 1;
-  }
-
-  if (card.kind.type === "manaSource" || card.kind.type === "building") {
-    return (
-      !piece &&
-      !isBuildingAt(match, coord) &&
-      distance(participant.hero.position, coord) === 1
-    );
-  }
-
-  if (card.kind.type === "item") {
-    return (
-      !!piece &&
-      targetPolicyAllows(card.kind.targets ?? "unitsOnly", piece.pieceType === "hero") &&
-      sameTeam(piece.side, viewerSide) &&
-      distance(participant.hero.position, piece.position) <= card.kind.range
-    );
-  }
-
-  if (!piece || distance(participant.hero.position, piece.position) > card.kind.range) {
-    return false;
-  }
-
-  switch (card.kind.effect.type) {
-    case "heal":
-      return sameTeam(piece.side, viewerSide);
-    case "buff":
-      return sameTeam(piece.side, viewerSide) && piece.pieceType === "unit";
-    case "statBuff":
-      return sameTeam(piece.side, viewerSide) && targetPolicyAllows(card.kind.effect.targets, piece.pieceType === "hero");
-    case "damage":
-    case "areaDamage":
-      return !sameTeam(piece.side, viewerSide);
-    case "draw":
-      return piece.side === viewerSide && piece.pieceType === "hero";
-    case "lineDamage":
-      return (
-        !sameTeam(piece.side, viewerSide) &&
-        lineDirection(participant.hero.position, piece.position) !== null
-      );
-  }
-}
-
-function targetPolicyAllows(policy: BuffTargetPolicy, isHero: boolean) {
-  switch (policy) {
-    case "unitsOnly":
-      return !isHero;
-    case "heroesOnly":
-      return isHero;
-    case "unitsAndHeroes":
-      return true;
-  }
+  return projectedCardTarget(match, viewerSide, card, coord, piece) !== null;
 }
 
 export function isLegalMove(match: MatchState, viewerSide: Side, piece: BoardPiece, coord: HexCoord) {
