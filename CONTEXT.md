@@ -394,3 +394,11 @@ _Avoid_: match scenario, dev scenario, sandbox match
 
 **Card workshop**:
 The browser-local surface for editing Rule presets and custom cards and trying them in Solo matches. It does not change the hosted catalog, accounts, or progression.
+
+**Card pack**:
+A named collection of exact published Card revisions, identified by a stable pack identity and a positive version. Different versions of the same Card pack are distinct collections.
+_Avoid_: card bundle, latest pack
+
+**Card pack manifest**:
+The description of a Card pack's contents, compatibility requirements and dependencies on exact versions of other Card packs.
+_Avoid_: pack recipe, deck recipe

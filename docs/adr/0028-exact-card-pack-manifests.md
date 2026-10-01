@@ -1,0 +1,5 @@
+# Exact Card pack manifests
+
+Card pack manifests identify a pack by its stable ID and positive content version, list exact published Card revision IDs, and declare exact versions of dependency packs. The manifest schema version and required ruleset schema version are separate compatibility metadata. Exact references preserve a portable collection's meaning when newer Cards or packs are published; loading a newer available version cannot satisfy a missing reference.
+
+`rune-lanes-core` validates the complete supplied manifest set against a published Card catalog before exposing it through `CardPackCatalog`. Duplicate pack identities fail before content validation; missing references, unknown manifest schemas and incompatible dependency/ruleset versions produce typed diagnostics. Validation visits every supplied manifest without recursively loading dependencies. Manifests contain references; Card definitions remain owned by the existing published catalog. Import/export, content installation and freezing a match's catalog are separate deliveries.
