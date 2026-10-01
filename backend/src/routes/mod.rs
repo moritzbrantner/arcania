@@ -62,6 +62,12 @@ pub fn create_app(store: SqliteMatchStore) -> Router {
         )
         .route("/api/card-revisions/{card_id}", get(card_revision_history))
         .route(
+            "/api/card-transfers/{cardId}/{revision}",
+            get(export_card_revision),
+        )
+        .route("/api/card-transfers/preview", post(preview_card_transfer))
+        .route("/api/card-transfers/import", post(import_card_transfer))
+        .route(
             "/api/card-revisions/{card_id}/{revision}/fork",
             post(fork_card_revision),
         )
@@ -320,6 +326,75 @@ async fn card_revision_history(
         }
     };
     Json(history).into_response()
+}
+
+async fn export_card_revision(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Path(id): Path<rune_lanes_core::CardRevisionId>,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let response = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.export_revision_for_user(profile.id, &id) {
+            Ok(response) => response,
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    Json(response).into_response()
+}
+
+async fn preview_card_transfer(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Json(transfer): Json<rune_lanes_core::CardRevisionTransfer>,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let response = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.preview_transfer_for_user(profile.id, &transfer) {
+            Ok(response) => response,
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    Json(response).into_response()
+}
+
+async fn import_card_transfer(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Json(transfer): Json<rune_lanes_core::CardRevisionTransfer>,
+) -> impl IntoResponse {
+    let profile = match required_profile_from_headers(&state, &headers) {
+        Ok(profile) => profile,
+        Err(response) => return response,
+    };
+    let response = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        let mut workshop = CardWorkshop::new(store.connection_mut());
+        match workshop.import_transfer_for_user(profile.id, transfer) {
+            Ok(response) => response,
+            Err(error) => return card_workshop_error_response(error),
+        }
+    };
+    Json(response).into_response()
 }
 
 async fn fork_card_revision(

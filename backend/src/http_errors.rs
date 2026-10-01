@@ -59,9 +59,18 @@ pub(crate) fn card_workshop_error_response(error: CardWorkshopError) -> axum::re
         | CardWorkshopError::PublishedCardIdImmutable { .. } => StatusCode::CONFLICT,
         CardWorkshopError::InvalidDefinition { .. }
         | CardWorkshopError::InvalidPublishedRevision(_) => StatusCode::BAD_REQUEST,
-        CardWorkshopError::Sqlite(_) | CardWorkshopError::Snapshot(_) => {
+        CardWorkshopError::Transfer(rune_lanes_core::CardTransferError::MissingRevision(_)) => {
+            StatusCode::NOT_FOUND
+        }
+        CardWorkshopError::Transfer(rune_lanes_core::CardTransferError::IdentityConflict(_)) => {
+            StatusCode::CONFLICT
+        }
+        CardWorkshopError::Transfer(rune_lanes_core::CardTransferError::Catalog(_)) => {
             StatusCode::INTERNAL_SERVER_ERROR
         }
+        CardWorkshopError::Sqlite(_)
+        | CardWorkshopError::Snapshot(_)
+        | CardWorkshopError::IncompatibleStoredRevision(_) => StatusCode::INTERNAL_SERVER_ERROR,
     };
     (
         status,

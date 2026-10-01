@@ -40,14 +40,19 @@ impl<'de> Deserialize<'de> for CardRevisionTransfer {
 }
 
 impl CardRevisionTransfer {
+    /// Owns an already validated immutable revision as a portable document.
+    pub fn new(revision: PublishedCardRevision) -> Self {
+        Self {
+            schema_version: CARD_REVISION_TRANSFER_SCHEMA_VERSION,
+            revision,
+        }
+    }
+
     pub fn export(catalog: &CardCatalog, id: &CardRevisionId) -> Result<Self, CardTransferError> {
         let revision = catalog
             .resolve(id)
             .ok_or_else(|| CardTransferError::MissingRevision(id.clone()))?;
-        Ok(Self {
-            schema_version: CARD_REVISION_TRANSFER_SCHEMA_VERSION,
-            revision: revision.clone(),
-        })
+        Ok(Self::new(revision.clone()))
     }
 
     pub fn revision(&self) -> &PublishedCardRevision {
