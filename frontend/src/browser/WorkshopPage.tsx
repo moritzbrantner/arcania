@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, BookOpen, Download, Layers, Play, Settings, Sparkles, Upload } from "lucide-react";
+import { ArrowRight, BookOpen, Download, Layers, Play, Settings, Sparkles, Swords, Upload } from "lucide-react";
 import { HERO_OPTIONS } from "../heroes";
 import type { CatalogCard, HeroType } from "../types";
 import { CardEditor } from "./CardEditor";
 import { DeckSelect, systemDeckForRecipe } from "./DeckSelect";
+import { DeckRecipeEditor } from "./DeckRecipeEditor";
 import { RuleEditor, NumberField } from "./RuleEditor";
 import { BROWSER_MATCH_ID, browserCatalog, browserSystemDecks, defaultSetup, hasBrowserMatch, loadSetup, saveSetup, startBrowserMatch, validateSetup, type WorkshopSetup, type WorkshopSystemDeckRecipe } from "./engine";
 
@@ -16,7 +17,7 @@ export function WorkshopPage({ tab, onNavigate }: { tab: string | null; onNaviga
   const [busy, setBusy] = useState(false);
   const [resume, setResume] = useState(false);
   const [dirty, setDirty] = useState(false);
-  const activeTab = tab === "cards" || tab === "rules" ? tab : "play";
+  const activeTab = tab === "cards" || tab === "decks" || tab === "rules" ? tab : "play";
   useEffect(() => {
     let cancelled = false;
     Promise.all([loadSetup(), browserCatalog(), browserSystemDecks()]).then(([loaded, catalog, decks]) => {
@@ -53,7 +54,7 @@ export function WorkshopPage({ tab, onNavigate }: { tab: string | null; onNaviga
   return <main className="app-shell workshop-shell">
     <header className="workshop-nav"><button className="workshop-brand" onClick={() => onNavigate("/workshop")}><span aria-hidden="true">⬡</span> Rune Lanes</button><div className="actions"><button className="secondary-link" onClick={() => onNavigate("/wiki")}><BookOpen size={17} />Rules wiki</button><button className="secondary-link" onClick={() => onNavigate("/settings")}><Settings size={17} />Settings</button></div></header>
     <section className="workshop-heading"><p className="eyebrow">The arena is yours</p><h1>Play. Create. Experiment.</h1><p>A tactical card game on a shared hex arena. Challenge a bot, shape the rules, and bring your own cards.</p></section>
-    <nav className="workshop-tabs" aria-label="Workshop"><button aria-current={activeTab === "play" ? "page" : undefined} onClick={() => onNavigate("/workshop")}><Play size={18} />Play</button><button aria-current={activeTab === "rules" ? "page" : undefined} onClick={() => onNavigate("/workshop?tab=rules")}><Settings size={18} />Match rules</button><button aria-current={activeTab === "cards" ? "page" : undefined} onClick={() => onNavigate("/workshop?tab=cards")}><Layers size={18} />Card editor</button></nav>
+    <nav className="workshop-tabs" aria-label="Workshop"><button aria-current={activeTab === "play" ? "page" : undefined} onClick={() => onNavigate("/workshop")}><Play size={18} />Play</button><button aria-current={activeTab === "decks" ? "page" : undefined} onClick={() => onNavigate("/workshop?tab=decks")}><Swords size={18} />Deck recipes</button><button aria-current={activeTab === "rules" ? "page" : undefined} onClick={() => onNavigate("/workshop?tab=rules")}><Settings size={18} />Match rules</button><button aria-current={activeTab === "cards" ? "page" : undefined} onClick={() => onNavigate("/workshop?tab=cards")}><Layers size={18} />Card editor</button></nav>
     {error ? <div className="notice" role="alert"><p>{error}</p>{!setup ? <button className="secondary-link" onClick={reset}>Use default rules</button> : null}</div> : null}
     {notice ? <p role="status" className="workshop-status">{notice}</p> : null}
     {!setup && !error ? <p role="status">Loading the arena…</p> : null}
@@ -70,7 +71,7 @@ export function WorkshopPage({ tab, onNavigate }: { tab: string | null; onNaviga
             <button className="text-link" type="button" onClick={() => onNavigate("/tutorial")}>Learn to play with the tutorial</button>
           </div>
           <div className="workshop-scene" aria-hidden="true"><div className="workshop-orbit" /><img className="workshop-hero-art" src={`${import.meta.env.BASE_URL}hero-art/${setup.playerHero}.svg`} alt="" /><div className="workshop-scene-caption"><span>37 hexes. Endless possibilities.</span><strong>{HERO_OPTIONS.find((hero) => hero.id === setup.playerHero)?.name}</strong></div></div>
-        </section> : activeTab === "rules" ? <RuleEditor setup={setup} onChange={edit} /> : <CardEditor cards={setup.cards} catalog={catalog} onChange={(cards) => run(async () => { const next = await validateSetup({ ...setup, cards }); edit(next); setNotice("Card changes ready. Save the preset or start a match to keep them."); })} />}
+        </section> : activeTab === "rules" ? <RuleEditor setup={setup} onChange={edit} /> : activeTab === "decks" ? <DeckRecipeEditor playerRecipe={setup.playerDeckRecipe} opponentRecipe={setup.opponentDeckRecipe} catalog={catalog} systemDecks={systemDecks} onChange={(side, cards) => edit(side === "player" ? { ...setup, playerDeckRecipe: cards } : { ...setup, opponentDeckRecipe: cards })} /> : <CardEditor cards={setup.cards} catalog={catalog} onChange={(cards) => run(async () => { const next = await validateSetup({ ...setup, cards }); edit(next); setNotice("Card changes ready. Save the preset or start a match to keep them."); })} />}
         {activeTab !== "play" ? <div className="workshop-save"><span>{dirty ? "Unsaved changes" : "Saved preset"}</span><button className="primary-button" type="submit">Save preset</button><button className="secondary-link" type="button" onClick={() => run(start)}>Save & play against bot<ArrowRight size={18} /></button></div> : null}
         <details className="workshop-tools"><summary>Preset tools & repeatable matches</summary><p>Export rules, deck recipes and custom cards to share or keep a backup. Importing validates the preset before replacing your draft.</p><NumberField label="Match seed" min={0} max={4294967295} value={setup.seed} onChange={(seed) => edit({ ...setup, seed })} /><div className="actions"><button className="secondary-link" type="button" onClick={() => run(exportPreset)}><Download size={16} />Export preset</button><label className="secondary-link workshop-import"><Upload size={16} />Import preset<input type="file" accept="application/json,.json" aria-label="Import preset" onChange={(event) => {
           const file = event.target.files?.[0]; event.target.value = "";

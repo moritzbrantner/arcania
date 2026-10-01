@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 
 test.beforeAll(async ({ request }) => {
   const expectedRevision = process.env.ARCANIA_PAGES_REVISION;
@@ -160,6 +161,77 @@ test("imported independent deck recipes drive the match and its saved command jo
   await expect(page.getByRole("button", { name: "Finish Attacks", exact: true })).toBeVisible();
   await expect(hand.getByRole("button", { name: /Ember Squire/ })).toHaveCount(7);
   expect(apiRequests).toEqual([]);
+});
+
+test("edited deck counts survive save, export, import and match creation", async ({ page }) => {
+  const apiRequests: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.includes("/api/")) { apiRequests.push(request.url()); }
+  });
+  await page.goto("./workshop?tab=decks");
+  const ember = page.getByRole("spinbutton", { name: "Ember Squire copies", exact: true });
+  const spark = page.getByRole("spinbutton", { name: "Spark Jolt copies", exact: true });
+  await ember.fill("5");
+  await spark.fill("0");
+  await spark.fill("4");
+  await page.getByRole("button", { name: "Bot deck recipe", exact: true }).click();
+  await expect(ember).toHaveValue("4");
+  await page.getByRole("spinbutton", { name: "Swift Familiar copies", exact: true }).fill("3");
+  await page.getByRole("button", { name: "Save preset", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("saved");
+  await page.reload();
+  await expect(ember).toHaveValue("5");
+  await expect(spark).toHaveValue("4");
+  await page.getByRole("button", { name: "Bot deck recipe", exact: true }).click();
+  await expect(page.getByRole("spinbutton", { name: "Swift Familiar copies", exact: true })).toHaveValue("3");
+  await page.getByText("Preset tools & repeatable matches", { exact: true }).click();
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export preset", exact: true }).click();
+  const download = await downloadPromise;
+  const filePath = await download.path();
+  if (!filePath) { throw new Error("The exported preset must be available for import."); }
+  const exported: unknown = JSON.parse(await readFile(filePath, "utf8"));
+  expect(exported).toMatchObject({
+    playerDeckRecipe: expect.arrayContaining([{ templateId: "ember-squire", count: 5 }, { templateId: "spark-jolt", count: 4 }]),
+    opponentDeckRecipe: expect.arrayContaining([{ templateId: "swift-familiar", count: 3 }]),
+  });
+  await page.getByRole("button", { name: "Your deck recipe", exact: true }).click();
+  await ember.fill("6");
+  await page.getByLabel("Import preset", { exact: true }).setInputFiles(filePath);
+  await expect(page.getByRole("status")).toContainText("imported");
+  await expect(ember).toHaveValue("5");
+  await page.getByRole("button", { name: "Save & play against bot", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Round 1", exact: true })).toBeVisible();
+  const journal: unknown = await page.evaluate(() => JSON.parse(localStorage.getItem("rune-lanes.browser-match.v1") ?? "null"));
+  expect(journal).toMatchObject({ setup: exported });
+  expect(apiRequests).toEqual([]);
+});
+
+test("a rejected deck draft retains its edits and the saved preset", async ({ page }) => {
+  await page.goto("./workshop?tab=decks");
+  await page.getByRole("button", { name: "Save preset", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("saved");
+  const before = await page.evaluate(() => localStorage.getItem("rune-lanes.workshop.v1"));
+  const stored: unknown = JSON.parse(before ?? "null");
+  if (typeof stored !== "object" || stored === null || Array.isArray(stored)) { throw new Error("Expected a saved preset."); }
+  await page.getByText("Preset tools & repeatable matches", { exact: true }).click();
+  await page.getByLabel("Import preset", { exact: true }).setInputFiles({
+    name: "small-deck.json", mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify({ ...stored, playerDeckRecipe: [{ templateId: "ember-squire", count: 7 }] })),
+  });
+  await expect(page.getByRole("status")).toContainText("imported");
+  const ember = page.getByRole("spinbutton", { name: "Ember Squire copies", exact: true });
+  await ember.fill("0");
+  await page.getByRole("button", { name: "Save & play against bot", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText("Player deck recipe must contain between 7 and 120 cards");
+  await expect(ember).toHaveValue("0");
+  expect(await page.evaluate(() => localStorage.getItem("rune-lanes.workshop.v1"))).toBe(before);
+  expect(await page.evaluate(() => localStorage.getItem("rune-lanes.browser-match.v1"))).toBeNull();
+  await ember.fill("7");
+  await page.getByRole("button", { name: "Save preset", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("saved");
+  await page.reload();
+  await expect(ember).toHaveValue("7");
 });
 
 test("summons Ember Squire in Movement, moves it, and advances through Attack and Card Play", async ({ page }) => {
