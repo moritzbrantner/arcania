@@ -108,10 +108,6 @@ impl SoloAiPolicy {
     }
 
     fn useful_spell(&self, view: &SoloAiView) -> Option<SoloAiActionIntent> {
-        if view.opponent_hero.ap_remaining == 0 {
-            return None;
-        }
-
         for card in view
             .opponent_hand
             .iter()
@@ -177,10 +173,6 @@ impl SoloAiPolicy {
     }
 
     fn highest_cost_unit_summon(&self, view: &SoloAiView) -> Option<SoloAiActionIntent> {
-        if view.opponent_hero.ap_remaining == 0 {
-            return None;
-        }
-
         let card = view
             .opponent_hand
             .iter()
@@ -197,9 +189,6 @@ impl SoloAiPolicy {
     }
 
     fn useful_item_equip(&self, view: &SoloAiView) -> Option<SoloAiActionIntent> {
-        if view.opponent_hero.ap_remaining == 0 {
-            return None;
-        }
         for card in view
             .opponent_hand
             .iter()
@@ -276,10 +265,6 @@ impl SoloAiPolicy {
     }
 
     fn build_mana_source(&self, view: &SoloAiView) -> Option<SoloAiActionIntent> {
-        if view.opponent_hero.ap_remaining == 0 {
-            return None;
-        }
-
         let card = view.opponent_hand.iter().find(|card| {
             card.cost <= view.opponent_mana
                 && matches!(
