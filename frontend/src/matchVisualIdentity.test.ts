@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createCardArtworkCatalog } from "./cardArtworkCatalog";
 import { createMatchVisualCatalog } from "./matchVisualIdentity";
 import type {
   Card,
@@ -51,6 +52,72 @@ const sparkJolt = {
 const catalog = createMatchVisualCatalog([emberSquire, sparkJolt]);
 
 describe("createMatchVisualCatalog", () => {
+  it("keeps explicit artwork failures out of legacy name fallback and rejects another Card's binding", () => {
+    const revision = { cardId: "custom-squire", revision: 1 };
+    const other = { cardId: "other-card", revision: 1 };
+    const prepared = createCardArtworkCatalog({
+      identities: [
+        { id: "valid", cardRevision: revision, artworkAssetId: "art" },
+        { id: "other", cardRevision: other, artworkAssetId: "art" },
+        { id: "missing", cardRevision: revision, artworkAssetId: "unavailable" },
+        { id: "absent", cardRevision: revision, artworkAssetId: null },
+      ], assets: [{ id: "art", path: "/card-art/stoneguard.svg" }],
+    }, [revision, other]);
+    if (!prepared.ok) {
+      throw new Error("artwork catalog should prepare");
+    }
+    const card = { ...emberSquire, id: "player-custom", templateId: "custom-squire", cost: 2 } satisfies Card;
+    const visuals = createMatchVisualCatalog([emberSquire], prepared.catalog);
+    for (const binding of [
+      { cardRevision: revision, visualIdentityId: "unknown" },
+      { cardRevision: revision, visualIdentityId: "missing" },
+      { cardRevision: revision, visualIdentityId: "absent" },
+      { cardRevision: revision, visualIdentityId: null },
+      { cardRevision: { ...revision, revision: 2 }, visualIdentityId: "valid" },
+      { cardRevision: other, visualIdentityId: "other" },
+    ]) {
+      expect(visuals.card(card, binding)).toMatchObject({
+        status: "unknown", templateId: "custom-squire", name: "Ember Squire", cost: 2, artPath: null,
+      });
+    }
+    expect(createMatchVisualCatalog([emberSquire]).card(card, {
+      cardRevision: revision, visualIdentityId: "valid",
+    }).artPath).toBeNull();
+    expect(visuals.card(card).status).toBe("legacyNameFallback");
+  });
+
+  it("swaps exact-revision artwork while preserving the authoritative Card fields and identity", () => {
+    const card = {
+      ...emberSquire, id: "player-custom-card", templateId: "custom-squire", cost: 2,
+      text: "A published custom Unit.", kind: { type: "unit", attack: 3, armor: 4, maxAp: 2 },
+    } satisfies Card;
+    const revision = { cardId: "custom-squire", revision: 1 };
+    const prepared = createCardArtworkCatalog({
+      identities: [
+        { id: "original", cardRevision: revision, artworkAssetId: "red" },
+        { id: "alternate", cardRevision: revision, artworkAssetId: "blue" },
+      ],
+      assets: [
+        { id: "red", path: "/card-art/ember-squire.svg" },
+        { id: "blue", path: "/card-art/stoneguard.svg" },
+      ],
+    }, [revision]);
+    if (!prepared.ok) {
+      throw new Error("artwork catalog should prepare");
+    }
+    const before = structuredClone(card);
+    const visuals = createMatchVisualCatalog([emberSquire], prepared.catalog);
+    const original = visuals.card(card, { cardRevision: revision, visualIdentityId: "original" });
+    const alternate = visuals.card(card, { cardRevision: revision, visualIdentityId: "alternate" });
+    expect(alternate).toMatchObject({
+      status: "resolved", templateId: "custom-squire", name: "Ember Squire", cost: 2,
+      text: "A published custom Unit.", kind: { type: "unit", attack: 3, armor: 4, maxAp: 2 },
+      artPath: "/card-art/stoneguard.svg",
+    });
+    expect({ ...alternate, artPath: original.artPath }).toEqual(original);
+    expect(card).toEqual(before);
+  });
+
   it("resolves a hand Card by templateId", () => {
     const card = {
       ...emberSquire,

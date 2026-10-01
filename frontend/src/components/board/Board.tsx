@@ -796,9 +796,13 @@ export function CardButton({
   tutorialTargetId?: string;
   tutorialHighlighted?: boolean;
 }) {
+  const [failedArtPath, setFailedArtPath] = useState<string | null>(null);
+  const artPath = visualIdentity.artPath;
+  const showArtwork = artPath !== null && artPath !== failedArtPath;
+
   return (
     <button
-      className={`card-button ${selected ? "selected" : ""} ${dragging ? "dragging" : ""} ${played ? "played" : ""} ${unavailable ? "unavailable" : ""} ${tutorialHighlighted ? "tutorial-highlight tutorial-highlight-primary" : ""} ${card.rarity}`}
+      className={`card-button ${showArtwork ? "" : "artwork-fallback"} ${selected ? "selected" : ""} ${dragging ? "dragging" : ""} ${played ? "played" : ""} ${unavailable ? "unavailable" : ""} ${tutorialHighlighted ? "tutorial-highlight tutorial-highlight-primary" : ""} ${card.rarity}`}
       type="button"
       disabled={disabled}
       aria-disabled={disabled || unavailable}
@@ -817,8 +821,14 @@ export function CardButton({
       }}
       onDragEnd={onDragEnd}
     >
-      {visualIdentity.artPath ? (
-        <img className="card-button-art" src={visualIdentity.artPath} alt={visualIdentity.artAlt} />
+      {showArtwork ? (
+        <img
+          key={artPath}
+          className="card-button-art"
+          src={artPath}
+          alt={visualIdentity.artAlt}
+          onError={() => setFailedArtPath(artPath)}
+        />
       ) : null}
       <span className="card-cost">{card.cost}</span>
       <strong>{card.name}</strong>

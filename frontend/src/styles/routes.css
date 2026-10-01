@@ -3123,6 +3123,10 @@ h1 {
   background: #111412;
 }
 
+.card-button.artwork-fallback .card-text {
+  color: inherit;
+}
+
 .card-cost {
   position: absolute;
   top: 10px;
