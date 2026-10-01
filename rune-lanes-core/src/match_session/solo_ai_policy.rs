@@ -45,9 +45,15 @@ impl SoloAiPolicy {
         config.default_policy()
     }
 
-    pub(super) fn decide(&self, view: &SoloAiView) -> SoloAiDecision {
+    fn decide(
+        &self,
+        view: &SoloAiView,
+        accepts: impl Fn(SoloAiRuleId, &SoloAiActionIntent) -> bool,
+    ) -> SoloAiDecision {
         for rule in &self.rules {
-            if let Some(intent) = self.evaluate_rule(*rule, view) {
+            if let Some(intent) = self.evaluate_rule(*rule, view)
+                && accepts(*rule, &intent)
+            {
                 return SoloAiDecision::TakeAction(intent);
             }
         }
@@ -380,6 +386,8 @@ pub(super) struct SoloAiCarriedItem {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum SoloAiDecision {
     TakeAction(SoloAiActionIntent),
+    StartAttackPhase,
+    StartCardPlay,
     FinishTurn,
 }
 
@@ -405,6 +413,16 @@ pub(super) enum SoloAiActionIntent {
 }
 
 impl MatchState {
+    fn solo_ai_view_with_playable_cards(&self, side: Side, commands: &[GameCommand]) -> SoloAiView {
+        let mut view = self.solo_ai_view_for_side(side);
+        view.opponent_hand.retain(|card| {
+            commands.iter().any(|command| {
+                matches!(command, GameCommand::PlayCard { card_id, .. } if card_id == &card.id)
+            })
+        });
+        view
+    }
+
     pub(super) fn solo_ai_response_card(
         &self,
         side: Side,
@@ -414,12 +432,7 @@ impl MatchState {
             return None;
         }
         let commands = self.queries().legal_commands(side);
-        let mut view = self.solo_ai_view_for_side(side);
-        view.opponent_hand.retain(|card| {
-            commands.iter().any(|command| {
-                matches!(command, GameCommand::PlayCard { card_id, .. } if card_id == &card.id)
-            })
-        });
+        let view = self.solo_ai_view_with_playable_cards(side, &commands);
         let intent = policy.useful_spell(&view)?;
         let GameCommand::PlayCard { card_id, target } = ai_intent_game_command(intent) else {
             return None;
@@ -463,40 +476,46 @@ impl MatchState {
             return Err(MatchError::AiUnavailable);
         }
 
-        let decision = || policy.decide(&self.solo_ai_view_for_side(side));
-        match self.phase {
-            Phase::Movement => {
-                if self.side_has_legal_attack(side) {
-                    return Ok(Some(GameCommand::StartAttackPhase));
-                }
-                Ok(Some(match decision() {
-                    SoloAiDecision::TakeAction(intent @ SoloAiActionIntent::MovePiece { .. })
-                    | SoloAiDecision::TakeAction(
-                        intent @ SoloAiActionIntent::ActivateItem { .. },
-                    ) => ai_intent_game_command(intent),
-                    SoloAiDecision::TakeAction(SoloAiActionIntent::Attack { .. }) => {
-                        GameCommand::StartAttackPhase
-                    }
-                    _ if self.ruleset.turn.movement_card_play => GameCommand::StartAttackPhase,
-                    _ => GameCommand::StartCardPlay,
-                }))
-            }
-            Phase::Attack => Ok(Some(match decision() {
-                SoloAiDecision::TakeAction(intent @ SoloAiActionIntent::Attack { .. })
-                | SoloAiDecision::TakeAction(intent @ SoloAiActionIntent::ActivateItem { .. }) => {
-                    ai_intent_game_command(intent)
-                }
-                _ => GameCommand::StartCardPlay,
-            })),
-            Phase::CardPlay => match decision() {
-                SoloAiDecision::TakeAction(intent @ SoloAiActionIntent::PlayCard { .. })
-                | SoloAiDecision::TakeAction(intent @ SoloAiActionIntent::ActivateItem { .. }) => {
-                    Ok(Some(ai_intent_game_command(intent)))
-                }
-                _ => Ok(None),
-            },
-            Phase::MatchOver => Err(MatchError::MatchOver),
+        Ok(match self.solo_ai_phase_decision(side, policy)? {
+            SoloAiDecision::TakeAction(intent) => Some(ai_intent_game_command(intent)),
+            SoloAiDecision::StartAttackPhase => Some(GameCommand::StartAttackPhase),
+            SoloAiDecision::StartCardPlay => Some(GameCommand::StartCardPlay),
+            SoloAiDecision::FinishTurn => None,
+        })
+    }
+
+    pub(super) fn solo_ai_phase_decision(
+        &self,
+        side: Side,
+        policy: &SoloAiPolicy,
+    ) -> Result<SoloAiDecision, MatchError> {
+        if self.phase == Phase::MatchOver {
+            return Err(MatchError::MatchOver);
         }
+        let commands = self.queries().legal_commands(side);
+        let view = self.solo_ai_view_with_playable_cards(side, &commands);
+        let decision = policy.decide(&view, |_rule, intent| {
+            // The AI lab deliberately injects a bad Attack to exercise strict
+            // illegal-intent reporting. Production rules always use the query.
+            #[cfg(any(test, feature = "test-support"))]
+            if _rule == SoloAiRuleId::InvalidAttack && self.phase == Phase::Attack {
+                return true;
+            }
+            commands.contains(&ai_intent_game_command(intent.clone()))
+        });
+        if decision != SoloAiDecision::FinishTurn {
+            return Ok(decision);
+        }
+        Ok(match self.phase {
+            Phase::Movement
+                if self.ruleset.turn.movement_card_play || self.side_has_legal_attack(side) =>
+            {
+                SoloAiDecision::StartAttackPhase
+            }
+            Phase::Movement | Phase::Attack => SoloAiDecision::StartCardPlay,
+            Phase::CardPlay => SoloAiDecision::FinishTurn,
+            Phase::MatchOver => unreachable!("checked before choosing an AI action"),
+        })
     }
 
     pub fn finish_solo_ai_turn_recording(
@@ -679,12 +698,12 @@ pub fn default_policy_config_path() -> &'static str {
 fn baseline_rules() -> Vec<SoloAiRuleId> {
     vec![
         SoloAiRuleId::InRangeAttack,
+        SoloAiRuleId::MoveTowardPlayerHero,
         SoloAiRuleId::UsefulSpell,
         SoloAiRuleId::UsefulItemActivation,
         SoloAiRuleId::UsefulItemEquip,
         SoloAiRuleId::BuildManaSource,
         SoloAiRuleId::HighestCostUnitSummon,
-        SoloAiRuleId::MoveTowardPlayerHero,
     ]
 }
 
@@ -699,7 +718,16 @@ mod tests {
     use crate::match_session::Rarity;
 
     fn policy_decision(view: SoloAiView) -> SoloAiDecision {
-        SoloAiPolicy::default().decide(&view)
+        SoloAiPolicy::default().decide(&view, |_, _| true)
+    }
+
+    fn card_play_decision(view: SoloAiView) -> SoloAiDecision {
+        SoloAiPolicy::default().decide(&view, |_, intent| {
+            matches!(
+                intent,
+                SoloAiActionIntent::PlayCard { .. } | SoloAiActionIntent::ActivateItem { .. }
+            )
+        })
     }
 
     fn base_view() -> SoloAiView {
@@ -794,12 +822,12 @@ mod tests {
             SoloAiPolicy::baseline().rule_order(),
             &[
                 SoloAiRuleId::InRangeAttack,
+                SoloAiRuleId::MoveTowardPlayerHero,
                 SoloAiRuleId::UsefulSpell,
                 SoloAiRuleId::UsefulItemActivation,
                 SoloAiRuleId::UsefulItemEquip,
                 SoloAiRuleId::BuildManaSource,
                 SoloAiRuleId::HighestCostUnitSummon,
-                SoloAiRuleId::MoveTowardPlayerHero,
             ]
         );
     }
@@ -898,7 +926,7 @@ mod tests {
         view.opponent_mana = 1;
 
         assert_eq!(
-            policy_decision(view),
+            card_play_decision(view),
             SoloAiDecision::TakeAction(SoloAiActionIntent::PlayCard {
                 card_id: "damage".to_string(),
                 target: ActionTarget::Piece {
@@ -914,18 +942,12 @@ mod tests {
         view.opponent_hand = vec![spell_card("heal", 1, SpellEffect::Heal { amount: 1 })];
         view.opponent_mana = 1;
 
-        assert_eq!(
-            policy_decision(view.clone()),
-            SoloAiDecision::TakeAction(SoloAiActionIntent::MovePiece {
-                piece_id: "opponent-hero".to_string(),
-                to: hex(0, -2),
-            })
-        );
+        assert_eq!(card_play_decision(view.clone()), SoloAiDecision::FinishTurn);
 
         view.damaged_piece_ids.insert("opponent-hero".to_string());
 
         assert_eq!(
-            policy_decision(view),
+            card_play_decision(view),
             SoloAiDecision::TakeAction(SoloAiActionIntent::PlayCard {
                 card_id: "heal".to_string(),
                 target: ActionTarget::Piece {
@@ -959,7 +981,7 @@ mod tests {
         view.opponent_mana = 1;
 
         assert_eq!(
-            policy_decision(view),
+            card_play_decision(view),
             SoloAiDecision::TakeAction(SoloAiActionIntent::PlayCard {
                 card_id: "buff".to_string(),
                 target: ActionTarget::Piece {
@@ -983,7 +1005,7 @@ mod tests {
         let SoloAiDecision::TakeAction(SoloAiActionIntent::PlayCard {
             target: ActionTarget::Piece { piece_id },
             ..
-        }) = policy_decision(view.clone())
+        }) = card_play_decision(view.clone())
         else {
             panic!("damage spell should choose a piece target");
         };
@@ -1009,7 +1031,7 @@ mod tests {
         view.opponent_mana = 3;
 
         assert_eq!(
-            policy_decision(view),
+            card_play_decision(view),
             SoloAiDecision::TakeAction(SoloAiActionIntent::PlayCard {
                 card_id: "expensive".to_string(),
                 target: ActionTarget::Hex { coord: hex(0, -2) },
@@ -1027,7 +1049,7 @@ mod tests {
         view.opponent_mana = 3;
 
         assert_eq!(
-            policy_decision(view),
+            card_play_decision(view),
             SoloAiDecision::TakeAction(SoloAiActionIntent::PlayCard {
                 card_id: "mana-well".to_string(),
                 target: ActionTarget::Hex { coord: hex(0, -2) },

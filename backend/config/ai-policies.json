@@ -5,12 +5,12 @@
       "id": "baseline-v1",
       "rules": [
         "inRangeAttack",
+        "moveTowardPlayerHero",
         "usefulSpell",
         "usefulItemActivation",
         "usefulItemEquip",
         "buildManaSource",
-        "highestCostUnitSummon",
-        "moveTowardPlayerHero"
+        "highestCostUnitSummon"
       ]
     },
     {

@@ -5,9 +5,21 @@
 {"type": "startCardPlay"}
 {"type": "endTurn"}
 {"advanceAi": "opponent", "untilDone": true}
-# The AI cast a Spell; the Player holds priority over the pending stack.
-{"expect": {"activeSide": "opponent", "prioritySide": "player", "legal": [{"type": "passPriority"}]}}
+# The AI repositions first; the Player holds priority over each pending move.
+{"expect": {"phase": "movement", "activeSide": "opponent", "prioritySide": "player", "legal": [{"type": "passPriority"}]}}
 {"type": "passPriority"}
+{"advanceAi": "opponent", "untilDone": true}
+{"type": "passPriority"}
+{"advanceAi": "opponent", "untilDone": true}
+{"type": "passPriority"}
+# Hero AP is exhausted, but Mana still pays for Movement setup Cards.
+{"expect": {"phase": "movement", "state": {"opponent": {"hero": {"apRemaining": 0, "position": {"q": 0, "r": 0}}}}}}
+{"advanceAi": "opponent", "untilDone": true}
+{"type": "passPriority"}
+{"advanceAi": "opponent", "untilDone": true}
+{"type": "passPriority"}
+# The new Unit spends its partial entry AP before Attack.
+{"expect": {"phase": "movement", "mana": {"opponent": 0}}}
 {"advanceAi": "opponent", "untilDone": true}
 {"type": "passPriority"}
 {"advanceAi": "opponent", "untilDone": true}

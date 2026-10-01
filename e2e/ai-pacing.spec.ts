@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import type { HexCoord, Phase, Side, Unit } from "../frontend/src/types";
 
 const MATCH_ID = "e2e-ai";
 const BOARD_VISUAL_MODE_STORAGE_KEY = "rune-lanes-board-visual-mode";
@@ -132,6 +133,101 @@ test("does not start the next AI action until current playback finishes", async 
     .toBe(true);
 });
 
+test("shows AI summon and entry movement before leaving Movement", async ({ page }) => {
+  let match = matchAt({ q: 0, r: -3 }, "player", "cardPlay");
+  let advanceCount = 0;
+  let finishFinalRequest = () => {};
+  const finalRequest = new Promise<void>((resolve) => {
+    finishFinalRequest = resolve;
+  });
+  const runner: Unit = {
+    id: "ai-runner",
+    side: "opponent",
+    name: "Rune Runner",
+    templateId: "rune-runner",
+    attack: 1,
+    attackRange: 1,
+    armor: 1,
+    maxArmor: 1,
+    position: { q: 0, r: -1 },
+    apRemaining: 2,
+    maxAp: 4,
+    hasAttacked: false,
+  };
+  await mockMatchApi(page, async (action) => {
+    if (action.type === "endTurn") {
+      match = matchAt({ q: 0, r: -3 }, "opponent");
+      return matchResponse(match);
+    }
+    if (action.type !== "advanceAi") {
+      throw new Error(`Unexpected action ${action.type}`);
+    }
+    advanceCount += 1;
+    if (advanceCount === 1) {
+      match = matchAt({ q: 0, r: -2 }, "opponent");
+      return matchResponse(match, [replayFrame(0, match, {
+        type: "pieceMoved",
+        side: "opponent",
+        pieceId: "opponent-hero",
+        from: { q: 0, r: -3 },
+        to: { q: 0, r: -2 },
+      })]);
+    }
+    if (advanceCount === 2) {
+      match = matchAt({ q: 0, r: -2 }, "opponent", "movement", [runner]);
+      return matchResponse(match, [replayFrame(1, match, {
+        type: "unitSummoned",
+        side: "opponent",
+        unitId: runner.id,
+        name: runner.name,
+        position: runner.position,
+      })]);
+    }
+    if (advanceCount === 3) {
+      const movedRunner = { ...runner, position: { q: 0, r: 0 }, apRemaining: 1 };
+      match = matchAt({ q: 0, r: -2 }, "opponent", "movement", [movedRunner]);
+      return matchResponse(match, [replayFrame(2, match, {
+        type: "pieceMoved",
+        side: "opponent",
+        pieceId: runner.id,
+        from: runner.position,
+        to: movedRunner.position,
+      })]);
+    }
+    // Keep the final replay visible until the test releases the next request.
+    await finalRequest;
+    match = matchAt({ q: 0, r: -2 }, "player", "movement", match.board.units);
+    return matchResponse(match);
+  }, () => match);
+
+  try {
+    await page.goto(`/match/${MATCH_ID}`);
+    const firstAdvanceResponse = page.waitForResponse(
+      (response) =>
+        response.url().endsWith(`/api/matches/${MATCH_ID}/actions`) &&
+        response.request().postData()?.includes("advanceAi") === true,
+    );
+    await page.getByRole("button", { name: /End Turn/ }).click();
+    await firstAdvanceResponse;
+    await expect(opponentHeroAt(page, { q: 0, r: -2 })).toBeVisible();
+    const summoned = page.getByRole("button", {
+      name: "q 0, r -1, occupied by the opponent's unit",
+    });
+    await expect(summoned).toBeVisible({ timeout: 5_000 });
+    await expect(summoned.locator(".piece-token-stat-row > span").nth(2)).toHaveText("2");
+    await expect(page.getByRole("button", { name: /Start Attack/ })).toBeVisible();
+    const moved = page.getByRole("button", {
+      name: "q 0, r 0, occupied by the opponent's unit",
+    });
+    await expect(moved).toBeVisible({ timeout: 5_000 });
+    await expect(moved.locator(".piece-token-stat-row > span").nth(2)).toHaveText("1");
+    await expect(page.getByRole("button", { name: /Start Attack/ })).toBeVisible();
+    expect(match.phase).toBe("movement");
+  } finally {
+    finishFinalRequest();
+  }
+});
+
 async function mockMatchApi(
   page,
   handleAction,
@@ -192,7 +288,12 @@ function opponentHeroAt(page, coord) {
   });
 }
 
-function matchAt(opponentPosition, activeSide, phase = "movement") {
+function matchAt(
+  opponentPosition: HexCoord,
+  activeSide: Side,
+  phase: Phase = "movement",
+  units: Unit[] = [],
+) {
   return {
     mode: "solo",
     round: 1,
@@ -243,7 +344,7 @@ function matchAt(opponentPosition, activeSide, phase = "movement") {
     board: {
       radius: 3,
       tiles: radiusThreeTiles(),
-      units: [],
+      units,
       droppedItems: [],
     },
     actionStack: [],
