@@ -58,7 +58,13 @@ pub(crate) fn card_workshop_error_response(error: CardWorkshopError) -> axum::re
         | CardWorkshopError::CardIdConflict(_)
         | CardWorkshopError::PublishedCardIdImmutable { .. } => StatusCode::CONFLICT,
         CardWorkshopError::InvalidDefinition { .. }
+        | CardWorkshopError::InvalidScenario(_)
         | CardWorkshopError::InvalidPublishedRevision(_) => StatusCode::BAD_REQUEST,
+        CardWorkshopError::Scenario {
+            error: rune_lanes_core::event_sourcing::EventSourcingError::Rule(_),
+            ..
+        } => StatusCode::BAD_REQUEST,
+        CardWorkshopError::Scenario { .. } => StatusCode::INTERNAL_SERVER_ERROR,
         CardWorkshopError::Transfer(rune_lanes_core::CardTransferError::MissingRevision(_)) => {
             StatusCode::NOT_FOUND
         }
