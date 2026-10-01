@@ -2406,10 +2406,7 @@ impl MatchState {
             return Err(MatchError::AiUnavailable);
         }
 
-        let decision = match self.ai_phase_decision(side, policy, frames, action_index)? {
-            Some(outcome) => return Ok(outcome),
-            None => policy.decide(&self.solo_ai_view_for_side(side)),
-        };
+        let decision = self.solo_ai_phase_decision(side, policy)?;
         let outcome = match self.apply_ai_decision_for_side(side, decision, frames, action_index) {
             AiDecisionApplication::Applied => {
                 self.check_winner(frames, action_index);
@@ -2430,69 +2427,6 @@ impl MatchState {
 
         self.truncate_log();
         Ok(outcome)
-    }
-
-    fn ai_phase_decision(
-        &mut self,
-        side: Side,
-        policy: &SoloAiPolicy,
-        frames: &mut Vec<RecordedReplayFrame>,
-        action_index: Option<u32>,
-    ) -> Result<Option<AiAdvanceOutcome>, MatchError> {
-        match self.phase {
-            Phase::Movement => {
-                if self.side_has_legal_attack(side) {
-                    self.start_attack_phase_for_side(side, frames, action_index)?;
-                    return Ok(Some(AiAdvanceOutcome::ActionApplied));
-                }
-                let decision = policy.decide(&self.solo_ai_view_for_side(side));
-                match decision {
-                    SoloAiDecision::TakeAction(SoloAiActionIntent::MovePiece { .. })
-                    | SoloAiDecision::TakeAction(SoloAiActionIntent::ActivateItem { .. }) => {
-                        Ok(None)
-                    }
-                    SoloAiDecision::TakeAction(SoloAiActionIntent::Attack { .. }) => {
-                        self.start_attack_phase_for_side(side, frames, action_index)?;
-                        Ok(Some(AiAdvanceOutcome::ActionApplied))
-                    }
-                    _ => {
-                        if self.ruleset.turn.movement_card_play {
-                            self.start_attack_phase_for_side(side, frames, action_index)?;
-                        } else {
-                            self.start_card_play_for_side(side, frames, action_index)?;
-                        }
-                        Ok(Some(AiAdvanceOutcome::ActionApplied))
-                    }
-                }
-            }
-            Phase::Attack => {
-                let decision = policy.decide(&self.solo_ai_view_for_side(side));
-                match decision {
-                    SoloAiDecision::TakeAction(SoloAiActionIntent::Attack { .. })
-                    | SoloAiDecision::TakeAction(SoloAiActionIntent::ActivateItem { .. }) => {
-                        Ok(None)
-                    }
-                    _ => {
-                        self.start_card_play_for_side(side, frames, action_index)?;
-                        Ok(Some(AiAdvanceOutcome::ActionApplied))
-                    }
-                }
-            }
-            Phase::CardPlay => {
-                let decision = policy.decide(&self.solo_ai_view_for_side(side));
-                match decision {
-                    SoloAiDecision::TakeAction(SoloAiActionIntent::PlayCard { .. })
-                    | SoloAiDecision::TakeAction(SoloAiActionIntent::ActivateItem { .. }) => {
-                        Ok(None)
-                    }
-                    _ => {
-                        self.finish_ai_turn(side, frames, action_index);
-                        Ok(Some(AiAdvanceOutcome::FinishedTurn))
-                    }
-                }
-            }
-            Phase::MatchOver => Err(MatchError::MatchOver),
-        }
     }
 
     fn apply_ai_decision_for_side(
@@ -2526,6 +2460,14 @@ impl MatchState {
                 target,
             }) => self
                 .activate_item_for_side(side, &carrier_id, &item_id, target, frames, action_index)
+                .map(|()| AiDecisionApplication::Applied)
+                .unwrap_or_else(AiDecisionApplication::Illegal),
+            SoloAiDecision::StartAttackPhase => self
+                .start_attack_phase_for_side(side, frames, action_index)
+                .map(|()| AiDecisionApplication::Applied)
+                .unwrap_or_else(AiDecisionApplication::Illegal),
+            SoloAiDecision::StartCardPlay => self
+                .start_card_play_for_side(side, frames, action_index)
                 .map(|()| AiDecisionApplication::Applied)
                 .unwrap_or_else(AiDecisionApplication::Illegal),
             SoloAiDecision::FinishTurn => AiDecisionApplication::FinishTurn,

@@ -1,5 +1,280 @@
 use super::*;
 
+fn paced_solo_ai_step(
+    state: &mut MatchState,
+    policy: &SoloAiPolicy,
+    action_index: u32,
+) -> Option<crate::commands::GameCommand> {
+    use crate::commands::CommandContext;
+    let side = state.active_side;
+    let before = state.to_snapshot_json().unwrap();
+    let command = state
+        .next_solo_ai_game_command_with_policy(side, policy)
+        .unwrap();
+    assert_eq!(state.to_snapshot_json().unwrap(), before);
+    let mut compatibility = state.clone();
+    let mut frames = Vec::new();
+    let outcome = compatibility
+        .advance_ai_for_side_with_policy_strict(side, policy, &mut frames, Some(action_index))
+        .unwrap();
+    if let Some(command) = &command {
+        assert!(state.queries().command_availability(side, command).allowed);
+        command
+            .clone()
+            .execute_compatibility(state, CommandContext { side, action_index })
+            .unwrap();
+        assert_eq!(outcome, AiAdvanceOutcome::ActionApplied);
+    } else {
+        state
+            .finish_solo_ai_turn_recording(side, action_index)
+            .unwrap();
+        assert_eq!(outcome, AiAdvanceOutcome::FinishedTurn);
+    }
+    assert_eq!(
+        state.to_snapshot_json().unwrap(),
+        compatibility.to_snapshot_json().unwrap()
+    );
+    command
+}
+
+fn pass_solo_response_window(state: &mut MatchState, action_index: u32) {
+    use crate::commands::{CommandContext, GameCommand};
+    assert_eq!(state.priority_side, Some(Side::Player));
+    GameCommand::PassPriority
+        .execute_compatibility(
+            state,
+            CommandContext {
+                side: Side::Player,
+                action_index,
+            },
+        )
+        .unwrap();
+    assert!(state.action_stack.is_empty());
+}
+
+#[test]
+fn solo_ai_repositions_then_summons_and_moves_with_partial_entry_ap() {
+    use crate::commands::GameCommand;
+    let mut state = MatchState::new_with_seed(7);
+    state.active_side = Side::Opponent;
+    state.opponent.hero.ap_remaining = 1;
+    state.opponent.mana = 2;
+    let card = starter_card_templates()
+        .into_iter()
+        .find(|card| card.template_id == "rune-runner")
+        .unwrap();
+    let card_id = card.id.clone();
+    state.opponent.hand = vec![card];
+    state.player.hand.clear();
+    let policy = SoloAiPolicy::baseline();
+
+    assert_eq!(
+        paced_solo_ai_step(&mut state, &policy, 0),
+        Some(GameCommand::MovePiece {
+            piece_id: state.opponent.hero.id.clone(),
+            to: hex(0, -2),
+        })
+    );
+    assert_eq!(state.opponent.hero.position, hex(0, -3));
+    assert_eq!(state.phase, Phase::Movement);
+    pass_solo_response_window(&mut state, 1);
+    assert_eq!(state.opponent.hero.ap_remaining, 0);
+    assert_eq!(
+        paced_solo_ai_step(&mut state, &policy, 2),
+        Some(GameCommand::PlayCard {
+            card_id,
+            target: ActionTarget::Hex { coord: hex(0, -1) },
+        })
+    );
+    assert!(state.board.units.is_empty());
+    assert_eq!(state.phase, Phase::Movement);
+    pass_solo_response_window(&mut state, 3);
+    let unit_id = state.board.units[0].id.clone();
+    assert_eq!(
+        (
+            state.board.units[0].ap_remaining,
+            state.board.units[0].max_ap
+        ),
+        (2, 4)
+    );
+    assert_eq!(state.opponent.mana, 0);
+    for (index, to, ap) in [(4, hex(0, 0), 1), (6, hex(0, 1), 0)] {
+        assert_eq!(
+            paced_solo_ai_step(&mut state, &policy, index),
+            Some(GameCommand::MovePiece {
+                piece_id: unit_id.clone(),
+                to,
+            })
+        );
+        pass_solo_response_window(&mut state, index + 1);
+        assert_eq!(state.board.units[0].ap_remaining, ap);
+        assert_eq!(state.phase, Phase::Movement);
+    }
+    assert_eq!(
+        paced_solo_ai_step(&mut state, &policy, 8),
+        Some(GameCommand::StartAttackPhase)
+    );
+    assert_eq!(state.phase, Phase::Attack);
+}
+
+#[test]
+fn solo_ai_finishes_useful_movement_before_attacking_and_spends_final_card_mana() {
+    use crate::commands::GameCommand;
+    let mut state = MatchState::new_with_seed(7);
+    state.active_side = Side::Opponent;
+    state.opponent.hero.ap_remaining = 0;
+    state.opponent.mana = 0;
+    state.opponent.hand.clear();
+    state.player.hand.clear();
+    state.board.units = vec![
+        board_unit("ready-attacker", Side::Opponent, hex(0, 2), 1, 1, 4),
+        board_unit("moving-unit", Side::Opponent, hex(1, -2), 1, 1, 4),
+    ];
+    state.board.units[1].ap_remaining = 1;
+    let policy = SoloAiPolicy::baseline();
+    assert!(matches!(
+        paced_solo_ai_step(&mut state, &policy, 0),
+        Some(GameCommand::MovePiece { piece_id, .. }) if piece_id == "moving-unit"
+    ));
+    pass_solo_response_window(&mut state, 1);
+    assert_eq!(
+        paced_solo_ai_step(&mut state, &policy, 2),
+        Some(GameCommand::StartAttackPhase)
+    );
+
+    let card = player_unit_card(&state, "runic-insight");
+    let card_id = card.id.clone();
+    let card_cost = card.cost;
+    state.opponent.hand = vec![card];
+    state.opponent.mana = card_cost;
+    assert_eq!(
+        paced_solo_ai_step(&mut state, &policy, 3),
+        Some(GameCommand::Attack {
+            attacker_id: "ready-attacker".into(),
+            target_id: state.player.hero.id.clone(),
+        })
+    );
+    assert_eq!(state.phase, Phase::Attack);
+    assert_eq!(state.opponent.mana, card_cost);
+    assert_eq!(state.opponent.hand[0].id, card_id);
+    pass_solo_response_window(&mut state, 4);
+    assert_eq!(state.phase, Phase::CardPlay);
+    assert_eq!(
+        paced_solo_ai_step(&mut state, &policy, 5),
+        Some(GameCommand::PlayCard {
+            card_id,
+            target: ActionTarget::Piece {
+                piece_id: state.opponent.hero.id.clone(),
+            },
+        })
+    );
+    pass_solo_response_window(&mut state, 6);
+    assert_eq!(state.opponent.mana, 0);
+    state.opponent.hand.clear();
+    assert_eq!(paced_solo_ai_step(&mut state, &policy, 7), None);
+    assert_eq!(state.active_side, Side::Player);
+}
+
+#[test]
+fn solo_ai_uses_eligible_item_activation_during_attack_without_proactive_cards() {
+    use crate::commands::GameCommand;
+    let mut state = MatchState::new_with_seed(7);
+    state.active_side = Side::Opponent;
+    state.phase = Phase::Attack;
+    state.opponent.hero.position = hex(0, 1);
+    state.opponent.hero.ap_remaining = 1;
+    state.opponent.mana = 2;
+    state.opponent.hand = vec![player_unit_card(&state, "ember-squire")];
+    state.player.hand.clear();
+    let card = starter_card_templates()
+        .into_iter()
+        .find(|card| card.template_id == "spark-needle")
+        .unwrap();
+    let CardKind::Item {
+        passive, active, ..
+    } = card.kind
+    else {
+        panic!("Spark Needle must be an Item card");
+    };
+    let item_id = card.id.clone();
+    state.opponent.hero.items.push(CarriedItem {
+        id: card.id,
+        template_id: card.template_id,
+        name: card.name,
+        passive,
+        active,
+        active_used_this_turn: false,
+    });
+    assert_eq!(
+        paced_solo_ai_step(&mut state, &SoloAiPolicy::baseline(), 0),
+        Some(GameCommand::ActivateItem {
+            carrier_id: state.opponent.hero.id.clone(),
+            item_id,
+            target: Some(ActionTarget::Piece {
+                piece_id: state.player.hero.id.clone(),
+            }),
+        })
+    );
+    assert_eq!(state.opponent.hero.ap_remaining, 0);
+    assert_eq!(state.opponent.mana, 2);
+    assert_eq!(state.opponent.hand.len(), 1);
+    assert_eq!(state.phase, Phase::Attack);
+    pass_solo_response_window(&mut state, 1);
+}
+
+#[test]
+fn solo_ai_policies_keep_distinct_legal_movement_preferences() {
+    use crate::commands::GameCommand;
+    let config =
+        AiPolicyConfig::from_json(include_str!("../../../../backend/config/ai-policies.json"))
+            .unwrap();
+    let mut state = MatchState::new_with_seed(7);
+    state.active_side = Side::Opponent;
+    state.opponent.mana = 2;
+    state.opponent.hand = vec![player_unit_card(&state, "ember-squire")];
+    state.player.hand.clear();
+    for (policy_id, summons_first) in [("baseline-v1", false), ("candidate-aggressive-v1", true)] {
+        let policy = SoloAiPolicy::from_definition(config.policy(policy_id).unwrap());
+        let mut game = state.clone();
+        let command = paced_solo_ai_step(&mut game, &policy, 0).unwrap();
+        assert_eq!(
+            matches!(command, GameCommand::PlayCard { .. }),
+            summons_first
+        );
+        assert_eq!(
+            matches!(command, GameCommand::MovePiece { .. }),
+            !summons_first
+        );
+        assert_eq!(game.phase, Phase::Movement);
+    }
+}
+
+#[test]
+fn solo_ai_preserves_historical_card_windows() {
+    use crate::commands::GameCommand;
+    let config =
+        AiPolicyConfig::from_json(include_str!("../../../../backend/config/ai-policies.json"))
+            .unwrap();
+    for policy_id in ["baseline-v1", "candidate-aggressive-v1"] {
+        let policy = SoloAiPolicy::from_definition(config.policy(policy_id).unwrap());
+        let mut state = MatchState::new_with_seed(7);
+        state.ruleset = crate::rules::LEGACY_RULESET;
+        state.active_side = Side::Opponent;
+        state.opponent.hero.ap_remaining = 0;
+        state.opponent.mana = 2;
+        state.opponent.hand = vec![player_unit_card(&state, "ember-squire")];
+        assert_eq!(
+            paced_solo_ai_step(&mut state, &policy, 0),
+            Some(GameCommand::StartCardPlay)
+        );
+        assert!(matches!(
+            paced_solo_ai_step(&mut state, &policy, 1),
+            Some(GameCommand::PlayCard { .. })
+        ));
+        assert_eq!(state.phase, Phase::CardPlay);
+    }
+}
+
 fn pending_solo_response_game(phase: Phase) -> MatchState {
     use crate::commands::{CommandContext, GameCommand};
     let mut state = MatchState::new_with_seed(7);
