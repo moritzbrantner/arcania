@@ -6,10 +6,15 @@ export type TutorialStepId =
   | "board-goal"
   | "mana-ap"
   | "play-unit"
+  | "resolve-summon"
   | "move-unit"
-  | "attack"
+  | "resolve-move"
+  | "start-attack"
+  | "finish-attack"
   | "end-turn"
-  | "priority-response";
+  | "priority-response"
+  | "resolve-response"
+  | "pass-priority";
 
 export type TutorialTargetId =
   | "tutorial-board"
@@ -20,6 +25,9 @@ export type TutorialTargetId =
   | "tutorial-card-ember-squire"
   | "tutorial-card-spark-jolt"
   | "tutorial-end-turn"
+  | "tutorial-start-attack"
+  | "tutorial-finish-attack"
+  | "tutorial-opponent-pass"
   | "tutorial-pass-priority"
   | "tutorial-phase"
   | "tutorial-stack";
@@ -56,6 +64,9 @@ export type TutorialInteraction =
   | { type: "tileClick"; coord: HexCoord }
   | { type: "cardDrop"; cardId: string; coord: HexCoord }
   | { type: "endTurn" }
+  | { type: "startAttackPhase" }
+  | { type: "startCardPlayPhase" }
+  | { type: "opponentPass" }
   | { type: "passPriority" };
 
 export type TutorialAction =

@@ -64,7 +64,7 @@ export const tutorialCatalogCards: CatalogCard[] = [
 export function initialTutorialMatch(): MatchState {
   return baseTutorialMatch({
     hand: [tutorialEmberSquireCard, tutorialSparkJoltCard],
-    units: [],
+    units: [tutorialOpponentUnit()],
     log: ["Tutorial started."],
   });
 }
@@ -80,11 +80,49 @@ export function tutorialUnit(position: HexCoord, overrides: Partial<Unit> = {}):
     armor: 2,
     maxArmor: 2,
     position,
-    apRemaining: 2,
+    apRemaining: 1,
     maxAp: 2,
     hasAttacked: false,
     items: [],
     ...overrides,
+  };
+}
+
+export function tutorialOpponentUnit(overrides: Partial<Unit> = {}): Unit {
+  return tutorialUnit({ q: 1, r: -1 }, {
+    id: TUTORIAL_OPPONENT_UNIT_ID,
+    side: "opponent",
+    name: "Ash Hound",
+    templateId: "ash-hound",
+    attack: 2,
+    armor: 1,
+    maxArmor: 1,
+    apRemaining: 3,
+    maxAp: 3,
+    ...overrides,
+  });
+}
+
+export function tutorialSummonStackItem(): StackItem {
+  return {
+    id: "tutorial-stack-summon",
+    side: "player",
+    priority: 0,
+    action: { type: "playUnit", card: cardSummary(tutorialEmberSquireCard), coord: TUTORIAL_SUMMON_COORD },
+  };
+}
+
+export function tutorialMoveStackItem(): StackItem {
+  return {
+    id: "tutorial-stack-move",
+    side: "player",
+    priority: 0,
+    action: {
+      type: "movePiece",
+      pieceId: TUTORIAL_PLAYER_UNIT_ID,
+      from: TUTORIAL_SUMMON_COORD,
+      to: TUTORIAL_MOVE_COORD,
+    },
   };
 }
 
@@ -125,7 +163,7 @@ export function baseTutorialMatch(options: {
 } = {}): MatchState {
   const hand = options.hand ?? [tutorialEmberSquireCard, tutorialSparkJoltCard];
   return {
-    mode: "solo",
+    mode: "shared",
     round: 1,
     phase: options.phase ?? "movement",
     activeSide: options.activeSide ?? "player",
@@ -145,7 +183,7 @@ export function baseTutorialMatch(options: {
       side: "opponent",
       mana: 3,
       maxMana: 3,
-      hero: hero(TUTORIAL_OPPONENT_HERO_ID, "opponent", { q: 1, r: -1 }),
+      hero: hero(TUTORIAL_OPPONENT_HERO_ID, "opponent", { q: 2, r: -2 }),
       progression: emptyProgression,
       handCount: 3,
       deckCount: 25,

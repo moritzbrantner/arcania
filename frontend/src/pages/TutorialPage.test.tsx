@@ -31,7 +31,11 @@ vi.mock("../components/board", () => ({
             type="button"
             disabled={disabled}
             onClick={() => onTileClick?.(tile)}
-          />
+          >
+            {match.board.units.filter((unit) => sameCoord(unit.position, tile.coord)).map((unit) => (
+              <span key={unit.id}>AP {unit.apRemaining}/{unit.maxAp}</span>
+            ))}
+          </button>
         ))}
     </section>
   ),
@@ -59,7 +63,9 @@ vi.mock("../components/board", () => ({
     </button>
   ),
   PileDisplay: ({ label }: { label: string }) => <div>{label}</div>,
-  PlayerBadge: ({ player }: { player: MatchParticipantState }) => <div>{player.side}</div>,
+  PlayerBadge: ({ player }: { player: MatchParticipantState }) => (
+    <div aria-label={`${player.side} resources`}>Hero AP {player.hero.apRemaining}/{player.hero.maxAp}; Mana {player.mana}/{player.maxMana}</div>
+  ),
   StackDisplay: () => <div>Stack</div>,
 }));
 
@@ -89,14 +95,28 @@ describe("TutorialPage", () => {
     continueIntro();
     clickTutorialTarget("tutorial-card-ember-squire");
     clickTile(0, 0);
+    expect(screen.getByLabelText("player resources")).toHaveTextContent("Hero AP 3/3; Mana 2/3");
+    expect(screen.getByText("End Turn", { selector: "button" })).toBeDisabled();
+    expect(screen.queryByText("Start Attack", { selector: "button" })).not.toBeInTheDocument();
+
+    continueIntro();
+    fireEvent.click(screen.getByRole("button", { name: "Let Opponent Pass" }));
+    expect(screen.getByLabelText("Tutorial Hex q 0, r 0")).toHaveTextContent("AP 1/2");
 
     continueIntro();
     clickTile(0, 0);
     clickTile(1, 0);
 
     continueIntro();
-    clickTile(1, 0);
-    clickTile(1, -1);
+    fireEvent.click(screen.getByRole("button", { name: "Let Opponent Pass" }));
+    continueIntro();
+    fireEvent.click(screen.getByRole("button", { name: "Start Attack" }));
+    expect(screen.getByText("Attack Phase")).toBeInTheDocument();
+    expect(screen.getByLabelText("Tutorial Hex q 1, r 0")).toHaveTextContent("AP 0/2");
+    continueIntro();
+    fireEvent.click(screen.getByRole("button", { name: "Finish Attacks" }));
+    expect(screen.getByText("Card Play")).toBeInTheDocument();
+    expect(screen.getByLabelText("player resources")).toHaveTextContent("Hero AP 3/3; Mana 2/3");
 
     continueIntro();
     fireEvent.click(screen.getByText("End Turn", { selector: "button" }));
@@ -104,6 +124,12 @@ describe("TutorialPage", () => {
     continueIntro();
     clickTutorialTarget("tutorial-card-spark-jolt");
     clickTile(1, -1);
+    expect(screen.getByLabelText("player resources")).toHaveTextContent("Hero AP 3/3; Mana 1/3");
+    expect(window.localStorage.getItem(TUTORIAL_COMPLETION_STORAGE_KEY)).toBeNull();
+    continueIntro();
+    fireEvent.click(screen.getByRole("button", { name: "Let Opponent Pass" }));
+    continueIntro();
+    fireEvent.click(screen.getByRole("button", { name: "Pass Priority" }));
 
     expect(window.localStorage.getItem(TUTORIAL_COMPLETION_STORAGE_KEY)).toBe("true");
     expect(screen.getByText("Start Playing", { selector: "button" })).toBeInTheDocument();

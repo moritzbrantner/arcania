@@ -183,6 +183,39 @@ export function TutorialPage({
         />
 
         <div className="match-action-dock" aria-label="Tutorial actions">
+          {match.phase === "movement" && !hasPendingStack ? (
+            <button
+              className={`primary-button ${tutorialTargetClass("tutorial-start-attack")}`}
+              type="button"
+              onClick={() => dispatch({ type: "interact", interaction: { type: "startAttackPhase" } })}
+              disabled={inputPaused || step.id !== "start-attack"}
+              data-tutorial-target="tutorial-start-attack"
+            >
+              Start Attack
+            </button>
+          ) : null}
+          {match.phase === "attack" && !hasPendingStack ? (
+            <button
+              className={`primary-button ${tutorialTargetClass("tutorial-finish-attack")}`}
+              type="button"
+              onClick={() => dispatch({ type: "interact", interaction: { type: "startCardPlayPhase" } })}
+              disabled={inputPaused || step.id !== "finish-attack"}
+              data-tutorial-target="tutorial-finish-attack"
+            >
+              Finish Attacks
+            </button>
+          ) : null}
+          {hasPendingStack && match.prioritySide === "opponent" ? (
+            <button
+              className={`primary-button ${tutorialTargetClass("tutorial-opponent-pass")}`}
+              type="button"
+              onClick={() => dispatch({ type: "interact", interaction: { type: "opponentPass" } })}
+              disabled={inputPaused}
+              data-tutorial-target="tutorial-opponent-pass"
+            >
+              Let Opponent Pass
+            </button>
+          ) : null}
           <button
             className={`primary-button ${tutorialTargetClass("tutorial-end-turn")}`}
             type="button"
