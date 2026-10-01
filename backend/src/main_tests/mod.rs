@@ -135,6 +135,7 @@ fn custom_preferences_payload() -> &'static str {
 }
 
 mod auth;
+mod card_transfers;
 mod card_workshop;
 mod decks;
 mod loadout_resolution;

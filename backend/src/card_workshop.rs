@@ -8,9 +8,18 @@ use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
 
 use rune_lanes_core::{
-    CardDefinition, CardDefinitionValidationError, PublishedCardRevision,
+    CardDefinition, CardDefinitionValidationError, CardTransferError, PublishedCardRevision,
     PublishedCardRevisionError,
 };
+
+mod transfers;
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CardTransferPreview {
+    pub revision_id: rune_lanes_core::CardRevisionId,
+    pub status: rune_lanes_core::CardRevisionImportStatus,
+}
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -82,6 +91,8 @@ pub enum CardWorkshopError {
         requested: String,
     },
     InvalidPublishedRevision(PublishedCardRevisionError),
+    Transfer(CardTransferError),
+    IncompatibleStoredRevision(rune_lanes_core::CardRevisionId),
 }
 
 impl fmt::Display for CardWorkshopError {
@@ -115,6 +126,11 @@ impl fmt::Display for CardWorkshopError {
                 "Published card id cannot change from {current} to {requested}."
             ),
             Self::InvalidPublishedRevision(error) => error.fmt(formatter),
+            Self::Transfer(error) => error.fmt(formatter),
+            Self::IncompatibleStoredRevision(id) => write!(
+                formatter,
+                "Stored Card revision {id} has incompatible immutable content."
+            ),
         }
     }
 }
@@ -136,6 +152,12 @@ impl From<serde_json::Error> for CardWorkshopError {
 impl From<PublishedCardRevisionError> for CardWorkshopError {
     fn from(error: PublishedCardRevisionError) -> Self {
         Self::InvalidPublishedRevision(error)
+    }
+}
+
+impl From<CardTransferError> for CardWorkshopError {
+    fn from(error: CardTransferError) -> Self {
+        Self::Transfer(error)
     }
 }
 
@@ -329,6 +351,7 @@ impl<'a> CardWorkshop<'a> {
         let mut published_definition = draft.definition;
         published_definition.id = draft.catalog_id.clone();
         let revision = PublishedCardRevision::new(published_definition, revision_number)?;
+        transfers::ensure_publication_compatible(&transaction, user_id, &revision)?;
         let revision_json = serde_json::to_string(&revision)?;
         transaction.execute(
             "
@@ -575,5 +598,6 @@ pub fn migrate(connection: &Connection) -> rusqlite::Result<()> {
             ON card_revisions(core_card_id, revision DESC);
         ",
     )?;
+    transfers::migrate(connection)?;
     Ok(())
 }
