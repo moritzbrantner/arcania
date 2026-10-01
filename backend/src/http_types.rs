@@ -167,10 +167,28 @@ pub(crate) struct JoinSharedMatchRequest {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MatchResponse {
     pub(crate) match_id: String,
+    #[serde(serialize_with = "serialize_solo_match_view")]
     pub(crate) match_state: MatchState,
     pub(crate) hero_appearances: Vec<HeroAppearanceAssignment>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) replay_frames: Vec<ReplayFrameResponse>,
+}
+
+fn serialize_solo_match_view<S>(state: &MatchState, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    solo_live_match_view(state)
+        .map_err(serde::ser::Error::custom)?
+        .serialize(serializer)
+}
+
+fn solo_live_match_view(state: &MatchState) -> Result<serde_json::Value, serde_json::Error> {
+    let mut view = serde_json::to_value(state)?;
+    let projection = state.queries().command_projection(Side::Player);
+    view["legalCommands"] = serde_json::to_value(&projection.legal_commands)?;
+    view["commandProjection"] = serde_json::to_value(projection)?;
+    Ok(view)
 }
 
 #[derive(Serialize)]
@@ -637,13 +655,14 @@ fn hero_types_for_teams(
 
 impl ReplayFrameResponse {
     pub(crate) fn from_recorded(frame_index: u32, frame: &RecordedReplayFrame) -> Self {
+        let state = MatchState::from_snapshot_json(&frame.snapshot_json)
+            .expect("recorded replay frame snapshot should deserialize");
         Self {
             frame_index,
             action_index: frame.action_index,
             event: frame.event.for_visibility(ReplayVisibility::Public),
-            match_state: MatchState::from_snapshot_json(&frame.snapshot_json)
-                .expect("recorded replay frame snapshot should deserialize")
-                .replay_value(ReplayVisibility::Public),
+            match_state: solo_live_match_view(&state)
+                .expect("a recorded Solo match view must serialize"),
         }
     }
 

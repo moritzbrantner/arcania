@@ -22,6 +22,14 @@ projections never mutate the aggregate or bypass command validation. Legality
 inspection uses `GameQuery::CommandAvailability`, which executes the same typed
 command rules against a cloned state instead of duplicating them.
 
+Live Solo, Shared, and browser match views expose a viewer-scoped command
+projection from this facade. It combines legal commands, availability and
+rejection reasons for the viewer's Cards, and proactive Card phases from the
+match's pinned rules. Card availability and legal commands share one validation
+pass. These presentation fields are derived for live responses and playback;
+they are absent from persisted snapshots, domain events, and archived replay
+frames.
+
 Typed rule configuration is explicit. `rune-lanes-core/src/rules.rs` groups the
 current arena, turn, and Hero-base rules; card-template values stay in the card
 catalog. Gameplay code consumes those typed values directly so changing a rule

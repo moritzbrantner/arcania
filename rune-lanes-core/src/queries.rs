@@ -22,6 +22,7 @@ pub enum GameQuery {
     PublicMatch { viewer_side: Side },
     CommandAvailability { side: Side, command: GameCommand },
     LegalCommands { side: Side },
+    CommandProjection { viewer_side: Side },
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -39,6 +40,7 @@ pub enum GameQueryResult {
     PublicMatch { match_state: serde_json::Value },
     CommandAvailability { availability: CommandAvailability },
     LegalCommands { commands: Vec<GameCommand> },
+    CommandProjection { projection: MatchCommandProjection },
 }
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
@@ -47,6 +49,24 @@ pub struct CommandAvailability {
     pub allowed: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rejection: Option<MatchError>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct CardCommandAvailability {
+    pub card_id: String,
+    pub allowed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rejection: Option<MatchError>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct MatchCommandProjection {
+    pub viewer_side: Side,
+    pub proactive_card_phases: Vec<Phase>,
+    pub legal_commands: Vec<GameCommand>,
+    pub cards: Vec<CardCommandAvailability>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -89,6 +109,9 @@ impl MatchState {
             }
             GameQuery::LegalCommands { side } => GameQueryResult::LegalCommands {
                 commands: queries.legal_commands(side),
+            },
+            GameQuery::CommandProjection { viewer_side } => GameQueryResult::CommandProjection {
+                projection: queries.command_projection(viewer_side),
             },
         }
     }
@@ -141,7 +164,11 @@ impl MatchQueries<'_> {
 
     #[must_use]
     pub fn public_match(&self, viewer_side: Side) -> serde_json::Value {
-        self.state.public_value_for_side(viewer_side)
+        let mut view = self.state.public_value_for_side(viewer_side);
+        let projection = self.command_projection(viewer_side);
+        view["legalCommands"] = serde_json::json!(&projection.legal_commands);
+        view["commandProjection"] = serde_json::json!(projection);
+        view
     }
 
     #[must_use]
@@ -173,10 +200,62 @@ impl MatchQueries<'_> {
     /// own, so legality stays owned by the real `GameCommand` path.
     #[must_use]
     pub fn legal_commands(&self, side: Side) -> Vec<GameCommand> {
-        self.candidate_commands(side)
+        self.command_projection(side).legal_commands
+    }
+
+    /// Derive command and Card availability together from the real command path.
+    /// Only the viewer's hand contributes Card commands or rejection information.
+    #[must_use]
+    pub fn command_projection(&self, viewer_side: Side) -> MatchCommandProjection {
+        let participant = match viewer_side {
+            Side::Player => Some(&self.state.player),
+            Side::Opponent => Some(&self.state.opponent),
+            Side::PlayerTwo => self.state.player_two.as_ref(),
+            Side::OpponentTwo => self.state.opponent_two.as_ref(),
+        };
+        let mut cards: Vec<_> = participant
             .into_iter()
-            .filter(|command| self.command_availability(side, command).allowed)
-            .collect()
+            .flat_map(|participant| &participant.hand)
+            .map(|card| CardCommandAvailability {
+                card_id: card.id.clone(),
+                allowed: false,
+                rejection: None,
+            })
+            .collect();
+        let mut legal_commands = Vec::new();
+        for command in self.candidate_commands(viewer_side) {
+            let availability = self.command_availability(viewer_side, &command);
+            if let GameCommand::PlayCard { card_id, .. } = &command
+                && let Some(card) = cards.iter_mut().find(|card| &card.card_id == card_id)
+                && !card.allowed
+            {
+                if availability.allowed {
+                    card.allowed = true;
+                    card.rejection = None;
+                } else if card.rejection.is_none() {
+                    card.rejection = availability.rejection;
+                }
+            }
+            if availability.allowed {
+                legal_commands.push(command);
+            }
+        }
+        for card in &mut cards {
+            if !card.allowed && card.rejection.is_none() {
+                card.rejection = Some(MatchError::InvalidTarget);
+            }
+        }
+        let proactive_card_phases = if self.state.ruleset.turn.movement_card_play {
+            vec![Phase::Movement, Phase::CardPlay]
+        } else {
+            vec![Phase::CardPlay]
+        };
+        MatchCommandProjection {
+            viewer_side,
+            proactive_card_phases,
+            legal_commands,
+            cards,
+        }
     }
 
     fn candidate_commands(&self, side: Side) -> Vec<GameCommand> {
@@ -267,6 +346,171 @@ impl MatchQueries<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn command_projection_is_viewer_scoped_read_only_and_matches_real_commands() {
+        let deck = |side: Side| {
+            let mut card = crate::starter_card_templates()
+                .into_iter()
+                .find(|card| card.template_id == "ember-squire")
+                .unwrap();
+            card.id = format!("{side:?}-card");
+            vec![card]
+        };
+        let state = MatchState::new_shared_two_v_two_with_progression_loadouts(
+            crate::HeroType::Runekeeper,
+            crate::HeroType::Runekeeper,
+            crate::HeroType::Runekeeper,
+            crate::HeroType::Runekeeper,
+            deck(Side::Player),
+            deck(Side::Opponent),
+            deck(Side::PlayerTwo),
+            deck(Side::OpponentTwo),
+            crate::MatchProgressionLoadout::default(),
+            crate::MatchProgressionLoadout::default(),
+            crate::MatchProgressionLoadout::default(),
+            crate::MatchProgressionLoadout::default(),
+        );
+        let before = state.to_snapshot_json().unwrap();
+        for side in [
+            Side::Player,
+            Side::Opponent,
+            Side::PlayerTwo,
+            Side::OpponentTwo,
+        ] {
+            let projection = state.queries().command_projection(side);
+            assert_eq!(projection.viewer_side, side);
+            assert_eq!(
+                projection.proactive_card_phases,
+                [Phase::Movement, Phase::CardPlay]
+            );
+            assert_eq!(projection.cards.len(), 1);
+            assert_eq!(projection.cards[0].card_id, format!("{side:?}-card"));
+            for command in &projection.legal_commands {
+                command
+                    .check(
+                        &state,
+                        CommandContext {
+                            side,
+                            action_index: 0,
+                        },
+                    )
+                    .unwrap();
+                if let GameCommand::PlayCard { card_id, .. } = command {
+                    assert_eq!(card_id, &projection.cards[0].card_id);
+                }
+            }
+            assert_eq!(projection.cards[0].allowed, side == Side::Player);
+            assert_eq!(
+                projection.cards[0].rejection,
+                if side == Side::Player {
+                    None
+                } else {
+                    Some(MatchError::NotActiveSide)
+                }
+            );
+            let public = state.queries().public_match(side);
+            assert_eq!(
+                public["commandProjection"],
+                serde_json::to_value(&projection).unwrap()
+            );
+            assert_eq!(
+                public["legalCommands"],
+                public["commandProjection"]["legalCommands"]
+            );
+            assert_eq!(state.to_snapshot_json().unwrap(), before);
+        }
+        assert!(!before.contains("commandProjection"));
+        assert!(
+            !state
+                .replay_value(crate::ReplayVisibility::Public)
+                .to_string()
+                .contains("commandProjection")
+        );
+    }
+
+    #[test]
+    fn card_projection_reports_real_phase_mana_target_and_priority_rejections() {
+        let mut state = MatchState::new_with_seed(7);
+        state.mode = crate::MatchMode::Shared;
+        let mut card = crate::starter_card_templates()
+            .into_iter()
+            .find(|card| card.template_id == "ember-squire")
+            .unwrap();
+        card.id = "projection-unit".into();
+        state.player.hand = vec![card];
+        state.phase = Phase::Attack;
+        assert_eq!(
+            state.queries().command_projection(Side::Player).cards[0].rejection,
+            Some(MatchError::WrongPhase)
+        );
+        state.phase = Phase::Movement;
+        state.player.mana = 0;
+        assert_eq!(
+            state.queries().command_projection(Side::Player).cards[0].rejection,
+            Some(MatchError::NotEnoughMana)
+        );
+        state.player.mana = 3;
+        state.board.tiles.clear();
+        assert_eq!(
+            state.queries().command_projection(Side::Player).cards[0].rejection,
+            Some(MatchError::InvalidTarget)
+        );
+        state.board = crate::HexBoard::new(3);
+        let mut low = crate::starter_card_templates()
+            .into_iter()
+            .find(|card| card.template_id == "runic-insight")
+            .unwrap();
+        low.id = "low-priority".into();
+        state.player.hand.push(low);
+        state
+            .apply_action_recording_for_side(
+                Side::Player,
+                crate::MatchActionRequest::PlayCard {
+                    card_id: "projection-unit".into(),
+                    target: ActionTarget::Hex {
+                        coord: crate::HexCoord { q: 0, r: 2 },
+                    },
+                },
+                0,
+            )
+            .unwrap();
+        let mut response = crate::starter_card_templates()
+            .into_iter()
+            .find(|card| card.template_id == "quick-salve")
+            .unwrap();
+        response.id = "response".into();
+        state.opponent.hand = vec![response];
+        state.opponent.hero.hp -= 2;
+        assert!(state.queries().command_projection(Side::Opponent).cards[0].allowed);
+        state
+            .apply_action_recording_for_side(
+                Side::Opponent,
+                crate::MatchActionRequest::PlayCard {
+                    card_id: "response".into(),
+                    target: ActionTarget::Piece {
+                        piece_id: state.opponent.hero.id.clone(),
+                    },
+                },
+                1,
+            )
+            .unwrap();
+        assert_eq!(
+            state.queries().command_projection(Side::Player).cards[0].rejection,
+            Some(MatchError::PriorityTooLow)
+        );
+
+        let mut legacy = MatchState::new_with_seed(7);
+        legacy.ruleset = crate::rules::LEGACY_RULESET;
+        let projection = legacy.queries().command_projection(Side::Player);
+        assert_eq!(projection.proactive_card_phases, [Phase::CardPlay]);
+        assert!(
+            !projection
+                .legal_commands
+                .iter()
+                .any(|command| matches!(command, GameCommand::PlayCard { .. }))
+        );
+    }
 
     #[test]
     fn queries_roundtrip_as_stable_tagged_application_contract() {

@@ -73,8 +73,7 @@ impl BrowserMatch {
     }
 
     pub fn view(&self) -> Result<String, String> {
-        let mut view = self.state.queries().public_match(Side::Player);
-        view["legalCommands"] = json!(self.state.queries().legal_commands(Side::Player));
+        let view = self.state.queries().public_match(Side::Player);
         serde_json::to_string(&json!({
             "matchState": view,
             "heroAppearances": [],
