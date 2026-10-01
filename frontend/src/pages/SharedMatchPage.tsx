@@ -564,6 +564,7 @@ export function SharedMatchPage({
             </div>
           ) : null}
           <HeroPicker
+            visualMode={boardVisualMode}
             selectedHeroType={selectedHeroType}
             busy={busy}
             onSelect={handleSelectLobbyHero}

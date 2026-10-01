@@ -337,6 +337,44 @@ test("home screen creates a shared match from the multiplayer action", async ({ 
   ).toBe(JSON.stringify({ source: "account", deckId: 101 }));
 });
 
+test("hosted lobby honors account 2D over local 3D and submits the selected Hero", async ({ page }) => {
+  const joins = [];
+  await page.addInitScript(() => {
+    localStorage.setItem("rune-lanes-auth-token", "existing-token");
+    localStorage.setItem("rune-lanes-board-visual-mode", "3d");
+    class FakeWebSocket extends EventTarget {
+      readyState = 3;
+      close() {}
+      send() {}
+    }
+    window.WebSocket = FakeWebSocket;
+  });
+  await mockHomeApi(page, []);
+  const lobby = {
+    matchId: SHARED_MATCH_ID, mode: "shared", status: "setup", viewerSide: "player",
+    viewerHeroType: "runekeeper", opponentHeroType: null, viewerReady: false, opponentReady: false,
+    activeSide: null, opponentConnected: false, canClaimForfeitAt: null, heroAppearances: [], matchState: null,
+  };
+  await page.route(`**/api/shared-matches/${SHARED_MATCH_ID}/seats/player-seat**`, async (route) => {
+    if (route.request().method() === "POST") {
+      const selection = route.request().postDataJSON();
+      joins.push(selection);
+      await route.fulfill({ json: { ...lobby, viewerHeroType: selection.heroType, viewerReady: true } });
+    } else {
+      await route.fulfill({ json: lobby });
+    }
+  });
+  await page.goto(`/match/${SHARED_MATCH_ID}/player-seat`);
+  const picker = page.getByRole("group", { name: "Hero type", exact: true });
+  await expect(picker.getByRole("img", { name: "Runekeeper portrait" })).toBeVisible();
+  await picker.getByRole("button", { name: /^Archer/ }).click();
+  await expect(picker.getByRole("button", { name: /^Archer/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(picker.getByRole("img", { name: "Archer portrait" })).toBeVisible();
+  await page.getByRole("button", { name: "Ready", exact: true }).click();
+  await expect.poll(() => joins.map((join) => join.heroType)).toEqual(["archer"]);
+  expect(await page.evaluate((id) => sessionStorage.getItem(`rune-lanes-hero:${id}`), SHARED_MATCH_ID)).toBe("archer");
+});
+
 async function mockHomeApi(page, matchRequests, options = {}) {
   const signedIn = options.signedIn ?? true;
   const sharedMatchRequests = options.sharedMatchRequests ?? [];

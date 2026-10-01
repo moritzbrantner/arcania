@@ -155,3 +155,12 @@
 @media (max-width: 700px) {
   .browser-match .piece-token .piece-token-stat-row span { font-size: 8px; padding: 0 1px; }
 }
+
+.workshop-hero-picker { min-width: 0; padding: 24px; }
+.workshop-hero-picker .hero-picker { margin: 0; padding: 0; border: 0; }
+.workshop-hero-picker .hero-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.workshop-hero-picker .hero-option { min-width: 0; min-height: 100px; padding: 12px; }
+.workshop-hero-picker .hero-option-text { display: none; }
+@media (max-width: 760px) {
+  .workshop-hero-picker { padding: 16px; }
+}

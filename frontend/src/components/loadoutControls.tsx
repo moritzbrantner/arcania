@@ -4,7 +4,7 @@ import { HeroPreview3D } from "../HeroPreview3D";
 import { HERO_OPTIONS } from "../heroes";
 import { defaultRuneIdsForHero, heroOptionByType } from "../labels";
 import { runeNamesForLoadout, skillNamesForHero, type HomeLoadout } from "../deckHelpers";
-import type { ProgressionResponse, RuneDefinition, HeroType } from "../types";
+import type { ProgressionResponse, RuneDefinition, HeroType, BoardVisualMode } from "../types";
 
 export function LoadoutCard({
   loadout,
@@ -192,14 +192,17 @@ export function HeroPicker({
   selectedHeroType,
   busy,
   onSelect,
+  visualMode,
 }: {
   selectedHeroType: HeroType;
+  visualMode?: BoardVisualMode;
   busy: boolean;
   onSelect: (heroType: HeroType) => void;
 }) {
   return (
     <fieldset className="hero-picker" aria-label="Hero type">
       <legend>Hero Type</legend>
+      <HeroPreview3D visualMode={visualMode} heroType={selectedHeroType} label={heroOptionByType(selectedHeroType)?.name ?? "Hero"} />
       <div className="hero-options">
         {HERO_OPTIONS.map((hero) => (
           <button
