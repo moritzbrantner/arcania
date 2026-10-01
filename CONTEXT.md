@@ -422,3 +422,7 @@ _Avoid_: latest pack export, partial pack installation
 **Card test scenario**:
 A seeded experimental setup for trying authored Cards through the core command/query path. It combines the existing Workshop setup with an empty arena, adjacent enemy, clustered enemies, damaged ally or low-HP Hero layout. A prepared scenario owns the validated initial state for independent runs and reproducible resets.
 _Avoid_: client simulator, test match rules
+
+**Card evidence report**:
+A descriptive paired AI-lab comparison of exact Card input snapshots using the same scenario, policies and seed for each pair. It records source identities, complete inputs, event amounts, Card play timing, surviving Units and matchup outcomes, with explicit attribution limits. It does not assign a balance score or promote a Card or policy.
+_Avoid_: balance score, automatic balance verdict

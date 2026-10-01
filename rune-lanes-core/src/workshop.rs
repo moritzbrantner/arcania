@@ -71,28 +71,7 @@ impl WorkshopSetup {
             if !card.id.starts_with("custom-") || !ids.insert(&card.id) {
                 return Err("Custom cards need unique IDs starting with custom-.".into());
             }
-            card.validate()
-                .map_err(|errors| format!("{}: {errors:?}", card.name))?;
-            if card.name.len() > 80 || card.text.len() > 500 || card.cost > 30 {
-                return Err(
-                    "Card limits: 80 name characters, 500 description characters and 30 Mana."
-                        .into(),
-                );
-            }
-            // Recursively bound numeric effect values before any arithmetic in the engine.
-            fn bounded(value: &serde_json::Value) -> bool {
-                match value {
-                    serde_json::Value::Number(n) => {
-                        n.as_i64().is_some_and(|v| (-100..=100).contains(&v))
-                    }
-                    serde_json::Value::Array(values) => values.iter().all(bounded),
-                    serde_json::Value::Object(fields) => fields.values().all(bounded),
-                    _ => true,
-                }
-            }
-            if !bounded(&serde_json::to_value(&card.kind).map_err(|error| error.to_string())?) {
-                return Err("Card effect values must be between -100 and 100.".into());
-            }
+            validate_card_for_experiment(card)?;
         }
         Ok(())
     }
@@ -139,6 +118,31 @@ impl WorkshopSetup {
         }
         Ok(state)
     }
+}
+
+/// Validate an exact Card definition for bounded experimental play, including
+/// built-in published identities. Collection identity rules stay in WorkshopSetup.
+pub fn validate_card_for_experiment(card: &CardDefinition) -> Result<(), String> {
+    card.validate()
+        .map_err(|errors| format!("{}: {errors:?}", card.name))?;
+    if card.name.len() > 80 || card.text.len() > 500 || card.cost > 30 {
+        return Err(
+            "Card limits: 80 name characters, 500 description characters and 30 Mana.".into(),
+        );
+    }
+    // Recursively bound numeric effect values before any arithmetic in the engine.
+    fn bounded(value: &serde_json::Value) -> bool {
+        match value {
+            serde_json::Value::Number(n) => n.as_i64().is_some_and(|v| (-100..=100).contains(&v)),
+            serde_json::Value::Array(values) => values.iter().all(bounded),
+            serde_json::Value::Object(fields) => fields.values().all(bounded),
+            _ => true,
+        }
+    }
+    if !bounded(&serde_json::to_value(&card.kind).map_err(|error| error.to_string())?) {
+        return Err("Card effect values must be between -100 and 100.".into());
+    }
+    Ok(())
 }
 
 fn starter_deck_recipe() -> Vec<DeckCardCount> {
@@ -213,6 +217,40 @@ mod tests {
             ruleset: CURRENT_RULESET,
             cards: vec![],
         }
+    }
+
+    #[test]
+    fn exact_experimental_cards_share_bounds_without_relaxing_workshop_identity_rules() {
+        let mut card = crate::starter_card_definitions()
+            .into_iter()
+            .find(|card| card.id == "stoneguard")
+            .unwrap();
+        assert!(validate_card_for_experiment(&card).is_ok());
+        let mut workshop = setup();
+        workshop.cards.push(card.clone());
+        assert!(
+            workshop
+                .validate()
+                .unwrap_err()
+                .contains("starting with custom-")
+        );
+        card.cost = 31;
+        assert!(
+            validate_card_for_experiment(&card)
+                .unwrap_err()
+                .contains("30 Mana")
+        );
+        card.cost = 1;
+        card.kind = crate::CardKind::Unit {
+            attack: 101,
+            armor: 4,
+            max_ap: 2,
+        };
+        assert!(
+            validate_card_for_experiment(&card)
+                .unwrap_err()
+                .contains("between -100 and 100")
+        );
     }
 
     #[test]

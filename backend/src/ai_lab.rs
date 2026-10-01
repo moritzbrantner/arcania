@@ -12,10 +12,15 @@ use crate::match_session::{
     AiPolicyConfig, MatchError, RecordedReplayFrame, Side, default_policy_config_path,
 };
 
+pub mod card_evidence;
 mod self_play;
 mod setup;
 use self_play::{GameOutcome, SimulationGameResult, run_game};
 use setup::{GameSpec, RulePreset, SimulationSetup};
+
+#[cfg(test)]
+#[path = "ai_lab/card_evidence_tests.rs"]
+mod card_evidence_tests;
 
 const DEFAULT_SUITE_PATH: &str = "backend/config/ai-lab-suites.json";
 const FALLBACK_SUITE_PATH: &str = "config/ai-lab-suites.json";
@@ -29,6 +34,9 @@ pub fn run(args: Vec<String>) -> Result<(), AiLabError> {
     let Some(command) = args.first().map(String::as_str) else {
         return Err(AiLabError::Usage(usage()));
     };
+    if command == "compare-cards" {
+        return card_evidence::run_cli(&args[1..]);
+    }
     let options = CliOptions::parse(&args[1..])?;
     match command {
         "validate-config" => {
@@ -110,7 +118,7 @@ impl CliOptions {
 }
 
 fn usage() -> String {
-    "Usage: ai-lab run|promote|validate-config [--suite default] [--out target/ai-lab/latest]"
+    "Usage: ai-lab run|promote|validate-config [--suite default] [--out target/ai-lab/latest]; ai-lab compare-cards --input comparison.json --out target/ai-lab/cards"
         .to_string()
 }
 

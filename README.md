@@ -174,6 +174,19 @@ SQLite data defaults to `data/rune-lanes.sqlite3`, which is ignored by git. Set
 `RUNE_LANES_DB_PATH=/path/to/rune-lanes.sqlite3` to use a different database,
 including isolated temporary databases for tests or local experiments.
 
+## Card evidence reports
+
+Run a self-contained paired Card experiment through the existing core AI-lab path:
+
+```sh
+cargo run -q -p backend --bin ai-lab -- compare-cards \
+  --input backend/config/card-comparison.example.json --out target/ai-lab/cards
+```
+
+The example compares exact revisions with costs of one and four Mana at two seeds and writes `card-comparison.json`. Each input includes complete candidate/baseline definitions and source identities, seeded Card test scenarios, the policy configuration and selected policy IDs, the tested Duel side and a positive action limit. Cases must supply an empty authored Card list. The runner adds one input Card to the tested side's hand and uses that exact definition for its matching draw-pile copies.
+
+The report preserves the input, core default ruleset version and compiled built-in definitions. It shows paired play timing/counts, surviving new matching Units, outcomes and event-total deltas. Damage/healing totals are recorded amounts across both sides, and draws include turn draws; none is attributed to a source Card. Timeouts and illegal actions are explicit. There is no balance score or automatic promotion. Rerun `input` from the report with a compatible core/catalog to reproduce it. The dev CLI trusts supplied source provenance; authenticated persisted-source resolution is separate.
+
 ## Shared multiplayer
 
 The match picker can create a solo AI match or a multiplayer match. Multiplayer
