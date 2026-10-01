@@ -197,6 +197,12 @@ The backend serves `/api`, WebSocket routes, and built frontend files from
 
 ## Checks
 
+E2E tests start their own frontend server and reject an occupied port. Set `ARCANIA_E2E_PORT` to an unused TCP port when another app or a local dev server uses the default 5173:
+
+```sh
+ARCANIA_E2E_PORT=18573 scripts/ci-local.sh
+```
+
 ```sh
 bun run ci:local
 ```
