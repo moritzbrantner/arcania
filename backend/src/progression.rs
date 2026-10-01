@@ -5,6 +5,7 @@ use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};
 
 use crate::match_session::{HeroType, MatchProgressionEffects, MatchState, Side};
+use crate::match_store::side_from_db;
 
 mod awards;
 mod catalog;
@@ -1056,14 +1057,6 @@ fn shared_participants(
         });
     }
     Ok(participants)
-}
-
-fn side_from_db(value: &str) -> Option<Side> {
-    match value {
-        "player" => Some(Side::Player),
-        "opponent" => Some(Side::Opponent),
-        _ => None,
-    }
 }
 
 fn add_column_if_missing(

@@ -297,7 +297,7 @@ export const storyReplayResponse: MatchReplayResponse = {
   ],
 };
 
-export const storySummaryResponse: MatchSummaryResponse = {
+export const storySummaryResponse = {
   matchId: "rl-story",
   summary: storyMatchSummary,
   viewer: {
@@ -340,7 +340,29 @@ export const storySummaryResponse: MatchSummaryResponse = {
       },
     ],
   },
-};
+} satisfies MatchSummaryResponse;
+
+const reward = storySummaryResponse.reward;
+
+export const storySecondSeatSummaryResponse = {
+  ...storySummaryResponse,
+  matchId: "rl-shared",
+  summary: {
+    ...storySummaryResponse.summary,
+    matchId: "rl-shared",
+    mode: "shared",
+    viewerHeroTypes: ["warden", "runekeeper"],
+    opposingHeroTypes: ["pyromancer", "barbarian"],
+  },
+  viewer: { side: "playerTwo", result: "victory" },
+  reward: {
+    ...reward,
+    side: "playerTwo",
+    accountXpGained: 150,
+    heroXpGained: 150,
+    winBonusXp: 50,
+  },
+} satisfies MatchSummaryResponse;
 
 export const storySharedMatch: SharedMatchResponse = {
   matchId: "rl-shared",

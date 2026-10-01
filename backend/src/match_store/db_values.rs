@@ -79,7 +79,7 @@ impl HeroTypeDbValue for HeroType {
     }
 }
 
-pub(super) fn side_from_db(value: &str) -> Option<Side> {
+pub(crate) fn side_from_db(value: &str) -> Option<Side> {
     match value {
         "player" => Some(Side::Player),
         "opponent" => Some(Side::Opponent),
