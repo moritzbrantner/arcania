@@ -172,6 +172,7 @@ export function TopNav({ currentUser, onNavigate, onSignOut, activePath = "", ..
     { to: "/", label: "Dashboard", icon: Gauge, signedIn: false },
     { to: "/play", label: "Play", icon: Play, signedIn: false },
     { to: "/decks", label: "Decks", icon: Layers, signedIn: true },
+    { to: "/workshop/cards", label: "Card Drafts", icon: Layers, signedIn: true },
     { to: "/heroes", label: "Heroes", icon: UsersRound, signedIn: true },
     { to: "/matches", label: "Matches", icon: History, signedIn: true },
   ];

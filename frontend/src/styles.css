@@ -5,6 +5,7 @@
 @import "./styles/board.css";
 @import "./styles/board-3d.css";
 @import "./styles/decks.css";
+@import "./styles/card-drafts.css";
 @import "./styles/profile.css";
 @import "./styles/settings.css";
 @import "./styles/auth.css";
