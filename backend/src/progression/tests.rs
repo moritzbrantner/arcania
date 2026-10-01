@@ -107,6 +107,70 @@ fn match_loadout_rejects_locked_and_duplicate_runes() {
 }
 
 #[test]
+fn saved_loadouts_and_skills_freeze_independently_of_later_account_changes() {
+    let mut connection = Connection::open_in_memory().expect("in-memory database should open");
+    identity::migrate(&connection).expect("identity schema should migrate");
+    migrate(&connection).expect("progression schema should migrate");
+    insert_user(&connection, 1, 100);
+    connection
+        .execute(
+            "INSERT INTO hero_mastery (user_id, hero_type, xp) VALUES (1, 'runekeeper', 200)",
+            [],
+        )
+        .expect("mastery should insert");
+    let mut progression = ProgressionModule::new(&mut connection);
+    progression
+        .unlock_skill(1, HeroType::Runekeeper, "runekeeper-steady-glyph")
+        .expect("skill should unlock");
+    let saved = progression
+        .save_rune_loadout(
+            1,
+            HeroType::Runekeeper,
+            SaveRuneLoadoutRequest {
+                rune_ids: vec!["vitality".to_string()],
+            },
+        )
+        .expect("loadout should save");
+    assert_eq!(
+        saved
+            .loadouts
+            .iter()
+            .find(|loadout| loadout.hero_type == HeroType::Runekeeper)
+            .expect("saved Hero loadout should exist")
+            .rune_ids,
+        ["vitality"]
+    );
+    let frozen = progression
+        .match_loadout(Some(1), HeroType::Runekeeper, None)
+        .expect("saved loadout should freeze");
+
+    progression
+        .save_rune_loadout(
+            1,
+            HeroType::Runekeeper,
+            SaveRuneLoadoutRequest {
+                rune_ids: Vec::new(),
+            },
+        )
+        .expect("replacement loadout should save");
+    progression
+        .respec_hero(1, HeroType::Runekeeper)
+        .expect("Hero should respec");
+    let next = progression
+        .match_loadout(Some(1), HeroType::Runekeeper, None)
+        .expect("replacement loadout should freeze");
+    assert!(next.rune_ids.is_empty());
+    assert_eq!(next.skill_ids, ["runekeeper-runic-balance"]);
+    assert_eq!(next.effects.max_hp_delta, 0);
+    assert_eq!(frozen.rune_ids, ["vitality"]);
+    assert_eq!(
+        frozen.skill_ids,
+        ["runekeeper-runic-balance", "runekeeper-steady-glyph"]
+    );
+    assert_eq!(frozen.effects.max_hp_delta, 3);
+}
+
+#[test]
 fn skill_unlock_spends_hero_mastery_points_and_respec_restores_them() {
     let mut connection = Connection::open_in_memory().expect("in-memory database should open");
     identity::migrate(&connection).expect("identity schema should migrate");
