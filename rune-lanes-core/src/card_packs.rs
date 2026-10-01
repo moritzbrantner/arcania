@@ -127,6 +127,11 @@ impl CardPackCatalog {
     pub fn resolve(&self, id: &CardPackRevisionId) -> Option<&CardPackManifest> {
         self.manifests.get(id)
     }
+
+    /// Every exact manifest, in stable pack identity order.
+    pub fn manifests(&self) -> impl Iterator<Item = &CardPackManifest> {
+        self.manifests.values()
+    }
 }
 
 fn validate_manifest(

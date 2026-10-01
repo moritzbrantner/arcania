@@ -1,6 +1,7 @@
 mod ai_lab_support;
 mod card_catalog;
 mod card_definitions;
+mod card_pack_transfers;
 mod card_packs;
 mod card_transfers;
 pub mod deck_library;
@@ -20,6 +21,11 @@ pub use card_catalog::{
 pub use card_definitions::{
     CardCatalog, CardCatalogError, CardDefinition, CardDefinitionValidationError, CardRevisionId,
     CardTaxonomy, PublishedCardRevision, PublishedCardRevisionError,
+};
+pub use card_pack_transfers::{
+    CARD_PACK_TRANSFER_SCHEMA_VERSION, CardPackImport, CardPackImportPreview, CardPackImportResult,
+    CardPackRevisionImportPreview, CardPackRevisionImportStatus, CardPackTransfer,
+    CardPackTransferError, CardRevisionImportPreview,
 };
 pub use card_packs::{
     CARD_PACK_MANIFEST_SCHEMA_VERSION, CardPackCatalog, CardPackCompatibility, CardPackManifest,
