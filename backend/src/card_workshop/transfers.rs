@@ -1,3 +1,5 @@
+use std::collections::{BTreeMap, BTreeSet, btree_map::Entry};
+
 use super::{CardTransferPreview, CardWorkshop, CardWorkshopError};
 use rune_lanes_core::{
     CardCatalog, CardRevisionId, CardRevisionImportStatus, CardRevisionTransfer, CardTransferError,
@@ -11,7 +13,7 @@ impl CardWorkshop<'_> {
         user_id: i64,
         id: &CardRevisionId,
     ) -> Result<CardRevisionTransfer, CardWorkshopError> {
-        let catalogs = load_transfer_catalogs(self.connection, user_id, id)?;
+        let catalogs = load_card_catalogs(self.connection, user_id, Some(id))?;
         Ok(CardRevisionTransfer::export(&catalogs.account, id)?)
     }
 
@@ -61,7 +63,7 @@ fn preview_transfer(
     transfer: &CardRevisionTransfer,
 ) -> Result<CardTransferPreview, CardWorkshopError> {
     let id = transfer.revision().id();
-    let catalogs = load_transfer_catalogs(connection, user_id, id)?;
+    let catalogs = load_card_catalogs(connection, user_id, Some(id))?;
     let global_status = transfer.prepare_import(&catalogs.global).status();
     let status = if global_status == CardRevisionImportStatus::IdentityConflict {
         global_status
@@ -74,42 +76,72 @@ fn preview_transfer(
     })
 }
 
-struct TransferCatalogs {
-    global: CardCatalog,
-    account: CardCatalog,
+pub(super) struct TransferCatalogs {
+    pub global: CardCatalog,
+    pub account: CardCatalog,
 }
 
-fn load_transfer_catalogs(
+pub(super) fn load_card_catalogs(
     connection: &Connection,
     user_id: i64,
-    id: &CardRevisionId,
+    id: Option<&CardRevisionId>,
 ) -> Result<TransferCatalogs, CardWorkshopError> {
-    let mut published = starter_card_catalog().resolve(id).cloned();
-    let mut account_has_access = published.is_some();
-    let mut statement = connection.prepare(
-        "SELECT user_id, revision_json FROM card_revisions WHERE core_card_id = ?1 AND revision = ?2
+    let mut published: BTreeMap<_, _> = starter_card_catalog()
+        .revisions()
+        .filter(|revision| id.is_none_or(|id| revision.id() == id))
+        .map(|revision| (revision.id().clone(), revision.clone()))
+        .collect();
+    let mut accessible: BTreeSet<_> = published.keys().cloned().collect();
+    let query = if id.is_some() {
+        "SELECT user_id, core_card_id, revision, revision_json FROM card_revisions
+         WHERE core_card_id = ?1 AND revision = ?2
          UNION ALL
-         SELECT user_id, revision_json FROM card_imports WHERE core_card_id = ?1 AND revision = ?2",
-    )?;
-    let rows = statement.query_map(params![id.card_id(), id.revision()], |row| {
-        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
-    })?;
-    for row in rows {
-        let (owner, json) = row?;
+         SELECT user_id, core_card_id, revision, revision_json FROM card_imports
+         WHERE core_card_id = ?1 AND revision = ?2"
+    } else {
+        "SELECT user_id, core_card_id, revision, revision_json FROM card_revisions
+         UNION ALL
+         SELECT user_id, core_card_id, revision, revision_json FROM card_imports"
+    };
+    let mut statement = connection.prepare(query)?;
+    let mut rows = match id {
+        Some(id) => statement.query(params![id.card_id(), id.revision()])?,
+        None => statement.query([])?,
+    };
+    while let Some(row) = rows.next()? {
+        let owner: i64 = row.get(0)?;
+        let card_id: String = row.get(1)?;
+        let number: u32 = row.get(2)?;
+        let json: String = row.get(3)?;
         let revision: PublishedCardRevision = serde_json::from_str(&json)?;
-        if revision.id() != id
-            || published
-                .as_ref()
-                .is_some_and(|existing| existing != &revision)
-        {
-            return Err(CardWorkshopError::IncompatibleStoredRevision(id.clone()));
+        if revision.id().card_id() != card_id || revision.id().revision() != number {
+            return Err(CardWorkshopError::IncompatibleStoredRevision(
+                revision.id().clone(),
+            ));
         }
-        account_has_access |= owner == user_id;
-        published.get_or_insert(revision);
+        if owner == user_id {
+            accessible.insert(revision.id().clone());
+        }
+        match published.entry(revision.id().clone()) {
+            Entry::Vacant(entry) => {
+                entry.insert(revision);
+            }
+            Entry::Occupied(entry) if entry.get() != &revision => {
+                return Err(CardWorkshopError::IncompatibleStoredRevision(
+                    revision.id().clone(),
+                ));
+            }
+            Entry::Occupied(_) => {}
+        }
     }
-    let global = CardCatalog::new(published.iter().cloned()).map_err(CardTransferError::Catalog)?;
-    let account = CardCatalog::new(published.filter(|_| account_has_access))
-        .map_err(CardTransferError::Catalog)?;
+    let account = CardCatalog::new(
+        published
+            .values()
+            .filter(|revision| accessible.contains(revision.id()))
+            .cloned(),
+    )
+    .map_err(CardTransferError::Catalog)?;
+    let global = CardCatalog::new(published.into_values()).map_err(CardTransferError::Catalog)?;
     Ok(TransferCatalogs { global, account })
 }
 
