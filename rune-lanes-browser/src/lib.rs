@@ -174,6 +174,7 @@ mod tests {
     #[test]
     fn bot_turn_and_reload_use_the_same_command_journal() {
         let mut game = BrowserMatch::new(&workshop_defaults().unwrap()).unwrap();
+        game.act(r#"{"type":"startAttackPhase"}"#).unwrap();
         game.act(r#"{"type":"startCardPlay"}"#).unwrap();
         game.act(r#"{"type":"endTurn"}"#).unwrap();
         for _ in 0..100 {
@@ -189,6 +190,24 @@ mod tests {
         assert!(game.state.round >= 2);
         let restored = BrowserMatch::restore(&game.journal().unwrap()).unwrap();
         assert_eq!(restored.view().unwrap(), game.view().unwrap());
+    }
+
+    #[test]
+    fn historical_saved_journals_keep_the_original_card_timing() {
+        let mut setup: serde_json::Value =
+            serde_json::from_str(&workshop_defaults().unwrap()).unwrap();
+        setup["ruleset"]["turn"]
+            .as_object_mut()
+            .unwrap()
+            .remove("movementCardPlay");
+        let mut game = BrowserMatch::new(&setup.to_string()).unwrap();
+        game.act(r#"{"type":"startCardPlay"}"#).unwrap();
+        game.act(r#"{"type":"endTurn"}"#).unwrap();
+        let saved = game.journal().unwrap();
+        assert!(!saved.contains("movementCardPlay"));
+        let restored = BrowserMatch::restore(&saved).unwrap();
+        assert_eq!(restored.view().unwrap(), game.view().unwrap());
+        assert!(!restored.state.queries().ruleset().turn.movement_card_play);
     }
 
     #[test]
