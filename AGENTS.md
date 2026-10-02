@@ -49,10 +49,6 @@ Before implementing a new subsystem locally, check whether an existing foundatio
 - `input-bindings` owns normalized device input, binding resolution, repeat policy, text-entry exclusion and runtime lifecycle. Rune Lanes owns its semantic hotkey commands, default bindings, active surface handlers and Account preference storage. Do not add a second key-to-action runtime locally (ADR 0025).
 - Do not introduce ECS, physics, or Maps dependencies merely because those foundations exist; add them only when Rune Lanes has a real authority seam that needs them.
 
-## Work tracking
-
-- GitHub Issues (`moritzbrantner/arcania`) are the work queue. Triage labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`; plus `bug`, `enhancement`, `prd`, `agent-loop:*`.
-
 ## Shared conventions
 
 General engineering rules (git and merging, commits, testing, ADRs, docs, dependencies, Rust style, …) come from `coding-agent-conventions`, installed in `.conventions/`. Read the rule briefing in `.conventions/index.md` before implementing and open the linked source when a rule applies. Do not edit `.conventions/`; refresh it with `coding-tooling conventions update`. Rules below are repository-specific additions or exceptions.
