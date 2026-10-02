@@ -161,7 +161,7 @@ The frontend proxies `/api` to `http://localhost:4000`.
 
 Signed-in players can open **Card Drafts** from navigation or `/workshop/cards` to browse saved Account Drafts, inspect their stored details and validation feedback, or duplicate an official Card. Duplication preserves the complete official definition and saves a new Draft immediately; reopening the route reloads Account content. Request failures offer retry without discarding the current selection.
 
-The selected Draft's name, rarity, Mana cost and, for Units, Unit attack, Unit armor and Unit AP are editable. **Save Draft** stores the complete definition with the Draft's version, preserving untouched mechanics and taxonomy, and shows the core's validation diagnostics for the saved content. Unsaved edits survive selection changes, failed saves and stale-version conflicts; **Load latest saved version** adopts the newer version while keeping them, and **Discard unsaved changes** drops them.
+The selected Draft's name, rarity, Mana cost and, for Units, Unit attack, Unit armor and Unit AP are editable. **Save Draft** stores the complete definition with the Draft's version, preserving untouched mechanics and taxonomy, and shows the core's validation diagnostics for the saved content. Unsaved edits survive selection changes, failed saves and stale-version conflicts; **Load latest saved version** adopts the newer version and reapplies only the fields edited locally, and **Discard unsaved changes** drops them.
 
 ## Deck building
 

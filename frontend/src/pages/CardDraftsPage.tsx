@@ -106,16 +106,22 @@ export function CardDraftsPage({ currentUser, onNavigate, onSignOut }: AccountPr
     }
   }
 
-  async function loadLatest(draftId: number) {
+  async function loadLatest(draft: CardDraft) {
     if (saving) return;
     setSaving(true);
     try {
-      const latest = await loadCardDraft(draftId);
+      const latest = await loadCardDraft(draft.id);
       if (!mounted.current) return;
       replaceDraft(latest);
-      setFeedback({ draftId, status: "saved", message: `Loaded saved version ${latest.version}. Your unsaved edits are kept; saving replaces that version.` });
+      // Reapply only the fields edited here so the other change to untouched fields survives the next save.
+      setEdits(({ [draft.id]: local, ...rest }) => {
+        if (!local) return rest;
+        const rebased = rebaseEdits(draft.definition, local, latest.definition) as CardDefinition;
+        return sameJson(rebased, latest.definition) ? rest : { ...rest, [draft.id]: rebased };
+      });
+      setFeedback({ draftId: draft.id, status: "saved", message: `Loaded saved version ${latest.version}. Your unsaved edits are reapplied on top of it.` });
     } catch (error) {
-      if (mounted.current) setFeedback({ draftId, status: "conflict", message: error instanceof Error ? error.message : "Could not load the latest Draft." });
+      if (mounted.current) setFeedback({ draftId: draft.id, status: "conflict", message: error instanceof Error ? error.message : "Could not load the latest Draft." });
     } finally {
       if (mounted.current) setSaving(false);
     }
@@ -147,19 +153,39 @@ export function CardDraftsPage({ currentUser, onNavigate, onSignOut }: AccountPr
             <p>{selected.definition.text}</p>
             {selected.validationErrors.length === 0 ? <p>Draft validation passed.</p> : <div role="alert"><p>This Draft has validation errors:</p><ul>{selected.validationErrors.map((error, index) => <li key={index}>{diagnosticMessage(error)}</li>)}</ul></div>}
             <h3>Edit Draft</h3>
-            <CardDraftEditor definition={editing} disabled={saving} onChange={(definition) => { setEdits((current) => ({ ...current, [selected.id]: definition })); }} />
+            <CardDraftEditor definition={editing} disabled={saving} onChange={(definition) => { setEdits((current) => ({ ...current, [selected.id]: definition })); setFeedback((current) => current?.status === "saved" ? null : current); }} />
             <div className="card-draft-actions">
               <button className="primary-button" disabled={!dirty || saving} onClick={() => void save(selected)}>{saving ? "Saving…" : "Save Draft"}</button>
               {dirty ? <button className="secondary-link" disabled={saving} onClick={() => discardEdits(selected.id)}>Discard unsaved changes</button> : null}
             </div>
             {selectedFeedback?.status === "saved" ? <p role="status">{selectedFeedback.message}</p> : null}
             {selectedFeedback?.status === "error" ? <p role="alert">Draft was not saved: {selectedFeedback.message} Your unsaved edits are kept.</p> : null}
-            {selectedFeedback?.status === "conflict" ? <div role="alert"><p>This Draft changed elsewhere: {selectedFeedback.message} Your unsaved edits are kept.</p><button className="secondary-link" disabled={saving} onClick={() => void loadLatest(selected.id)}>Load latest saved version</button></div> : null}
+            {selectedFeedback?.status === "conflict" ? <div role="alert"><p>This Draft changed elsewhere: {selectedFeedback.message} Your unsaved edits are kept.</p><button className="secondary-link" disabled={saving} onClick={() => void loadLatest(selected)}>Load latest saved version</button></div> : null}
           </> : <p>Select a Draft to see its saved details.</p>}
         </section>
       </div> : null}
     </main>
   );
+}
+
+function sameJson(left: unknown, right: unknown) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Three-way merge: values changed locally since `base` win; everything else follows `latest`. */
+function rebaseEdits(base: unknown, local: unknown, latest: unknown): unknown {
+  if (sameJson(local, base)) return latest;
+  if (!isRecord(base) || !isRecord(local) || !isRecord(latest) || local.type !== latest.type || base.type !== latest.type) return local;
+  const merged: Record<string, unknown> = {};
+  for (const key of new Set([...Object.keys(latest), ...Object.keys(local)])) {
+    const value = rebaseEdits(base[key], local[key], latest[key]);
+    if (value !== undefined) merged[key] = value;
+  }
+  return merged;
 }
 
 function diagnosticMessage(error: CardDefinitionValidationError): string {

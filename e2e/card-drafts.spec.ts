@@ -153,9 +153,12 @@ test("saving shows stored validation diagnostics and keeps edits through request
   await expect(details.getByLabel("Card name")).toHaveValue("Renamed Guardian");
   await details.getByRole("button", { name: "Save Draft" }).click();
   await expect(details.getByRole("status")).toHaveText("Draft saved (version 10).");
-  expect(state.updates.at(-1)).toEqual({ draftId: 10, version: 9, definition: { ...existingDraft.definition, name: "Renamed Guardian", kind: { ...existingDraft.definition.kind, armor: 6 } } });
+  // The other tab's Mana cost survives; only the fields edited here are reapplied.
+  expect(state.updates.at(-1)).toEqual({ draftId: 10, version: 9, definition: { ...existingDraft.definition, name: "Renamed Guardian", cost: 9, kind: { ...existingDraft.definition.kind, armor: 6 } } });
   await expect(details.getByText("Draft validation passed.")).toBeVisible();
-  await expect(details.getByText("5 Mana", { exact: true })).toBeVisible();
+  await expect(details.getByText("9 Mana", { exact: true })).toBeVisible();
+  await details.getByLabel("Mana cost").fill("8");
+  await expect(details.getByRole("status")).toHaveCount(0);
 });
 
 test("saving metadata of a Spell Draft preserves its untouched mechanics and taxonomy", async ({ page }) => {
