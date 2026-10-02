@@ -47,3 +47,19 @@ it("leaving the Draft browser before source loading completes prevents a later c
   });
   expect(fetch.mock.calls.filter(([input, init]) => input === "/api/card-drafts" && init?.method === "POST")).toHaveLength(0);
 });
+
+it("keeps unsaved edits per Draft and blocks saving values the Draft API cannot represent", async () => {
+  const user = userEvent.setup();
+  renderStory(meta, Ready);
+  const details = within(await screen.findByRole("region", { name: "Draft details" }));
+  const cost = await details.findByLabelText("Mana cost");
+  await user.clear(cost);
+  await user.type(cost, "256");
+  expect(screen.getByRole("button", { name: "Select Ember Draft" })).toHaveTextContent("Unsaved changes");
+  await user.click(details.getByRole("button", { name: "Save Draft" }));
+  expect(details.getByRole("alert")).toHaveTextContent("Mana cost must be a whole number from 0 to 255.");
+  await user.click(screen.getByRole("button", { name: "Select Granite Draft" }));
+  await user.click(screen.getByRole("button", { name: "Select Ember Draft" }));
+  expect(within(screen.getByRole("region", { name: "Draft details" })).getByLabelText("Mana cost")).toHaveValue(256);
+  expect(vi.mocked(window.fetch).mock.calls.some(([, init]) => init?.method === "PATCH")).toBe(false);
+});

@@ -85,9 +85,108 @@ test("opening Drafts as another Account clears the previous Account content", as
   await expect(page.getByRole("region", { name: "Draft details" })).toContainText("Select a Draft");
 });
 
+test("duplicating an official Unit, editing metadata and Unit stats, then saving reloads the exact complete definition", async ({ page }) => {
+  const state = await mockDraftApi(page);
+  await page.goto("/workshop/cards");
+  await page.getByLabel("Official Card").selectOption("stoneguard");
+  await page.getByRole("button", { name: "Duplicate into Draft" }).click();
+  const details = page.getByRole("region", { name: "Draft details" });
+  await expect(details.getByRole("heading", { name: "Stoneguard", exact: true })).toBeVisible();
+  await details.getByLabel("Card name").fill("Stoneguard Captain");
+  await details.getByLabel("Rarity").selectOption("rare");
+  await details.getByLabel("Mana cost").fill("7");
+  await details.getByLabel("Unit attack").fill("13");
+  await details.getByLabel("Unit armor").fill("1000");
+  await details.getByLabel("Unit AP").fill("255");
+  await expect(page.getByRole("button", { name: "Select Stoneguard", exact: true })).toContainText("Unsaved changes");
+  await details.getByRole("button", { name: "Save Draft" }).click();
+  await expect(details.getByRole("status")).toHaveText("Draft saved (version 2).");
+  const expected = {
+    ...officialDefinition, id: state.created[0].id, name: "Stoneguard Captain", rarity: "rare", cost: 7,
+    kind: { type: "unit", attack: 13, armor: 1000, maxAp: 255 },
+  };
+  expect(state.updates).toEqual([{ draftId: 11, version: 1, definition: expected }]);
+  await page.reload();
+  await page.getByRole("button", { name: "Select Stoneguard Captain" }).click();
+  await expect(details.getByRole("heading", { name: "Stoneguard Captain" })).toBeVisible();
+  await expect(details.getByText("7 Mana", { exact: true })).toBeVisible();
+  await expect(details.getByLabel("Rarity")).toHaveValue("rare");
+  await expect(details.getByLabel("Unit attack")).toHaveValue("13");
+  await expect(details.getByLabel("Unit armor")).toHaveValue("1000");
+  await expect(details.getByLabel("Unit AP")).toHaveValue("255");
+  await expect(details.getByRole("button", { name: "Save Draft" })).toBeDisabled();
+});
+
+test("saving shows stored validation diagnostics and keeps edits through request failures and stale versions", async ({ page }) => {
+  const state = await mockDraftApi(page);
+  await page.goto("/workshop/cards");
+  const details = page.getByRole("region", { name: "Draft details" });
+  await expect(details.getByRole("heading", { name: "Existing Guardian" })).toBeVisible();
+
+  await details.getByLabel("Unit armor").fill("0");
+  await details.getByRole("button", { name: "Save Draft" }).click();
+  await expect(details.getByRole("alert")).toContainText("armor must be positive (saved value: 0)");
+  await expect(details.getByLabel("Unit armor")).toHaveValue("0");
+
+  await details.getByLabel("Unit armor").fill("");
+  await details.getByRole("button", { name: "Save Draft" }).click();
+  await expect(details.getByRole("alert").filter({ hasText: "Unit armor must be a whole number" })).toBeVisible();
+  expect(state.updates).toHaveLength(1);
+
+  await details.getByLabel("Unit armor").fill("6");
+  await details.getByLabel("Card name").fill("Renamed Guardian");
+  state.failUpdate = true;
+  await details.getByRole("button", { name: "Save Draft" }).click();
+  await expect(details.getByRole("alert").filter({ hasText: "Draft storage temporarily unavailable" })).toBeVisible();
+  await expect(details.getByLabel("Card name")).toHaveValue("Renamed Guardian");
+  await expect(details.getByLabel("Unit armor")).toHaveValue("6");
+  state.failUpdate = false;
+
+  // Another tab saved the Draft in the meantime.
+  Object.assign(state.drafts[0], { version: 9, definition: { ...state.drafts[0].definition, cost: 9 } });
+  await details.getByRole("button", { name: "Save Draft" }).click();
+  await expect(details.getByRole("alert").filter({ hasText: "current version is 9" })).toBeVisible();
+  await expect(details.getByLabel("Card name")).toHaveValue("Renamed Guardian");
+  await details.getByRole("button", { name: "Load latest saved version" }).click();
+  await expect(details.getByRole("status")).toContainText("Loaded saved version 9");
+  await expect(details.getByText("9 Mana", { exact: true })).toBeVisible();
+  await expect(details.getByLabel("Card name")).toHaveValue("Renamed Guardian");
+  await details.getByRole("button", { name: "Save Draft" }).click();
+  await expect(details.getByRole("status")).toHaveText("Draft saved (version 10).");
+  // The other tab's Mana cost survives; only the fields edited here are reapplied.
+  expect(state.updates.at(-1)).toEqual({ draftId: 10, version: 9, definition: { ...existingDraft.definition, name: "Renamed Guardian", cost: 9, kind: { ...existingDraft.definition.kind, armor: 6 } } });
+  await expect(details.getByText("Draft validation passed.")).toBeVisible();
+  await expect(details.getByText("9 Mana", { exact: true })).toBeVisible();
+  await details.getByLabel("Mana cost").fill("8");
+  await expect(details.getByRole("status")).toHaveCount(0);
+});
+
+test("saving metadata of a Spell Draft preserves its untouched mechanics and taxonomy", async ({ page }) => {
+  const spellDefinition = {
+    id: "custom-spell", name: "Ember Volley", rarity: "advanced", cost: 3, text: "Burns a target.",
+    kind: { type: "spell", range: 3, priority: 4, effect: { type: "damage", amount: 2 } },
+    taxonomy: { element: "fire", traits: ["ranged"] },
+  };
+  const state = await mockDraftApi(page);
+  state.drafts.push({ ...structuredClone(existingDraft), id: 12, definition: spellDefinition as never });
+  await page.goto("/workshop/cards");
+  await page.getByRole("button", { name: "Select Ember Volley" }).click();
+  const details = page.getByRole("region", { name: "Draft details" });
+  await expect(details.getByLabel("Unit attack")).toHaveCount(0);
+  await details.getByLabel("Card name").fill("Ember Storm");
+  await details.getByLabel("Mana cost").fill("4");
+  await details.getByRole("button", { name: "Save Draft" }).click();
+  await expect(details.getByRole("status")).toHaveText("Draft saved (version 3).");
+  expect(state.updates).toEqual([{ draftId: 12, version: 2, definition: { ...spellDefinition, name: "Ember Storm", cost: 4 } }]);
+});
+
 async function mockDraftApi(page: Page) {
   const created: typeof officialDefinition[] = [];
-  const state = { drafts: [existingDraft], created, accountId: 1, failLoad: false, failSource: false, failCreate: false };
+  const updates: { draftId: number; version: number; definition: Record<string, unknown> }[] = [];
+  const state = {
+    drafts: [structuredClone(existingDraft)] as (typeof existingDraft)[], created, updates,
+    accountId: 1, failLoad: false, failSource: false, failCreate: false, failUpdate: false,
+  };
   await page.addInitScript(() => {
     if (!localStorage.getItem("rune-lanes-auth-token")) localStorage.setItem("rune-lanes-auth-token", "draft-owner");
   });
@@ -112,6 +211,28 @@ async function mockDraftApi(page: Page) {
         return;
       }
       await route.fulfill({ json: { schemaVersion: 1, revision: { id: { cardId: "stoneguard", revision: 1 }, definition: officialDefinition } } });
+    } else if (/^\/api\/card-drafts\/\d+$/.test(path)) {
+      expect(request.headers().authorization).toBe("Bearer draft-owner");
+      const draft = state.drafts.find((entry) => entry.id === Number(path.split("/").pop()));
+      if (!draft) {
+        await route.fulfill({ status: 404, json: { message: "Card workshop content was not found." } });
+      } else if (request.method() === "PATCH") {
+        const { version, definition } = request.postDataJSON();
+        state.updates.push({ draftId: draft.id, version, definition });
+        if (state.failUpdate) {
+          await route.fulfill({ status: 503, json: { message: "Draft storage temporarily unavailable" } });
+        } else if (version !== draft.version) {
+          await route.fulfill({ status: 409, json: { message: `Card draft changed since version ${version}; current version is ${draft.version}.` } });
+        } else {
+          // Stands in for the core's stored diagnostics; the backend's real validation is covered in Rust.
+          const validationErrors = definition.kind.type === "unit" && definition.kind.armor <= 0
+            ? [{ code: "nonPositiveValue", field: "kind.armor", value: definition.kind.armor }] : [];
+          Object.assign(draft, { version: draft.version + 1, definition, validationErrors, updatedAt: draft.updatedAt + 1 });
+          await route.fulfill({ json: draft });
+        }
+      } else {
+        await route.fulfill({ json: draft });
+      }
     } else if (path === "/api/card-drafts") {
       expect(request.headers().authorization).toBe(state.accountId === 1 ? "Bearer draft-owner" : "Bearer draft-other");
       if (request.method() === "POST") {
@@ -121,7 +242,7 @@ async function mockDraftApi(page: Page) {
         }
         const { definition } = request.postDataJSON();
         state.created.push(definition);
-        const draft = { ...existingDraft, id: 11, version: 1, catalogId: "custom-duplicated", definition };
+        const draft = { ...structuredClone(existingDraft), id: 11, version: 1, catalogId: "custom-duplicated", definition };
         state.drafts.push(draft);
         await route.fulfill({ json: draft });
       } else {
