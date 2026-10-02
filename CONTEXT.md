@@ -397,7 +397,7 @@ A public client-side interactive demonstration embedded in a Wiki topic to illus
 _Avoid_: match scenario, dev scenario, sandbox match
 
 **Card workshop**:
-The surface for authoring custom Cards. Its Account authoring flow browses owned persisted Drafts and duplicates official Cards into new Drafts. Its browser-local flow edits Rule presets and custom Cards for Solo experiments without changing hosted content or progression.
+The surface for authoring custom Cards. Its Account authoring flow browses owned persisted Drafts, duplicates official Cards into new Drafts and edits Draft metadata and Unit stats. Its browser-local flow edits Rule presets and custom Cards for Solo experiments without changing hosted content or progression.
 
 **Card Draft**:
 An Account-owned editable complete Card definition with a version for concurrent-update detection and a stable catalog identity for publication and experiments. A Draft may contain validation errors; publication requires a valid definition.

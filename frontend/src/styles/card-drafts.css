@@ -17,3 +17,5 @@
 .card-drafts-stats dt { color: var(--muted); font-size: 0.85rem; }
 .card-drafts-stats dd { margin: 4px 0 0; font-weight: 600; }
 @media (max-width: 760px) { .card-drafts-layout { grid-template-columns: minmax(0, 1fr); } }
+.card-draft-editor { display: grid; gap: 16px; }
+.card-draft-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 16px; }

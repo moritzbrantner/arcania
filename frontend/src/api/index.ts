@@ -350,6 +350,17 @@ export function createCardDraft(definition: CardDefinition) {
   });
 }
 
+export function loadCardDraft(draftId: number) {
+  return request<CardDraft>(`/api/card-drafts/${draftId}`);
+}
+
+export function updateCardDraft(draftId: number, version: number, definition: CardDefinition) {
+  return request<CardDraft>(`/api/card-drafts/${draftId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ version, definition }),
+  });
+}
+
 export function loadCardRevisionTransfer(id: CardRevisionId) {
   return request<CardRevisionTransfer>(`/api/card-transfers/${encodeURIComponent(id.cardId)}/${id.revision}`);
 }
