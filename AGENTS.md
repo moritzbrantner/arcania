@@ -60,6 +60,6 @@ General engineering rules (git and merging, commits, testing, ADRs, docs, depend
 
 ## Done means
 
-- CI is green: the `ci` workflow runs `scripts/ci-local.sh` (format, Clippy, tests, build, story tests, Playwright e2e); `Validate` runs the fast subset.
+- CI is green: the `ci` workflow runs `scripts/ci-local.sh` (format, Clippy, Rust and frontend type/unit tests, build, story tests, Playwright e2e). `Validate` is a manually invoked fast subset, not a duplicate PR/main gate.
 - Rule changes have a `rune-lanes-core` test; user-visible flows touched have their e2e/story coverage updated.
 - `CONTEXT.md` / ADRs are updated when vocabulary or a decision changed.
