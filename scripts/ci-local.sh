@@ -12,8 +12,8 @@ cargo fmt --all --check
 echo "==> Running Rust clippy"
 cargo clippy --workspace --all-targets -- -D warnings
 
-echo "==> Running Rust tests"
-cargo test --workspace
+echo "==> Running Rust, frontend typecheck and unit tests"
+bun run test
 
 echo "==> Building frontend"
 bun run --cwd frontend build
