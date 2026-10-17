@@ -1,5 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "github>moritzbrantner/coding-agent-conventions"
+  ],
   "packageRules": [
     {
       "description": "Update input-bindings manually as one published dist/* cohort, using the Package distribution run summary as documented in AGENTS.md. Repository-root digests install the workspace instead of these packages.",
