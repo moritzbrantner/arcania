@@ -27,7 +27,7 @@ jobs:
           with open(os.environ["GITHUB_EVENT_PATH"]) as source:
               pull_request = json.load(source)["pull_request"]
           paths = subprocess.check_output([
-              "git", "diff", "--name-only", "-z", pull_request["base"]["sha"] + "..." + pull_request["head"]["sha"]
+              "git", "diff", "--no-renames", "--name-only", "-z", pull_request["base"]["sha"] + "..." + pull_request["head"]["sha"]
           ]).decode().split("\0")
           required = any(fnmatch.fnmatchcase(path, pattern) for path in paths for pattern in patterns)
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
