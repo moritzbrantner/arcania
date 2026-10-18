@@ -1,19 +1,7 @@
 name: GitHub Pages
 
 on:
-  pull_request:
-    paths:
-      - "frontend/**"
-      - "rune-lanes-core/**"
-      - "rune-lanes-browser/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "scripts/build-browser-engine.sh"
-      - "e2e-pages/**"
-      - "playwright.pages.config.mts"
-      - "package.json"
-      - "bun.lock"
-      - ".github/workflows/pages.yml"
+  workflow_call:
   push:
     branches: [main]
     paths:

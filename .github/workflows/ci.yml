@@ -7,6 +7,32 @@ on:
   pull_request:
 
 jobs:
+  pages-scope:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      required: ${{ steps.paths.outputs.required }}
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+        with:
+          fetch-depth: 0
+      - id: paths
+        shell: python
+        run: |
+          import fnmatch
+          import json
+          import os
+          import subprocess
+          patterns = ['frontend/**', 'rune-lanes-core/**', 'rune-lanes-browser/**', 'Cargo.toml', 'Cargo.lock', 'scripts/build-browser-engine.sh', 'e2e-pages/**', 'playwright.pages.config.mts', 'package.json', 'bun.lock', '.github/workflows/pages.yml', '.github/workflows/ci.yml']
+          with open(os.environ["GITHUB_EVENT_PATH"]) as source:
+              pull_request = json.load(source)["pull_request"]
+          paths = subprocess.check_output([
+              "git", "diff", "--name-only", "-z", pull_request["base"]["sha"] + "..." + pull_request["head"]["sha"]
+          ]).decode().split("\0")
+          required = any(fnmatch.fnmatchcase(path, pattern) for path in paths for pattern in patterns)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print(f"required={str(required).lower()}", file=output)
+
   ci:
     runs-on: ubuntu-latest
     steps:
@@ -32,3 +58,26 @@ jobs:
       - name: Run local CI
         run: bun run ci:local
 
+
+  pages-validation:
+    if: github.event_name == 'pull_request' && needs.pages-scope.outputs.required == 'true'
+    needs: pages-scope
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml
+
+  merge-ready:
+    name: merge-ready
+    if: ${{ always() }}
+    needs: ["ci", "pages-validation", "pages-scope"]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: moritzbrantner/reusable-workflows/.github/actions/merge-ready@b0f25f241d76af2584dfc9e375084ff5c5cb97da
+        with:
+          needs: ${{ toJSON(needs) }}
+          required: '["ci", "pages-validation", "pages-scope"]'
+          allow-skipped: ${{ github.event_name != 'pull_request' && '["pages-validation", "pages-scope"]' || (needs.pages-scope.outputs.required == 'false' && '["pages-validation"]' || '[]') }}
