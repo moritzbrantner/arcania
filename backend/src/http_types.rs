@@ -417,6 +417,10 @@ pub(crate) enum SharedServerMessage {
         request_id: String,
         message: String,
     },
+    #[allow(
+        dead_code,
+        reason = "client protocol message; presence changes are currently delivered as snapshots"
+    )]
     PresenceChanged {
         payload: SharedMatchResponse,
     },

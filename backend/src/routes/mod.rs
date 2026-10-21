@@ -21,6 +21,10 @@ use crate::preferences::{PreferencesModule, UpdatePreferencesRequest};
 use crate::progression::{
     ProgressionError, ProgressionModule, ProgressionResponse, SaveRuneLoadoutRequest,
 };
+use crate::shared_match_lifecycle::{
+    SHARED_SEAT_CHECK_INTERVAL, SharedLifecycleError, SharedMatchLifecycle, SharedSeatJoin,
+    unix_timestamp,
+};
 use axum::body::Bytes;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
@@ -29,9 +33,8 @@ use axum::response::IntoResponse;
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use futures_util::StreamExt;
-use game_server::SessionLease;
 use std::sync::Arc;
-use tokio::time::{self, Duration, Instant};
+use tokio::time::{self, Instant};
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::{ServeDir, ServeFile};
 
@@ -1286,44 +1289,26 @@ async fn create_shared_match(
         Ok(profile) => profile,
         Err(response) => return response,
     };
-    let created = {
-        let mut store = state
-            .store
-            .lock()
-            .expect("store lock should not be poisoned");
-        let format = match request.format {
-            Some(SharedMatchFormatRequest::TwoVTwo) => SharedMatchFormat::TwoVTwo,
-            Some(SharedMatchFormatRequest::Duel) | None => SharedMatchFormat::Duel,
-        };
-        match store.create_shared_match(profile.as_ref().map(|profile| profile.id), format) {
-            Ok(created) => created,
-            Err(error) => return store_error_response(error),
-        }
+    let format = match request.format {
+        Some(SharedMatchFormatRequest::TwoVTwo) => SharedMatchFormat::TwoVTwo,
+        Some(SharedMatchFormatRequest::Duel) | None => SharedMatchFormat::Duel,
     };
-
-    Json(CreateSharedMatchResponse::from(created)).into_response()
+    match SharedMatchLifecycle::new(state)
+        .create(profile.as_ref().map(|profile| profile.id), format)
+    {
+        Ok(created) => Json(CreateSharedMatchResponse::from(created)).into_response(),
+        Err(error) => store_error_response(error),
+    }
 }
 
 async fn load_shared_match(
     State(state): State<SharedState>,
     Path((match_id, seat_token)): Path<(String, String)>,
 ) -> impl IntoResponse {
-    let shared = {
-        let mut store = state
-            .store
-            .lock()
-            .expect("store lock should not be poisoned");
-        if let Err(error) = store.mark_shared_seat_seen(&match_id, &seat_token) {
-            return store_error_response(error);
-        }
-        match store.load_shared_match_for_seat(&match_id, &seat_token) {
-            Ok(Some(shared)) => shared,
-            Ok(None) => return shared_not_found_response(),
-            Err(error) => return store_error_response(error),
-        }
-    };
-
-    Json(SharedMatchResponse::from(shared)).into_response()
+    match SharedMatchLifecycle::new(state).open_seat(&match_id, &seat_token) {
+        Ok(shared) => Json(SharedMatchResponse::from(shared)).into_response(),
+        Err(error) => shared_lifecycle_error_response(error),
+    }
 }
 
 async fn join_shared_match(
@@ -1336,42 +1321,26 @@ async fn join_shared_match(
         Ok(profile) => profile,
         Err(response) => return response,
     };
-    let shared = {
-        let mut store = state
-            .store
-            .lock()
-            .expect("store lock should not be poisoned");
-        let loadout = match resolve_shared_seat_loadout(
-            &mut store,
-            SharedSeatLoadoutRequest {
-                match_id: &match_id,
-                seat_token: &seat_token,
-                user_id: profile.as_ref().map(|profile| profile.id),
-                hero_type: request.hero_type,
-                deck_choice: request.deck_choice,
-                legacy_deck_id: request.deck_recipe_id,
-                requested_rune_ids: request.rune_ids,
-            },
-        ) {
-            Ok(loadout) => loadout,
-            Err(error) => return loadout_resolution_error_response(error),
-        };
-        match store.join_shared_match(
-            &match_id,
-            &seat_token,
-            loadout.hero_type,
-            loadout.deck_recipe,
-            loadout.progression,
-            profile.as_ref().map(|profile| profile.id),
-        ) {
-            Ok(Some(shared)) => shared,
-            Ok(None) => return shared_not_found_response(),
-            Err(error) => return store_error_response(error),
-        }
-    };
-    state.notify_match(&match_id);
+    match SharedMatchLifecycle::new(state).join(SharedSeatJoin {
+        match_id: &match_id,
+        seat_token: &seat_token,
+        user_id: profile.as_ref().map(|profile| profile.id),
+        hero_type: request.hero_type,
+        deck_choice: request.deck_choice,
+        legacy_deck_id: request.deck_recipe_id,
+        requested_rune_ids: request.rune_ids,
+    }) {
+        Ok(shared) => Json(SharedMatchResponse::from(shared)).into_response(),
+        Err(error) => shared_lifecycle_error_response(error),
+    }
+}
 
-    Json(SharedMatchResponse::from(shared)).into_response()
+fn shared_lifecycle_error_response(error: SharedLifecycleError) -> axum::response::Response {
+    match error {
+        SharedLifecycleError::NotFound => shared_not_found_response(),
+        SharedLifecycleError::Store(error) => store_error_response(error),
+        SharedLifecycleError::Loadout(error) => loadout_resolution_error_response(error),
+    }
 }
 
 async fn shared_match_ws(
@@ -1379,33 +1348,27 @@ async fn shared_match_ws(
     State(state): State<SharedState>,
     Path((match_id, seat_token)): Path<(String, String)>,
 ) -> impl IntoResponse {
-    let found = {
-        let store = state
-            .store
-            .lock()
-            .expect("store lock should not be poisoned");
-        match store.load_shared_match_for_seat(&match_id, &seat_token) {
-            Ok(Some(_)) => true,
-            Ok(None) => false,
-            Err(error) => return store_error_response(error),
-        }
-    };
-    if !found {
-        return shared_not_found_response();
+    match SharedMatchLifecycle::new(state.clone()).seat_exists(&match_id, &seat_token) {
+        Ok(true) => {}
+        Ok(false) => return shared_not_found_response(),
+        Err(error) => return store_error_response(error),
     }
 
     ws.on_upgrade(move |socket| handle_shared_socket(socket, state, match_id, seat_token))
         .into_response()
 }
 
+/// Thin WebSocket adapter over `SharedMatchLifecycle`: it moves messages between the socket and
+/// the seat connection, which decides replies, notifications and when to close.
 async fn handle_shared_socket(
     mut socket: WebSocket,
     state: SharedState,
     match_id: String,
     seat_token: String,
 ) {
-    let lease = match state.connect_shared_seat(&match_id, &seat_token) {
-        Ok(lease) => lease,
+    let connection = match SharedMatchLifecycle::new(state.clone()).connect(&match_id, &seat_token)
+    {
+        Ok(connection) => connection,
         Err(error) => {
             let _ = send_shared_message(
                 &mut socket,
@@ -1418,72 +1381,54 @@ async fn handle_shared_socket(
         }
     };
 
-    {
-        let mut store = state
-            .store
-            .lock()
-            .expect("store lock should not be poisoned");
-        let _ = store.mark_shared_seat_seen(&match_id, &seat_token);
-    }
-
-    let sender = state.match_sender(&match_id);
-    let mut receiver = sender.subscribe();
-    let mut heartbeat_timeout = time::interval(Duration::from_secs(5));
+    let mut receiver = state.match_sender(connection.match_id()).subscribe();
+    let mut checks = time::interval(SHARED_SEAT_CHECK_INTERVAL);
     let mut last_client_message = Instant::now();
-    if let Some(message) = shared_snapshot_message(&state, &match_id, &seat_token, false)
+    if let Some(message) = connection.snapshot()
         && send_shared_message(&mut socket, message).await.is_err()
     {
-        finish_shared_socket(&state, &match_id, &seat_token, lease);
+        connection.finish();
         return;
     }
-    state.notify_match(&match_id);
+    connection.announce();
 
     loop {
         tokio::select! {
             received = socket.next() => {
-                let Some(received) = received else {
+                let Some(Ok(message)) = received else {
                     break;
                 };
-                let Ok(message) = received else {
-                    break;
-                };
-                if !state.owns_shared_seat_connection(&match_id, &seat_token, lease) {
+                if !connection.is_current() {
                     break;
                 }
                 last_client_message = Instant::now();
                 match message {
                     Message::Text(text) => {
-                        if !handle_shared_client_text(
-                            &mut socket,
-                            &state,
-                            &match_id,
-                            &seat_token,
-                            lease,
-                            &text,
-                        )
-                        .await
-                        {
+                        let outcome = connection.handle_text(&text, unix_timestamp());
+                        if !outcome.keep_open {
                             break;
+                        }
+                        if let Some(reply) = outcome.reply {
+                            let _ = send_shared_message(&mut socket, reply).await;
+                        }
+                        if outcome.notify_others {
+                            connection.announce();
                         }
                     }
                     Message::Close(_) => break,
                     _ => {}
                 }
             }
-            _ = heartbeat_timeout.tick() => {
-                if !state.owns_shared_seat_connection(&match_id, &seat_token, lease)
-                    || last_client_message.elapsed() > Duration::from_secs(45)
-                {
+            _ = checks.tick() => {
+                if connection.should_close(last_client_message.elapsed()) {
                     break;
                 }
             }
             broadcast = receiver.recv() => {
-                if broadcast.is_err()
-                    || !state.owns_shared_seat_connection(&match_id, &seat_token, lease)
-                {
+                if broadcast.is_err() || !connection.is_current() {
                     break;
                 }
-                if let Some(message) = shared_snapshot_message(&state, &match_id, &seat_token, false)
+                if let Some(message) = connection.snapshot()
                     && send_shared_message(&mut socket, message).await.is_err()
                 {
                     break;
@@ -1492,196 +1437,7 @@ async fn handle_shared_socket(
         }
     }
 
-    finish_shared_socket(&state, &match_id, &seat_token, lease);
-}
-
-fn finish_shared_socket(
-    state: &SharedState,
-    match_id: &str,
-    seat_token: &str,
-    lease: SessionLease,
-) {
-    if !state.disconnect_shared_seat(match_id, seat_token, lease) {
-        return;
-    }
-
-    {
-        let mut store = state
-            .store
-            .lock()
-            .expect("store lock should not be poisoned");
-        let _ = store.mark_shared_seat_disconnected(match_id, seat_token);
-    }
-    state.notify_match(match_id);
-}
-
-async fn handle_shared_client_text(
-    socket: &mut WebSocket,
-    state: &SharedState,
-    match_id: &str,
-    seat_token: &str,
-    lease: SessionLease,
-    text: &str,
-) -> bool {
-    let message = match serde_json::from_str::<SharedClientMessage>(text) {
-        Ok(message) => message,
-        Err(error) => {
-            let _ = send_shared_message(
-                socket,
-                SharedServerMessage::Error {
-                    message: format!("Invalid WebSocket message: {error}"),
-                },
-            )
-            .await;
-            return true;
-        }
-    };
-
-    match message {
-        SharedClientMessage::Action { request_id, action } => {
-            let Some(result) =
-                state.with_shared_seat_connection(match_id, seat_token, lease, || {
-                    apply_shared_socket_action(state, match_id, seat_token, action)
-                })
-            else {
-                return false;
-            };
-            match result {
-                Ok(payload) => {
-                    let _ = send_shared_message(
-                        socket,
-                        SharedServerMessage::ActionAccepted {
-                            request_id,
-                            payload,
-                        },
-                    )
-                    .await;
-                    state.notify_match(match_id);
-                }
-                Err(message) => {
-                    let _ = send_shared_message(
-                        socket,
-                        SharedServerMessage::ActionRejected {
-                            request_id,
-                            message,
-                        },
-                    )
-                    .await;
-                }
-            }
-        }
-        SharedClientMessage::ClaimForfeit { request_id } => {
-            let Some(result) =
-                state.with_shared_seat_connection(match_id, seat_token, lease, || {
-                    claim_shared_forfeit(state, match_id, seat_token)
-                })
-            else {
-                return false;
-            };
-            match result {
-                Ok(payload) => {
-                    let _ = send_shared_message(
-                        socket,
-                        SharedServerMessage::ActionAccepted {
-                            request_id,
-                            payload,
-                        },
-                    )
-                    .await;
-                    state.notify_match(match_id);
-                }
-                Err(message) => {
-                    let _ = send_shared_message(
-                        socket,
-                        SharedServerMessage::ActionRejected {
-                            request_id,
-                            message,
-                        },
-                    )
-                    .await;
-                }
-            }
-        }
-        SharedClientMessage::Heartbeat => {
-            let Some(result) =
-                state.with_shared_seat_connection(match_id, seat_token, lease, || {
-                    let mut store = state
-                        .store
-                        .lock()
-                        .expect("store lock should not be poisoned");
-                    store.mark_shared_seat_seen(match_id, seat_token)
-                })
-            else {
-                return false;
-            };
-            if let Err(error) = result {
-                let _ = send_shared_message(
-                    socket,
-                    SharedServerMessage::Error {
-                        message: error.to_string(),
-                    },
-                )
-                .await;
-            }
-        }
-    }
-
-    true
-}
-
-fn apply_shared_socket_action(
-    state: &SharedState,
-    match_id: &str,
-    seat_token: &str,
-    action: MatchActionRequest,
-) -> Result<SharedMatchResponse, String> {
-    let mut store = state
-        .store
-        .lock()
-        .expect("store lock should not be poisoned");
-    MatchCommands::new(&mut store)
-        .apply_shared_seat_action(match_id, seat_token, action)
-        .map(|applied| SharedMatchResponse::from(applied.shared_match))
-        .map_err(|error| error.to_string())
-}
-
-fn claim_shared_forfeit(
-    state: &SharedState,
-    match_id: &str,
-    seat_token: &str,
-) -> Result<SharedMatchResponse, String> {
-    let mut store = state
-        .store
-        .lock()
-        .expect("store lock should not be poisoned");
-    MatchCommands::new(&mut store)
-        .claim_shared_forfeit(match_id, seat_token, unix_timestamp())
-        .map(|applied| SharedMatchResponse::from(applied.shared_match))
-        .map_err(|error| error.to_string())
-}
-
-fn shared_snapshot_message(
-    state: &SharedState,
-    match_id: &str,
-    seat_token: &str,
-    presence: bool,
-) -> Option<SharedServerMessage> {
-    let shared = {
-        let store = state
-            .store
-            .lock()
-            .expect("store lock should not be poisoned");
-        store
-            .load_shared_match_for_seat(match_id, seat_token)
-            .ok()
-            .flatten()
-    }?;
-    let payload = SharedMatchResponse::from(shared);
-    if presence {
-        Some(SharedServerMessage::PresenceChanged { payload })
-    } else {
-        Some(SharedServerMessage::Snapshot { payload })
-    }
+    connection.finish();
 }
 
 async fn send_shared_message(
@@ -1690,15 +1446,6 @@ async fn send_shared_message(
 ) -> Result<(), axum::Error> {
     let text = serde_json::to_string(&message).expect("server message should serialize");
     socket.send(Message::Text(text.into())).await
-}
-
-fn unix_timestamp() -> i64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs() as i64)
-        .unwrap_or(0)
 }
 
 async fn load_match(
