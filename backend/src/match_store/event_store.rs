@@ -8,7 +8,7 @@ use crate::match_session::{RecordedReplayFrame, Side};
 use crate::progression;
 
 use super::db_values::SideDbValue;
-use super::{MatchStoreError, SqliteMatchStore, insert_replay_frame, next_frame_index};
+use super::{MatchStoreError, SqliteMatchStore, replays};
 
 const SNAPSHOT_INTERVAL: u64 = 32;
 
@@ -108,17 +108,7 @@ impl SqliteMatchStore {
             params![id, i64::from(action_index), request_json],
         )?;
 
-        let next_frame = next_frame_index(&transaction, id)?;
-        for (offset, frame) in frames.iter().enumerate() {
-            let event_json = serde_json::to_string(&frame.event)?;
-            insert_replay_frame(
-                &transaction,
-                id,
-                next_frame + offset as u32,
-                frame,
-                &event_json,
-            )?;
-        }
+        replays::append_frames(&transaction, id, frames)?;
 
         let completed_at = if state.winner.is_some() {
             "completed_at = COALESCE(completed_at, unixepoch()),"

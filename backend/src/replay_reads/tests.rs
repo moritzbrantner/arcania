@@ -4,6 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::*;
 use crate::deck_library;
+use crate::match_commands::MatchCommands;
 use crate::match_session::{HeroType, MatchProgressionLoadout};
 use crate::match_store::{CreatedSharedMatch, SharedMatchFormat};
 
@@ -42,19 +43,8 @@ fn test_store(name: &str) -> TestStore {
 }
 
 fn complete(store: &mut SqliteMatchStore, match_id: &str, winner: Side) {
-    let mut stored = store
-        .load_match(match_id)
-        .expect("match lookup should succeed")
-        .expect("match should exist");
-    let frames = rune_lanes_core::test_support::forfeit_match(&mut stored.state, winner, 0);
-    store
-        .save_custom_action_and_replay_frames(
-            match_id,
-            0,
-            r#"{"type":"testForfeit"}"#,
-            &stored.state,
-            &frames,
-        )
+    MatchCommands::new(store)
+        .force_forfeit(match_id, winner)
         .expect("completed match should save");
 }
 
@@ -81,9 +71,6 @@ fn active_duel(store: &mut SqliteMatchStore) -> CreatedSharedMatch {
 fn completed_duel(store: &mut SqliteMatchStore) -> CreatedSharedMatch {
     let created = active_duel(store);
     complete(store, &created.match_id, Side::Player);
-    store
-        .mark_shared_match_forfeited(&created.match_id, Side::Player)
-        .expect("shared match should be marked finished");
     created
 }
 
