@@ -15,12 +15,13 @@ use crate::identity::{GeneratedAvatar, IdentityModule};
 use crate::loadout_resolution::*;
 use crate::match_access::{Actor, MatchAccess};
 use crate::match_commands::MatchCommands;
-use crate::match_session::{HeroType, MatchActionRequest, MatchMode, ReplayVisibility, Side};
-use crate::match_store::{SharedMatchFormat, SharedMatchStatus, SqliteMatchStore};
+use crate::match_session::{HeroType, MatchActionRequest, Side};
+use crate::match_store::{SharedMatchFormat, SqliteMatchStore};
 use crate::preferences::{PreferencesModule, UpdatePreferencesRequest};
 use crate::progression::{
     ProgressionError, ProgressionModule, ProgressionResponse, SaveRuneLoadoutRequest,
 };
+use crate::replay_reads::{MatchSummaryRead, ReplayRead, ReplayReadError, ReplayReads};
 use crate::shared_match_lifecycle::{
     SHARED_SEAT_CHECK_INTERVAL, SharedLifecycleError, SharedMatchLifecycle, SharedSeatJoin,
     unix_timestamp,
@@ -1488,36 +1489,8 @@ async fn load_replay(
         Ok(profile) => profile,
         Err(response) => return response,
     };
-    let replay = {
-        let store = state
-            .store
-            .lock()
-            .expect("store lock should not be poisoned");
-        let replay = match store.load_replay(&match_id) {
-            Ok(Some(replay)) => replay,
-            Ok(None) => {
-                return replay_not_found_response(&match_id);
-            }
-            Err(error) => return store_error_response(error),
-        };
-        let actor = Actor::from(profile.as_ref());
-        if !MatchAccess::new(&store).can_load_replay(&actor, &match_id) {
-            return replay_not_found_response(&match_id);
-        }
-        replay
-    };
-
-    if replay.summary.state.mode == MatchMode::Shared && replay.summary.state.winner.is_none() {
-        return (
-            StatusCode::NOT_FOUND,
-            Json(ApiError {
-                message: format!("Replay for match {match_id} was not found"),
-            }),
-        )
-            .into_response();
-    }
-
-    replay_response(replay)
+    let actor = Actor::from(profile.as_ref());
+    replay_read_response(&state, &actor, &match_id)
 }
 
 async fn load_match_summary(
@@ -1529,170 +1502,49 @@ async fn load_match_summary(
         Ok(profile) => profile,
         Err(response) => return response,
     };
-    let (summary, viewer_side, viewer_deck_name, reward) = {
-        let mut store = state
-            .store
-            .lock()
-            .expect("store lock should not be poisoned");
-        let replay = match store.load_replay(&match_id) {
-            Ok(Some(replay)) => replay,
-            Ok(None) => return match_summary_not_found_response(&match_id),
-            Err(error) => return store_error_response(error),
-        };
-        let actor = Actor::from(profile.as_ref());
-        if !MatchAccess::new(&store).can_load_replay(&actor, &match_id) {
-            return match_summary_not_found_response(&match_id);
-        }
-        if replay.summary.state.winner.is_none() {
-            return match_summary_not_found_response(&match_id);
-        }
-        let viewer_side = match (replay.summary.state.mode, profile.as_ref()) {
-            (MatchMode::Solo, _) => Some(Side::Player),
-            (MatchMode::Shared, Some(profile)) => {
-                match store.completed_shared_participant_side(&match_id, profile.id) {
-                    Ok(side) => side,
-                    Err(error) => return store_error_response(error),
-                }
-            }
-            (MatchMode::Shared, None) => None,
-        };
-        if replay.summary.state.mode == MatchMode::Shared && viewer_side.is_none() {
-            return match_summary_not_found_response(&match_id);
-        }
-        let viewer_deck_name = match (replay.summary.state.mode, profile.as_ref()) {
-            (MatchMode::Shared, Some(profile)) => {
-                match store.viewer_context_for_user(&match_id, profile.id) {
-                    Ok(context) => context.and_then(|(_, deck_name)| deck_name),
-                    Err(error) => return store_error_response(error),
-                }
-            }
-            _ => replay.summary.player_deck_name.clone(),
-        };
-        let reward = if let (Some(profile), Some(viewer_side)) = (profile.as_ref(), viewer_side) {
-            let progression = ProgressionModule::new(store.connection_mut());
-            match progression.match_reward_summary(profile.id, &match_id, viewer_side) {
-                Ok(reward) => reward,
-                Err(error) => return progression_error_response(error),
-            }
-        } else {
-            None
-        };
-        (replay.summary, viewer_side, viewer_deck_name, reward)
-    };
-
-    let viewer = MatchSummaryViewer {
-        side: viewer_side,
-        result: viewer_result(viewer_side, summary.state.winner),
-    };
-    let match_id = summary.id.clone();
-    Json(MatchSummaryResponse {
-        match_id,
-        summary: MatchSummary::for_viewer(
-            summary.clone(),
-            viewer_side
-                .map(|side| side.team())
-                .unwrap_or(crate::match_session::Team::Player),
-            viewer_deck_name,
-        ),
-        viewer,
-        reward,
-    })
-    .into_response()
+    let actor = Actor::from(profile.as_ref());
+    match_summary_read_response(&state, &actor, &match_id)
 }
 
 async fn load_shared_match_summary(
     State(state): State<SharedState>,
     Path((match_id, seat_token)): Path<(String, String)>,
 ) -> impl IntoResponse {
-    let (summary, viewer_side, viewer_deck_name, reward) = {
-        let mut store = state
-            .store
-            .lock()
-            .expect("store lock should not be poisoned");
-        let shared = match store.load_shared_match_for_seat(&match_id, &seat_token) {
-            Ok(Some(shared)) => shared,
-            Ok(None) => return match_summary_not_found_response(&match_id),
-            Err(error) => return store_error_response(error),
-        };
-        if shared.status == SharedMatchStatus::Active || shared.status == SharedMatchStatus::Setup {
-            return match_summary_not_found_response(&match_id);
-        }
-        let replay = match store.load_replay(&match_id) {
-            Ok(Some(replay)) => replay,
-            Ok(None) => return match_summary_not_found_response(&match_id),
-            Err(error) => return store_error_response(error),
-        };
-        if replay.summary.state.winner.is_none() {
-            return match_summary_not_found_response(&match_id);
-        }
-        let viewer_side = shared.viewer_seat.side;
-        let reward = if let Some(user_id) = shared.viewer_seat.participant_user_id {
-            let progression = ProgressionModule::new(store.connection_mut());
-            match progression.match_reward_summary(user_id, &match_id, viewer_side) {
-                Ok(reward) => reward,
-                Err(error) => return progression_error_response(error),
-            }
-        } else {
-            None
-        };
-        (
-            replay.summary,
-            viewer_side,
-            shared.viewer_seat.deck_recipe_name.clone(),
-            reward,
-        )
+    let actor = Actor::Seat {
+        match_id: match_id.clone(),
+        seat_token,
     };
-
-    let viewer = MatchSummaryViewer {
-        side: Some(viewer_side),
-        result: viewer_result(Some(viewer_side), summary.state.winner),
-    };
-    let match_id = summary.id.clone();
-    Json(MatchSummaryResponse {
-        match_id,
-        summary: MatchSummary::for_viewer(summary.clone(), viewer_side.team(), viewer_deck_name),
-        viewer,
-        reward,
-    })
-    .into_response()
+    match_summary_read_response(&state, &actor, &match_id)
 }
 
 async fn load_shared_replay(
     State(state): State<SharedState>,
     Path((match_id, seat_token)): Path<(String, String)>,
 ) -> impl IntoResponse {
-    let replay = {
-        let store = state
+    let actor = Actor::Seat {
+        match_id: match_id.clone(),
+        seat_token,
+    };
+    replay_read_response(&state, &actor, &match_id)
+}
+
+fn replay_read_response(
+    state: &SharedState,
+    actor: &Actor,
+    match_id: &str,
+) -> axum::response::Response {
+    let read = {
+        let mut store = state
             .store
             .lock()
             .expect("store lock should not be poisoned");
-        let shared = match store.load_shared_match_for_seat(&match_id, &seat_token) {
-            Ok(Some(shared)) => shared,
-            Ok(None) => return replay_not_found_response(&match_id),
-            Err(error) => return store_error_response(error),
-        };
-        if shared.status == SharedMatchStatus::Active || shared.status == SharedMatchStatus::Setup {
-            return replay_not_found_response(&match_id);
-        }
-        let replay = match store.load_replay(&match_id) {
-            Ok(Some(replay)) => replay,
-            Ok(None) => return replay_not_found_response(&match_id),
-            Err(error) => return store_error_response(error),
-        };
-        if replay.summary.state.winner.is_none() {
-            return replay_not_found_response(&match_id);
-        }
-        replay
+        ReplayReads::new(&mut store).replay(actor, match_id)
     };
-
-    replay_response(replay)
-}
-
-fn replay_response(replay: crate::match_store::StoredReplay) -> axum::response::Response {
-    let visibility = if replay.summary.state.winner.is_some() {
-        ReplayVisibility::Revealed
-    } else {
-        ReplayVisibility::Public
+    let ReplayRead { replay, visibility } = match read {
+        Ok(read) => read,
+        Err(ReplayReadError::NotFound) => return replay_not_found_response(match_id),
+        Err(ReplayReadError::Store(error)) => return store_error_response(error),
+        Err(ReplayReadError::Progression(error)) => return progression_error_response(error),
     };
     let match_id = replay.summary.id.clone();
     let summary = MatchSummary::for_viewer(
@@ -1711,6 +1563,49 @@ fn replay_response(replay: crate::match_store::StoredReplay) -> axum::response::
         visibility,
         summary,
         frames,
+    })
+    .into_response()
+}
+
+fn match_summary_read_response(
+    state: &SharedState,
+    actor: &Actor,
+    match_id: &str,
+) -> axum::response::Response {
+    let read = {
+        let mut store = state
+            .store
+            .lock()
+            .expect("store lock should not be poisoned");
+        ReplayReads::new(&mut store).summary(actor, match_id)
+    };
+    let MatchSummaryRead {
+        summary,
+        viewer_side,
+        viewer_deck_name,
+        reward,
+    } = match read {
+        Ok(read) => read,
+        Err(ReplayReadError::NotFound) => return match_summary_not_found_response(match_id),
+        Err(ReplayReadError::Store(error)) => return store_error_response(error),
+        Err(ReplayReadError::Progression(error)) => return progression_error_response(error),
+    };
+    let viewer = MatchSummaryViewer {
+        side: viewer_side,
+        result: viewer_result(viewer_side, summary.state.winner),
+    };
+    let match_id = summary.id.clone();
+    Json(MatchSummaryResponse {
+        match_id,
+        summary: MatchSummary::for_viewer(
+            summary,
+            viewer_side
+                .map(|side| side.team())
+                .unwrap_or(crate::match_session::Team::Player),
+            viewer_deck_name,
+        ),
+        viewer,
+        reward,
     })
     .into_response()
 }
