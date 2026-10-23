@@ -2,7 +2,6 @@ use crate::identity::AccountProfile;
 use crate::match_store::{MatchStoreError, SqliteMatchStore, StoredMatchSummary};
 
 #[derive(Clone, Debug)]
-#[allow(dead_code)]
 pub enum Actor {
     Anonymous,
     Account {
@@ -29,19 +28,6 @@ impl<'a> MatchAccess<'a> {
 
     pub fn can_apply_solo_action(&self, actor: &Actor, match_id: &str) -> bool {
         self.account_can_access_owned_match(actor, match_id)
-    }
-
-    pub fn can_load_replay(&self, actor: &Actor, match_id: &str) -> bool {
-        self.account_can_access_owned_match(actor, match_id)
-            || match actor {
-                Actor::Account { user_id } => self
-                    .store
-                    .completed_shared_participant_side(match_id, *user_id)
-                    .ok()
-                    .flatten()
-                    .is_some(),
-                _ => false,
-            }
     }
 
     pub fn list_profile_matches(
