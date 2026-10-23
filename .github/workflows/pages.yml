@@ -44,8 +44,8 @@ jobs:
 
       - name: Set up browser engine toolchain
         run: |
-          rustup toolchain install 1.98.1 --profile minimal --target wasm32-unknown-unknown
-          rustup default 1.98.1
+          rustup toolchain install stable --profile minimal --target wasm32-unknown-unknown
+          rustup default stable
 
       - name: Install verified wasm-bindgen CLI
         uses: moritzbrantner/reusable-workflows/.github/actions/install-verified-wasm-cli@e60855ad67f3dad72c283c355d544d6d296241d7
