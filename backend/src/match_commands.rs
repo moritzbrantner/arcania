@@ -274,6 +274,40 @@ impl<'a> MatchCommands<'a> {
         Ok(AppliedSharedAction { shared_match })
     }
 
+    /// Test fixture: ends a match with `winner` through the event-sourced forfeit path, without
+    /// the Shared match disconnect timeout. Shared matches end up `forfeited`.
+    #[cfg(test)]
+    pub(crate) fn force_forfeit(
+        &mut self,
+        match_id: &str,
+        winner: Side,
+    ) -> Result<StoredMatch, MatchCommandError> {
+        let (aggregate, action_index) = self
+            .store
+            .load_event_sourced_match(match_id)?
+            .ok_or(MatchCommandError::NotFound)?;
+        let decision = aggregate.decide_forfeit(
+            CommandMetadata {
+                command_id: fresh_command_id(match_id, action_index),
+                expected_version: aggregate.version(),
+                side: winner,
+                action_index,
+            },
+            winner,
+        )?;
+        let (aggregate, _) = self.persist_decision(
+            match_id,
+            r#"{"type":"testForfeit"}"#,
+            aggregate,
+            decision,
+            Some(winner),
+        )?;
+        Ok(StoredMatch {
+            id: match_id.to_string(),
+            state: aggregate.state().clone(),
+        })
+    }
+
     fn persist_decision(
         &mut self,
         match_id: &str,
@@ -329,6 +363,14 @@ mod tests {
     use crate::match_session::{HeroType, MatchProgressionLoadout, ReplayEvent};
     use crate::match_store::SharedMatchFormat;
 
+    fn next_action_index(store: &mut SqliteMatchStore, match_id: &str) -> u32 {
+        store
+            .load_event_sourced_match(match_id)
+            .expect("event stream should load")
+            .expect("match should exist")
+            .1
+    }
+
     fn test_db_path(name: &str) -> std::path::PathBuf {
         let suffix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -367,12 +409,7 @@ mod tests {
 
         assert!(!applied.replay_frames.is_empty());
         assert_eq!(applied.stored_match.state.active_side, Side::Opponent);
-        assert_eq!(
-            store
-                .next_action_index(&created.id)
-                .expect("action index should load"),
-            3
-        );
+        assert_eq!(next_action_index(&mut store, &created.id), 3);
         let replay = store
             .load_replay(&created.id)
             .expect("replay should load")
@@ -475,12 +512,7 @@ mod tests {
             .expect_err("anonymous actor should not apply account-owned match action");
 
         assert!(matches!(error, MatchCommandError::Forbidden));
-        assert_eq!(
-            store
-                .next_action_index(&created.id)
-                .expect("action index should load"),
-            0
-        );
+        assert_eq!(next_action_index(&mut store, &created.id), 0);
     }
 
     #[test]
@@ -503,12 +535,7 @@ mod tests {
             .expect_err("invalid action should fail");
 
         assert!(matches!(error, MatchCommandError::Rule(_)));
-        assert_eq!(
-            store
-                .next_action_index(&created.id)
-                .expect("action index should load"),
-            0
-        );
+        assert_eq!(next_action_index(&mut store, &created.id), 0);
         let replay = store
             .load_replay(&created.id)
             .expect("replay should load")
@@ -630,12 +657,7 @@ mod tests {
         );
         drop(store);
         let mut store = SqliteMatchStore::new(&path).expect("store should reopen");
-        assert_eq!(
-            store
-                .next_action_index(&created.match_id)
-                .expect("action index should load"),
-            3
-        );
+        assert_eq!(next_action_index(&mut store, &created.match_id), 3);
         let requests: Vec<serde_json::Value> = store
             .connection_mut()
             .prepare(

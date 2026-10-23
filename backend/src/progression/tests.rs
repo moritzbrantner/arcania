@@ -446,19 +446,8 @@ fn completed_two_v_two_match_awards_every_account_and_hero_once() {
             )
             .expect("seat should join");
     }
-    let mut stored = store
-        .load_match(&created.match_id)
-        .expect("match should load")
-        .expect("match should exist");
-    let frames = rune_lanes_core::test_support::forfeit_match(&mut stored.state, Side::Player, 0);
-    store
-        .save_custom_action_and_replay_frames(
-            &created.match_id,
-            0,
-            r#"{"type":"testForfeit"}"#,
-            &stored.state,
-            &frames,
-        )
+    crate::match_commands::MatchCommands::new(&mut store)
+        .force_forfeit(&created.match_id, Side::Player)
         .expect("completed match should save");
     award_completed_match(store.connection_mut(), &created.match_id)
         .expect("repeated award attempt should succeed");
@@ -513,18 +502,11 @@ fn completed_match_awards_account_and_hero_xp_once() {
             [],
         )
         .expect("user should insert");
-    let mut stored = store
+    let stored = store
         .create_match_for_user(HeroType::Pyromancer, Some(1))
         .expect("match should create");
-    let frames = rune_lanes_core::test_support::forfeit_match(&mut stored.state, Side::Player, 0);
-    store
-        .save_custom_action_and_replay_frames(
-            &stored.id,
-            0,
-            r#"{"type":"testForfeit"}"#,
-            &stored.state,
-            &frames,
-        )
+    crate::match_commands::MatchCommands::new(&mut store)
+        .force_forfeit(&stored.id, Side::Player)
         .expect("completed match should save");
     award_completed_match(store.connection_mut(), &stored.id)
         .expect("second award attempt should be idempotent");

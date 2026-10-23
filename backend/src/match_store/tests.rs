@@ -1,4 +1,6 @@
 use super::*;
+use crate::deck_library;
+use rusqlite::params;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn test_db_path(name: &str) -> PathBuf {
@@ -38,6 +40,77 @@ fn created_matches_can_be_loaded_from_sqlite() {
     assert_eq!(
         reopened.state.opponent.deck_count,
         created.state.opponent.deck_count
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn match_start_records_frame_zero_and_genesis_then_appends_dense_frames() {
+    let path = test_db_path("match-start");
+    let mut store = SqliteMatchStore::new(&path).expect("store should open");
+    let created = store
+        .create_match_for_user(HeroType::default(), None)
+        .expect("match should be created");
+
+    let replay = store
+        .load_replay(&created.id)
+        .expect("replay should load")
+        .expect("replay should exist");
+    assert_eq!(replay.frames.len(), 1);
+    assert_eq!(replay.frames[0].frame_index, 0);
+    assert_eq!(replay.frames[0].action_index, None);
+    let (aggregate, next_action_index) = store
+        .load_event_sourced_match(&created.id)
+        .expect("event stream should load")
+        .expect("genesis should exist");
+    assert_eq!(next_action_index, 0);
+
+    let mut candidate = aggregate.clone();
+    let decision = aggregate
+        .decide_forfeit(
+            rune_lanes_core::event_sourcing::CommandMetadata {
+                command_id: rune_lanes_core::event_sourcing::CommandId::new("store-test:0")
+                    .expect("command id should be valid"),
+                expected_version: aggregate.version(),
+                side: Side::Player,
+                action_index: 0,
+            },
+            Side::Player,
+        )
+        .expect("forfeit should decide");
+    let rune_lanes_core::event_sourcing::CommandDecision::Append(event) = decision else {
+        panic!("forfeit should append an event");
+    };
+    let outcome = candidate.evolve(&event).expect("forfeit should evolve");
+    store
+        .append_event_and_projection(
+            &created.id,
+            &event,
+            &candidate.snapshot().expect("snapshot should build"),
+            r#"{"type":"testForfeit"}"#,
+            candidate.state(),
+            &outcome.replay_frames,
+            None,
+        )
+        .expect("event should append");
+
+    let replay = store
+        .load_replay(&created.id)
+        .expect("replay should load")
+        .expect("replay should exist");
+    assert_eq!(replay.frames.len(), 1 + outcome.replay_frames.len());
+    for (index, frame) in replay.frames.iter().enumerate() {
+        assert_eq!(frame.frame_index as usize, index);
+    }
+    assert_eq!(replay.summary.state.winner, Some(Side::Player));
+    assert_eq!(
+        store
+            .load_event_sourced_match(&created.id)
+            .expect("event stream should load")
+            .expect("match should exist")
+            .1,
+        1
     );
 
     let _ = fs::remove_file(path);

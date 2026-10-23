@@ -90,19 +90,8 @@ fn seat_token_from_url(url: &str) -> &str {
 
 fn complete_match_by_forfeit(path: &std::path::Path, match_id: &str, winner: Side) {
     let mut store = SqliteMatchStore::new(path).expect("store should reopen");
-    let mut stored = store
-        .load_match(match_id)
-        .expect("match lookup should succeed")
-        .expect("match should exist");
-    let frames = rune_lanes_core::test_support::forfeit_match(&mut stored.state, winner, 0);
-    store
-        .save_custom_action_and_replay_frames(
-            match_id,
-            0,
-            r#"{"type":"testForfeit"}"#,
-            &stored.state,
-            &frames,
-        )
+    crate::match_commands::MatchCommands::new(&mut store)
+        .force_forfeit(match_id, winner)
         .expect("completed match should save");
 }
 
