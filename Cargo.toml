@@ -10,7 +10,7 @@ rust-version = "1.98"
 argon2 = "0.6"
 axum = { version = "0.8", features = ["ws"] }
 futures-util = "0.3"
-game-server = { git = "https://github.com/moritzbrantner/game-server.git", rev = "0d6fbfc7246736f9ff45ab6146e5aa26f671330b" }
+game-server = { git = "https://github.com/moritzbrantner/game-server.git", rev = "043867333bbfd880d4ef3484d57fd7199d3b6f2b" }
 rand = "0.10"
 rune-lanes-core = { path = "rune-lanes-core" }
 rusqlite = { version = "0.41", features = ["bundled", "fallible_uint"] }
