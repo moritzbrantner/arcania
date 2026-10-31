@@ -61,9 +61,12 @@ pub enum CommandConversionError {
 impl GameCommand {
     /// Runs the authoritative command rules against a clone and discards the
     /// resulting mutation. Query-side legality checks use this exact path so
-    /// presentation code never grows a competing rule implementation.
+    /// presentation code never grows a competing rule implementation. Commands
+    /// rejected by the action path's own read-only guards skip the clone.
     pub fn check(&self, state: &MatchState, context: CommandContext) -> Result<(), MatchError> {
-        let mut candidate = state.clone();
+        let request = self.clone().into_match_action_request();
+        state.check_action_preconditions(context.side, &request)?;
+        let mut candidate = state.legality_trial_clone();
         self.clone()
             .execute_compatibility(&mut candidate, context)
             .map(|_| ())

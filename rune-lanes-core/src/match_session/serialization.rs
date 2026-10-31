@@ -92,6 +92,7 @@ impl From<MatchSnapshot> for MatchState {
             next_unit_id: snapshot.next_unit_id,
             next_item_id: snapshot.next_item_id,
             next_building_id: snapshot.next_building_id,
+            skip_replay_frames: false,
         }
     }
 }
@@ -114,4 +115,14 @@ fn default_next_item_id() -> u32 {
 
 fn default_next_building_id() -> u32 {
     1
+}
+
+impl MatchState {
+    pub fn to_snapshot_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(&MatchSnapshot::from(self))
+    }
+
+    pub fn from_snapshot_json(snapshot: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str::<MatchSnapshot>(snapshot).map(Self::from)
+    }
 }

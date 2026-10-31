@@ -568,6 +568,48 @@ mod tests {
     }
 
     #[test]
+    fn check_matches_executing_every_candidate_on_a_plain_clone() {
+        let policy = crate::SoloAiPolicy::default();
+        let mut state = MatchState::new_with_seed(11);
+        let mut frames = Vec::new();
+        for action_index in 0..40 {
+            if state.phase == Phase::MatchOver {
+                break;
+            }
+            let acting_side = if state.action_stack.is_empty() {
+                state.active_side
+            } else {
+                state.priority_side.unwrap()
+            };
+            if action_index % 4 == 0 {
+                for side in [Side::Player, Side::Opponent] {
+                    let context = CommandContext {
+                        side,
+                        action_index: 0,
+                    };
+                    for command in state.queries().candidate_commands(side) {
+                        let mut clone = state.clone();
+                        let executed = command
+                            .clone()
+                            .execute_compatibility(&mut clone, context)
+                            .map(|_| ());
+                        assert_eq!(command.check(&state, context), executed, "{command:?}");
+                    }
+                }
+            }
+            state
+                .advance_ai_for_side_with_policy_strict(
+                    acting_side,
+                    &policy,
+                    &mut frames,
+                    Some(action_index),
+                )
+                .unwrap();
+        }
+        assert!(!frames.is_empty(), "the real path keeps recording frames");
+    }
+
+    #[test]
     fn legal_commands_agree_with_command_availability() {
         let state = MatchState::new_with_seed(7);
         let before = state.to_snapshot_json().unwrap();
