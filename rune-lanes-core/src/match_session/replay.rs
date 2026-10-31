@@ -214,6 +214,13 @@ impl ReplayEvent {
 }
 
 impl MatchState {
+    /// Clone for a legality trial: runs the real rules but records no replay frames.
+    pub(crate) fn legality_trial_clone(&self) -> Self {
+        let mut trial = self.clone();
+        trial.skip_replay_frames = true;
+        trial
+    }
+
     pub fn initial_replay_frame(&self) -> RecordedReplayFrame {
         RecordedReplayFrame {
             action_index: None,
@@ -275,6 +282,9 @@ impl MatchState {
         action_index: Option<u32>,
         event: ReplayEvent,
     ) {
+        if self.skip_replay_frames {
+            return;
+        }
         frames.push(RecordedReplayFrame {
             action_index,
             event,

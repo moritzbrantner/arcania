@@ -4,14 +4,13 @@ use super::{
 };
 
 impl MatchState {
-    pub(super) fn play_card_for_side(
-        &mut self,
+    /// Read-only guards of a card play: everything that can reject it before its
+    /// target is considered. Returns the card from `side`'s hand.
+    pub(super) fn card_in_play_window(
+        &self,
         side: Side,
-        card_id: String,
-        target: ActionTarget,
-        frames: &mut Vec<RecordedReplayFrame>,
-        action_index: Option<u32>,
-    ) -> Result<(), MatchError> {
+        card_id: &str,
+    ) -> Result<Card, MatchError> {
         let stack_was_empty = self.action_stack.is_empty();
         let card = {
             if self.player_ref(side).knocked_out {
@@ -58,6 +57,20 @@ impl MatchState {
                 return Err(MatchError::PriorityTooLow);
             }
         }
+
+        Ok(card)
+    }
+
+    pub(super) fn play_card_for_side(
+        &mut self,
+        side: Side,
+        card_id: String,
+        target: ActionTarget,
+        frames: &mut Vec<RecordedReplayFrame>,
+        action_index: Option<u32>,
+    ) -> Result<(), MatchError> {
+        let stack_was_empty = self.action_stack.is_empty();
+        let card = self.card_in_play_window(side, &card_id)?;
 
         match &card.kind {
             CardKind::Unit { .. } => {

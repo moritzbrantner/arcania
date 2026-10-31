@@ -52,15 +52,54 @@ impl MatchState {
         frames
     }
 
+    /// Read-only guards that reject an action before any rule can mutate state.
+    /// They run first on the real action path, and a legality check runs them
+    /// before paying for its clone, so both report the same rejection.
+    pub(crate) fn check_action_preconditions(
+        &self,
+        side: Side,
+        request: &MatchActionRequest,
+    ) -> Result<(), MatchError> {
+        if self.phase == Phase::MatchOver {
+            return Err(MatchError::MatchOver);
+        }
+
+        match request {
+            MatchActionRequest::PlayCard { card_id, .. } => {
+                self.card_in_play_window(side, card_id).map(|_| ())
+            }
+            MatchActionRequest::MovePiece { .. } => {
+                self.require_turn_action_side(side)?;
+                self.require_phase(Phase::Movement)
+            }
+            MatchActionRequest::Attack { .. } => {
+                self.require_turn_action_side(side)?;
+                self.require_phase(Phase::Attack)
+            }
+            MatchActionRequest::ActivateBuilding { .. }
+            | MatchActionRequest::StartAttackPhase
+            | MatchActionRequest::StartCardPlay => self.require_turn_action_side(side),
+            MatchActionRequest::EndTurn => {
+                self.require_turn_action_side(side)?;
+                self.require_phase(Phase::CardPlay)?;
+                if !self.action_stack.is_empty() {
+                    return Err(MatchError::StackPending);
+                }
+                Ok(())
+            }
+            MatchActionRequest::ActivateItem { .. }
+            | MatchActionRequest::PassPriority
+            | MatchActionRequest::AdvanceAi => Ok(()),
+        }
+    }
+
     fn apply_action_internal(
         &mut self,
         side: Side,
         request: MatchActionRequest,
         action_index: Option<u32>,
     ) -> Result<Vec<RecordedReplayFrame>, MatchError> {
-        if self.phase == Phase::MatchOver {
-            return Err(MatchError::MatchOver);
-        }
+        self.check_action_preconditions(side, &request)?;
 
         let mut frames = Vec::new();
         match request {
@@ -68,18 +107,12 @@ impl MatchState {
                 self.play_card_for_side(side, card_id, target, &mut frames, action_index)
             }
             MatchActionRequest::MovePiece { piece_id, to } => {
-                self.require_turn_action_side(side)?;
-                self.require_phase(Phase::Movement)?;
                 self.move_piece_for_side(side, &piece_id, to, &mut frames, action_index)
             }
             MatchActionRequest::Attack {
                 attacker_id,
                 target_id,
-            } => {
-                self.require_turn_action_side(side)?;
-                self.require_phase(Phase::Attack)?;
-                self.attack_for_side(side, &attacker_id, &target_id, &mut frames, action_index)
-            }
+            } => self.attack_for_side(side, &attacker_id, &target_id, &mut frames, action_index),
             MatchActionRequest::ActivateItem {
                 carrier_id,
                 item_id,
@@ -93,23 +126,15 @@ impl MatchState {
                 action_index,
             ),
             MatchActionRequest::ActivateBuilding { building_id } => {
-                self.require_turn_action_side(side)?;
                 self.activate_building_for_side(side, &building_id, &mut frames, action_index)
             }
             MatchActionRequest::StartAttackPhase => {
-                self.require_turn_action_side(side)?;
                 self.start_attack_phase_for_side(side, &mut frames, action_index)
             }
             MatchActionRequest::StartCardPlay => {
-                self.require_turn_action_side(side)?;
                 self.start_card_play_for_side(side, &mut frames, action_index)
             }
             MatchActionRequest::EndTurn => {
-                self.require_turn_action_side(side)?;
-                self.require_phase(Phase::CardPlay)?;
-                if !self.action_stack.is_empty() {
-                    return Err(MatchError::StackPending);
-                }
                 if self.mode == MatchMode::Shared {
                     self.end_shared_turn(side, &mut frames, action_index);
                 } else if side == Side::Opponent {

@@ -92,6 +92,7 @@ impl From<MatchSnapshot> for MatchState {
             next_unit_id: snapshot.next_unit_id,
             next_item_id: snapshot.next_item_id,
             next_building_id: snapshot.next_building_id,
+            skip_replay_frames: false,
         }
     }
 }

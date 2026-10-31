@@ -28,6 +28,9 @@ pub struct MatchState {
     pub(super) next_unit_id: u32,
     pub(super) next_item_id: u32,
     pub(super) next_building_id: u32,
+    /// Set only on the throwaway clone of a command legality check, whose replay
+    /// frames are discarded, so it does not serialize a snapshot per event.
+    pub(super) skip_replay_frames: bool,
 }
 
 pub const MAX_CARRIED_ITEMS: usize = crate::rules::CURRENT_RULESET.turn.max_carried_items as usize;

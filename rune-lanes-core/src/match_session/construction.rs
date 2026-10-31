@@ -468,6 +468,7 @@ impl MatchState {
             next_unit_id: 1,
             next_item_id: 1,
             next_building_id: 1,
+            skip_replay_frames: false,
         };
 
         for _ in 0..opening_hand_size(&ruleset, &game.player.progression) {
