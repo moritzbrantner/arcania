@@ -4,7 +4,8 @@ use std::fmt;
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 
-use super::{CardSummary, MatchMode, default_attack_range};
+use super::{CardSummary, MatchMode};
+use crate::rules::CURRENT_RULESET;
 
 #[derive(Clone, Debug)]
 pub struct MatchState {
@@ -716,3 +717,61 @@ impl fmt::Display for MatchError {
 }
 
 impl Error for MatchError {}
+
+fn default_attack_range() -> u8 {
+    CURRENT_RULESET.turn.default_attack_range
+}
+
+impl Side {
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Self::Player => "Player 1",
+            Self::Opponent => "Opponent",
+            Self::PlayerTwo => "Player 2",
+            Self::OpponentTwo => "Opponent 2",
+        }
+    }
+
+    pub fn opponent(self) -> Self {
+        match self {
+            Self::Player => Self::Opponent,
+            Self::Opponent => Self::Player,
+            Self::PlayerTwo => Self::OpponentTwo,
+            Self::OpponentTwo => Self::PlayerTwo,
+        }
+    }
+
+    pub fn team(self) -> Team {
+        match self {
+            Self::Player | Self::PlayerTwo => Team::Player,
+            Self::Opponent | Self::OpponentTwo => Team::Opponent,
+        }
+    }
+
+    pub fn opposing_team(self) -> Team {
+        match self.team() {
+            Team::Player => Team::Opponent,
+            Team::Opponent => Team::Player,
+        }
+    }
+}
+
+impl Side {
+    pub fn card_prefix(self) -> &'static str {
+        match self {
+            Self::Player => "p",
+            Self::Opponent => "o",
+            Self::PlayerTwo => "p2",
+            Self::OpponentTwo => "o2",
+        }
+    }
+
+    pub fn label_for_response(self) -> &'static str {
+        match self {
+            Self::Player => "Player 1",
+            Self::Opponent => "Opponent 1",
+            Self::PlayerTwo => "Player 2",
+            Self::OpponentTwo => "Opponent 2",
+        }
+    }
+}
