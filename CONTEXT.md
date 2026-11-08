@@ -2,6 +2,10 @@
 
 Rune Lanes is a card/board game hybrid about heroes summoning units and casting spells on a shared hex arena.
 
+Owner-approved gameplay direction, including decisions still awaiting
+implementation, is tracked in [Gameplay decisions](docs/specs/gameplay-decisions.md).
+The glossary and existing ADRs describe shipped rules unless explicitly noted.
+
 ## Language
 
 **Hero**:
