@@ -51,7 +51,7 @@ jobs:
         uses: moritzbrantner/reusable-workflows/.github/actions/install-verified-wasm-cli@e60855ad67f3dad72c283c355d544d6d296241d7
         with:
           tool: wasm-bindgen
-          version: "0.2.129"
+          version: "0.2.130"
 
       - name: Build browser engine
         run: bun run build:browser-engine
