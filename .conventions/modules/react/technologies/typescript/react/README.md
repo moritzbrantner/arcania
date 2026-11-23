@@ -48,8 +48,8 @@
 
 ## REACT-011 — Build component systems in layers
 
-- Prefer a component vocabulary that composes upward: low-level primitives and behavior, reusable domain building blocks, feature-level compositions, then pages or screens.
-- Keep dependencies flowing upward. A primitive or reusable building block must not import a page, feature workflow, or application-specific orchestration layer.
+- Prefer a component vocabulary that composes low-level primitives and behavior into reusable domain building blocks, then feature-level compositions and pages or screens.
+- Pages and feature compositions may import domain building blocks and primitives; domain building blocks may import primitives. Primitives must not import domain workflows or pages, and reusable building blocks must not import application-specific orchestration.
 - Let pages and screens assemble building blocks and own workflow-specific wiring; do not make them the only place where reusable interaction or presentation logic exists.
 - Keep domain semantics visible in component names and APIs. Reuse should not erase meaningful concepts merely to produce generic `Box`, `Item`, or `Thing` abstractions.
 
