@@ -8,6 +8,7 @@
 
 - On conflict, use the narrowest applicable rule; non-conflicting broader rules remain in force.
 - Precedence: repository rule → deepest technology scope → parent scopes → general convention → principle.
+- A deliberate repository-local exception names the overridden shared rule and explains why; it does not require a shared-policy change before local work can proceed.
 
 ## REPO-009 — Use conventional roots for durable agent-authored project knowledge
 
@@ -96,3 +97,11 @@ These are repository-layout defaults, not requirements that every repository cre
 
 - Implementation does not require a separate planning issue first.
 - When a change makes a consequential architectural decision (new boundary, dependency, persistence or protocol shape, or a trade-off that is hard to reverse), add an ADR under `docs/adr/` in the same change.
+
+## REPO-021 — Converge maintained repositories on canonical workflow profiles
+
+- Maintained repositories that use GitHub Actions select a canonical workflow profile from the shared `reusable-workflows` profile catalog rather than independently inventing top-level GitHub workflow topology.
+- For those GitHub Actions repositories, enable only the profile roles the repository actually needs; prefer jobs and matrices inside canonical caller workflows over adding another top-level workflow file.
+- Any workflow outside the selected profile is an explicit repository-local exception with a concrete reason.
+- Repository-owned commands and deterministic tooling continue to own validation semantics; the shared workflow profile owns only GitHub workflow topology, canonical caller roles, and reusable hosted mechanics.
+
